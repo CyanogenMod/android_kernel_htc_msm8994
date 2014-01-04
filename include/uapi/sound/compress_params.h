@@ -318,7 +318,30 @@ struct snd_codec_desc {
 	__u32 reserved[15];
 };
 
-
+/** struct snd_codec
+ * @id: Identifies the supported audio encoder/decoder.
+ *		See SND_AUDIOCODEC macros.
+ * @ch_in: Number of input audio channels
+ * @ch_out: Number of output channels. In case of contradiction between
+ *		this field and the channelMode field, the channelMode field
+ *		overrides.
+ * @sample_rate: Audio sample rate of input data in Hz, use values like 48000
+ *		for this.
+ * @bit_rate: Bitrate of encoded data. May be ignored by decoders
+ * @rate_control: Encoding rate control. See SND_RATECONTROLMODE defines.
+ *               Encoders may rely on profiles for quality levels.
+ *		 May be ignored by decoders.
+ * @profile: Mandatory for encoders, can be mandatory for specific
+ *		decoders as well. See SND_AUDIOPROFILE defines.
+ * @level: Supported level (Only used by WMA at the moment)
+ * @ch_mode: Channel mode for encoder. See SND_AUDIOCHANMODE defines
+ * @format: Format of encoded bistream. Mandatory when defined.
+ *		See SND_AUDIOSTREAMFORMAT defines.
+ * @align: Block alignment in bytes of an audio sample.
+ *		Only required for PCM or IEC formats.
+ * @options: encoder-specific settings
+ * @reserved: reserved for future use
+ */
 struct snd_codec {
 	__u32 id;
 	__u32 ch_in;
