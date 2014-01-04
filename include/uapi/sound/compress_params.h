@@ -282,6 +282,27 @@ union snd_codec_options {
 	struct snd_dec_flac flac_dec;
 };
 
+/** struct snd_codec_desc - description of codec capabilities
+ * @max_ch: Maximum number of audio channels
+ * @sample_rates: Sampling rates in Hz, use values like 48000 for this
+ * @bit_rate: Indexed array containing supported bit rates
+ * @num_bitrates: Number of valid values in bit_rate array
+ * @rate_control: value is specified by SND_RATECONTROLMODE defines.
+ * @profiles: Supported profiles. See SND_AUDIOPROFILE defines.
+ * @modes: Supported modes. See SND_AUDIOMODE defines
+ * @formats: Supported formats. See SND_AUDIOSTREAMFORMAT defines
+ * @min_buffer: Minimum buffer size handled by codec implementation
+ * @reserved: reserved for future use
+ *
+ * This structure provides a scalar value for profiles, modes and stream
+ * format fields.
+ * If an implementation supports multiple combinations, they will be listed as
+ * codecs with different descriptors, for example there would be 2 descriptors
+ * for AAC-RAW and AAC-ADTS.
+ * This entails some redundancy but makes it easier to avoid invalid
+ * configurations.
+ *
+ */
 
 struct snd_codec_desc {
 	__u32 max_ch;
