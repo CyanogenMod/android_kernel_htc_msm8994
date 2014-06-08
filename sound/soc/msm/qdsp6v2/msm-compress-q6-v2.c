@@ -152,7 +152,6 @@ struct msm_compr_audio {
 
 	uint16_t session_id;
 	uint16_t bits_per_sample;
-	atomic_t drain_done_pendding;
 	uint64_t lasttimestamp;
 	int32_t stream_end;
 	uint32_t sample_rate;
@@ -485,10 +484,6 @@ static void compr_event_handler(uint32_t opcode,
 			/* Writes must be restarted from _copy() */
 			pr_debug("write_done received while not started, treat as xrun");
 			atomic_set(&prtd->xrun, 1);
-			if (atomic_read(&prtd->drain)) {
-				pr_info("write_done received while not started and wait drain buffer. Set drain_done_pending as 1\n");
-				atomic_set(&prtd->drain_done_pendding, 1);
-			}
 			spin_unlock_irqrestore(&prtd->lock, flags);
 			break;
 		}
@@ -529,6 +524,7 @@ static void compr_event_handler(uint32_t opcode,
 			prtd->eos_ack = 1;
 			wake_up(&prtd->eos_wait);
 		}
+		atomic_set(&prtd->eos, 0);
 		stream_index = STREAM_ARRAY_INDEX(stream_id);
 		if (stream_index >= MAX_NUMBER_OF_STREAMS ||
 		    stream_index < 0) {
@@ -603,8 +599,8 @@ static void compr_event_handler(uint32_t opcode,
 			spin_unlock_irqrestore(&prtd->lock, flags);
 			break;
 		case ASM_STREAM_CMD_FLUSH:
-			pr_info("%s: ASM_STREAM_CMD_FLUSH:", __func__);    
-			pr_info("token 0x%x, stream id %d\n", token,
+			pr_debug("%s: ASM_STREAM_CMD_FLUSH:", __func__);    
+			pr_debug("token 0x%x, stream id %d\n", token,
 				  STREAM_ID_FROM_TOKEN(token));    
 			prtd->cmd_ack = 1;
 			break;
@@ -1075,7 +1071,7 @@ static int msm_compr_open(struct snd_compr_stream *cstream)
 		return -ENOMEM;
 	}
 
-	pr_info("%s: session ID %d\n", __func__, prtd->audio_client->session);    
+	pr_debug("%s: session ID %d\n", __func__, prtd->audio_client->session);
 	prtd->audio_client->perf_mode = false;
 	prtd->session_id = prtd->audio_client->session;
 	prtd->codec = FORMAT_MP3;
@@ -1093,10 +1089,6 @@ static int msm_compr_open(struct snd_compr_stream *cstream)
 	memset(&prtd->gapless_state, 0, sizeof(struct msm_compr_gapless_state));
 	prtd->stream_end = false;
 	prtd->lasttimestamp = 0;
-	if (q6asm_set_io_mode(prtd->audio_client, (COMPRESSED_IO | ASYNC_IO_MODE))) {
-		pr_err("%s: Set IO mode failed\n", __func__);
-		return -EINVAL;
-	}
 	/*
 	 * Update the use_dsp_gapless_mode from gapless struture with the value
 	 * part of platform data.
@@ -1114,7 +1106,6 @@ static int msm_compr_open(struct snd_compr_stream *cstream)
 	atomic_set(&prtd->close, 0);
 	atomic_set(&prtd->wait_on_close, 0);
 	atomic_set(&prtd->error, 0);
-	atomic_set(&prtd->drain_done_pendding, 0); 
 
 	init_waitqueue_head(&prtd->eos_wait);
 	init_waitqueue_head(&prtd->drain_wait);
@@ -1373,16 +1364,8 @@ static int msm_compr_drain_buffer(struct msm_compr_audio *prtd,
 	prtd->drain_ready = 0;
 	spin_unlock_irqrestore(&prtd->lock, *flags);
 	pr_debug("%s: wait for buffer to be drained\n",  __func__);
-#if 0
-	rc = wait_event_interruptible(prtd->drain_wait,
-					prtd->drain_ready ||
-					prtd->cmd_interrupt ||
-					atomic_read(&prtd->xrun) ||
-					atomic_read(&prtd->error));
-#else  
 	msm_compr_wait_event_freezable(prtd, 0);
 	atomic_set(&prtd->drain, 0);
-#endif
 	pr_debug("%s: out of buffer drain wait with ret %d\n", __func__, rc);
 	spin_lock_irqsave(&prtd->lock, *flags);
 	if (prtd->cmd_interrupt) {
@@ -1493,7 +1476,7 @@ static int msm_compr_trigger(struct snd_compr_stream *cstream, int cmd)
 		break;
 	case SNDRV_PCM_TRIGGER_STOP:
 		spin_lock_irqsave(&prtd->lock, flags);
-		pr_info("%s: SNDRV_PCM_TRIGGER_STOP transition %d\n", __func__,
+		pr_debug("%s: SNDRV_PCM_TRIGGER_STOP transition %d\n", __func__,
 					prtd->gapless_state.gapless_transition);    
 		stream_id = ac->stream_id;
 		atomic_set(&prtd->start, 0);
@@ -1508,14 +1491,14 @@ static int msm_compr_trigger(struct snd_compr_stream *cstream, int cmd)
 			pr_debug("%s: interrupt eos wait queues", __func__);
 			prtd->cmd_interrupt = 1;
 			wake_up(&prtd->eos_wait);
-			
+			atomic_set(&prtd->eos, 0);
 		}
 		if (atomic_read(&prtd->drain)) {
 			pr_debug("%s: interrupt drain wait queues", __func__);
 			prtd->cmd_interrupt = 1;
 			prtd->drain_ready = 1;
 			wake_up(&prtd->drain_wait);
-			
+			atomic_set(&prtd->drain, 0);
 		}
 		prtd->last_buffer = 0;
 		prtd->cmd_ack = 0;
@@ -1523,7 +1506,7 @@ static int msm_compr_trigger(struct snd_compr_stream *cstream, int cmd)
 		prtd->stream_end = false;
 		prtd->lasttimestamp = 0;
 		if (!prtd->gapless_state.gapless_transition) {
-			pr_info("issue CMD_FLUSH stream_id %d\n", stream_id);    
+			pr_debug("issue CMD_FLUSH stream_id %d\n", stream_id);    
 			spin_unlock_irqrestore(&prtd->lock, flags);
 			q6asm_stream_cmd(
 				prtd->audio_client, CMD_FLUSH, stream_id);
@@ -1540,7 +1523,6 @@ static int msm_compr_trigger(struct snd_compr_stream *cstream, int cmd)
 		prtd->marker_timestamp = 0;
 
 		atomic_set(&prtd->xrun, 0);
-		atomic_set(&prtd->drain_done_pendding, 0);    
 		spin_unlock_irqrestore(&prtd->lock, flags);
 		break;
 	case SNDRV_PCM_TRIGGER_PAUSE_PUSH:
@@ -1559,35 +1541,21 @@ static int msm_compr_trigger(struct snd_compr_stream *cstream, int cmd)
 		if (!prtd->gapless_state.gapless_transition) {
 			atomic_set(&prtd->start, 1);
 			q6asm_run_nowait(prtd->audio_client, 0, 0, 0);
-			if (atomic_read(&prtd->drain_done_pendding)) {
-				spin_lock_irqsave(&prtd->lock, flags);
-				pr_info("SNDRV_PCM_TRIGGER_PAUSE_RELEASE: has the drain_done_pendding signal\n");
-				if (prtd->last_buffer)
-					prtd->last_buffer = 0;
-				if (atomic_read(&prtd->drain)) {
-					pr_info("SNDRV_PCM_TRIGGER_PAUSE_RELEASE: wake up on drain\n");
-					prtd->drain_ready = 1;
-					wake_up(&prtd->drain_wait);
-					
-				}
-				atomic_set(&prtd->drain_done_pendding, 0);
-				spin_unlock_irqrestore(&prtd->lock, flags);
-			}
 		}
 		break;
 	case SND_COMPR_TRIGGER_PARTIAL_DRAIN:
-		pr_info("%s: SND_COMPR_TRIGGER_PARTIAL_DRAIN\n", __func__);    
+		pr_debug("%s: SND_COMPR_TRIGGER_PARTIAL_DRAIN\n", __func__);    
 		if (!prtd->gapless_state.use_dsp_gapless_mode) {
-			pr_info("%s: set partial drain as drain\n", __func__);    
+			pr_debug("%s: set partial drain as drain\n", __func__);    
 			cmd = SND_COMPR_TRIGGER_DRAIN;
 		}
 		is_partial_drain = 1;
 	case SND_COMPR_TRIGGER_DRAIN:
-		pr_info("%s: SNDRV_COMPRESS_DRAIN\n", __func__);
+		pr_debug("%s: SNDRV_COMPRESS_DRAIN\n", __func__);
 		if ((cmd == SND_COMPR_TRIGGER_DRAIN) &&
 			(prtd->stream_end == true) &&
 			!is_partial_drain) {
-			pr_info("%s: stream is end, skip drain", __func__);
+			pr_debug("%s: stream is end, skip drain", __func__);
 			break;
 		}
 		/* Make sure all the data is sent to DSP before sending EOS */
@@ -1601,7 +1569,7 @@ static int msm_compr_trigger(struct snd_compr_stream *cstream, int cmd)
 			break;
 		}
 		if (prtd->bytes_received > prtd->copied_total) {
-			pr_info("%s: wait till all the data is sent to dsp\n",
+			pr_debug("%s: wait till all the data is sent to dsp\n",
 				__func__);    
 			rc = msm_compr_drain_buffer(prtd, &flags);
 			if (rc || !atomic_read(&prtd->start)) {
@@ -1722,7 +1690,7 @@ static int msm_compr_trigger(struct snd_compr_stream *cstream, int cmd)
 		   stream can be used for gapless playback
 		*/
 		prtd->gapless_state.set_next_stream_id = false;
-		pr_info("%s:CMD_EOS stream_id %d\n", __func__, ac->stream_id);    
+		pr_debug("%s:CMD_EOS stream_id %d\n", __func__, ac->stream_id);
 
 		prtd->eos_ack = 0;
 		atomic_set(&prtd->eos, 1);
@@ -1732,20 +1700,15 @@ static int msm_compr_trigger(struct snd_compr_stream *cstream, int cmd)
 
 
 		/* Wait indefinitely for  DRAIN. Flush can also signal this*/
-#if 0
 		rc = wait_event_interruptible(prtd->eos_wait,
 						(prtd->eos_ack ||
 						prtd->cmd_interrupt ||
 						atomic_read(&prtd->error)));
-#else  
-		msm_compr_wait_event_freezable(prtd, 1);
-		atomic_set(&prtd->eos, 0);
-#endif
 		if (rc < 0)
 			pr_err("%s: EOS wait failed\n", __func__);
 
-		pr_info("%s: SNDRV_COMPRESS_DRAIN  out of wait for EOS\n",
-			  __func__);    
+		pr_debug("%s: SNDRV_COMPRESS_DRAIN  out of wait for EOS\n",
+			  __func__);
 
 		if (prtd->cmd_interrupt)
 			rc = -EINTR;
@@ -1767,7 +1730,7 @@ static int msm_compr_trigger(struct snd_compr_stream *cstream, int cmd)
 			pr_info("record stream end timestamp:%llu\n", prtd->lasttimestamp);
 			spin_lock_irqsave(&prtd->lock, flags);
 			prtd->stream_end = true; 
-			pr_info("%s:issue CMD_PAUSE stream_id %d",
+			pr_debug("%s:issue CMD_PAUSE stream_id %d",
 					  __func__, ac->stream_id);    
 			q6asm_stream_cmd_nowait(ac, CMD_PAUSE, ac->stream_id);
 			prtd->cmd_ack = 0;
@@ -2157,25 +2120,27 @@ static int msm_compr_get_codec_caps(struct snd_compr_stream *cstream,
 
 	return 0;
 }
+
 static int msm_compr_config_effect(struct snd_compr_stream *cstream, void *data, void *payload)
 {
-   struct msm_compr_audio *prtd = cstream->runtime->private_data;
-   struct dsp_effect_param *q6_param = (struct dsp_effect_param*)data;
-   int rc = 0;
-   if (!prtd->audio_client) {
-       pr_err("%s: audio_client not found\n",
-           __func__);
-       return -EACCES;
-   }
-   rc = q6asm_enable_effect(prtd->audio_client,
-               q6_param->module_id,
-               q6_param->param_id,
-               q6_param->payload_size,
-               payload);
-   pr_info("[%p] %s: call q6asm_enable_effect, rc %d\n",
-       prtd, __func__, rc);
-   return rc;
+	struct msm_compr_audio *prtd = cstream->runtime->private_data;
+	struct dsp_effect_param *q6_param = (struct dsp_effect_param*)data;
+	int rc = 0;
+	if (!prtd->audio_client) {
+		pr_err("%s: audio_client not found\n",
+			__func__);
+		return -EACCES;
+	}
+	rc = q6asm_enable_effect(prtd->audio_client,
+				q6_param->module_id,
+				q6_param->param_id,
+				q6_param->payload_size,
+				payload);
+	pr_info("[%p] %s: call q6asm_enable_effect, rc %d\n",
+		prtd, __func__, rc);
+	return rc;
 }
+
 static int msm_compr_set_metadata(struct snd_compr_stream *cstream,
 				struct snd_compr_metadata *metadata)
 {
