@@ -179,8 +179,6 @@ static ssize_t hdmi_edid_sysfs_rda_modes(struct device *dev,
 	if (edid_ctrl->sink_data.num_of_elements) {
 		u32 *video_mode = edid_ctrl->sink_data.disp_mode_list;
 		for (i = 0; i < edid_ctrl->sink_data.num_of_elements; ++i) {
-			if (!hdmi_get_supported_mode(*video_mode))
-				continue;
 			if (ret > 0)
 				ret += scnprintf(buf + ret, PAGE_SIZE - ret,
 					",%d", *video_mode++);
@@ -817,7 +815,8 @@ static u32 hdmi_edid_check_header(const u8 *edid_buf)
 		&& (edid_buf[6] == 0xff) && (edid_buf[7] == 0x00);
 } 
 
-static void hdmi_edid_detail_desc(const u8 *data_buf, u32 *disp_mode)
+static void hdmi_edid_detail_desc(struct hdmi_edid_ctrl *edid_ctrl,
+	const u8 *data_buf, u32 *disp_mode)
 {
 	u32	aspect_ratio_4_3    = false;
 	u32	interlaced          = false;
@@ -859,30 +858,32 @@ static void hdmi_edid_detail_desc(const u8 *data_buf, u32 *disp_mode)
 
 	*disp_mode = HDMI_VFRMT_FORCE_32BIT;
 	for (ndx = HDMI_VFRMT_UNKNOWN + 1; ndx < HDMI_VFRMT_MAX; ndx++) {
-		const struct msm_hdmi_mode_timing_info *timing = NULL;
-		timing = hdmi_get_supported_mode(ndx);
+		struct msm_hdmi_mode_timing_info timing = {0};
+		u32 ret = hdmi_get_supported_mode(&timing,
+				edid_ctrl->init_data.ds_data,
+				ndx);
 
-		if (!timing)
+		if (ret || !timing.supported)
 			continue;
 
-		if ((interlaced   == timing->interlaced) &&
-			(active_h == timing->active_h) &&
-			(blank_h  == (timing->front_porch_h +
-				timing->pulse_width_h +
-				timing->back_porch_h)) &&
-			(blank_v  == (timing->front_porch_v +
-				timing->pulse_width_v +
-				timing->back_porch_v)) &&
-			((active_v == timing->active_v) ||
-			(active_v  == (timing->active_v + 1)))) {
-				*disp_mode = timing->video_format;
+		if ((interlaced   == timing.interlaced) &&
+			(active_h == timing.active_h) &&
+			(blank_h  == (timing.front_porch_h +
+				timing.pulse_width_h +
+				timing.back_porch_h)) &&
+			(blank_v  == (timing.front_porch_v +
+				timing.pulse_width_v +
+				timing.back_porch_v)) &&
+			((active_v == timing.active_v) ||
+			(active_v  == (timing.active_v + 1)))) {
+				*disp_mode = timing.video_format;
 
 
 			if (aspect_ratio_4_3 &&
-				(timing->ar != HDMI_RES_AR_4_3))
+				(timing.ar != HDMI_RES_AR_4_3))
 				continue;
 			else if (!aspect_ratio_4_3 &&
-				(timing->ar == HDMI_RES_AR_4_3))
+				(timing.ar == HDMI_RES_AR_4_3))
 				continue;
 			else
 				break;
@@ -917,12 +918,15 @@ static void hdmi_edid_add_sink_3d_format(struct hdmi_edid_sink_data *sink_data,
 		string, added ? "added" : "NOT added");
 } 
 
-static void hdmi_edid_add_sink_video_format(
-	struct hdmi_edid_sink_data *sink_data, u32 video_format)
+static void hdmi_edid_add_sink_video_format(struct hdmi_edid_ctrl *edid_ctrl,
+	u32 video_format)
 {
-	const struct msm_hdmi_mode_timing_info *timing =
-		hdmi_get_supported_mode(video_format);
-	u32 supported = timing != NULL;
+	struct msm_hdmi_mode_timing_info timing = {0};
+	u32 ret = hdmi_get_supported_mode(&timing,
+				edid_ctrl->init_data.ds_data,
+				video_format);
+	u32 supported = timing.supported;
+	struct hdmi_edid_sink_data *sink_data = &edid_ctrl->sink_data;
 
 	if (video_format >= HDMI_VFRMT_MAX) {
 		DEV_ERR("%s: video format: %s is not supported\n", __func__,
@@ -934,8 +938,8 @@ static void hdmi_edid_add_sink_video_format(
 		video_format, msm_hdmi_mode_2string(video_format),
 		supported ? "Supported" : "Not-Supported");
 
-	if (supported) {
-		
+	if (!ret && supported) {
+		/* todo: MHL */
 		sink_data->disp_mode_list[sink_data->num_of_elements++] =
 			video_format;
 	}
@@ -1123,7 +1127,7 @@ static void hdmi_edid_get_extended_video_formats(
 
 		for (i = 0; i < hdmi_vic_len; i++) {
 			video_format = HDMI_VFRMT_END + vsd[offset + 2 + i];
-			hdmi_edid_add_sink_video_format(&edid_ctrl->sink_data,
+			hdmi_edid_add_sink_video_format(edid_ctrl,
 				video_format);
 		}
 	}
@@ -1168,7 +1172,7 @@ static void hdmi_edid_parse_et3(struct hdmi_edid_ctrl *edid_ctrl,
 		iter++;
 		if (edid_blk0[iter] & BIT(3)) {
 			pr_debug("%s: DMT 848x480@60\n", __func__);
-			hdmi_edid_add_sink_video_format(sink_data,
+			hdmi_edid_add_sink_video_format(edid_ctrl,
 				HDMI_VFRMT_848x480p60_16_9);
 		}
 
@@ -1176,13 +1180,13 @@ static void hdmi_edid_parse_et3(struct hdmi_edid_ctrl *edid_ctrl,
 		iter++;
 		if (edid_blk0[iter] & BIT(1)) {
 			pr_debug("%s: DMT 1280x1024@60\n", __func__);
-			hdmi_edid_add_sink_video_format(sink_data,
+			hdmi_edid_add_sink_video_format(edid_ctrl,
 				HDMI_VFRMT_1280x1024p60_5_4);
 		}
 
 		if (edid_blk0[iter] & BIT(3)) {
 			pr_debug("%s: DMT 1280x960@60\n", __func__);
-			hdmi_edid_add_sink_video_format(sink_data,
+			hdmi_edid_add_sink_video_format(edid_ctrl,
 				HDMI_VFRMT_1280x960p60_4_3);
 		}
 
@@ -1190,19 +1194,19 @@ static void hdmi_edid_parse_et3(struct hdmi_edid_ctrl *edid_ctrl,
 		iter++;
 		if (edid_blk0[iter] & BIT(1)) {
 			pr_debug("%s: DMT 1400x1050@60\n", __func__);
-			hdmi_edid_add_sink_video_format(sink_data,
+			hdmi_edid_add_sink_video_format(edid_ctrl,
 				HDMI_VFRMT_1400x1050p60_4_3);
 		}
 
 		if (edid_blk0[iter] & BIT(5)) {
 			pr_debug("%s: DMT 1440x900@60\n", __func__);
-			hdmi_edid_add_sink_video_format(sink_data,
+			hdmi_edid_add_sink_video_format(edid_ctrl,
 				HDMI_VFRMT_1440x900p60_16_10);
 		}
 
 		if (edid_blk0[iter] & BIT(7)) {
 			pr_debug("%s: DMT 1360x768@60\n", __func__);
-			hdmi_edid_add_sink_video_format(sink_data,
+			hdmi_edid_add_sink_video_format(edid_ctrl,
 				HDMI_VFRMT_1360x768p60_16_9);
 		}
 
@@ -1210,13 +1214,13 @@ static void hdmi_edid_parse_et3(struct hdmi_edid_ctrl *edid_ctrl,
 		iter++;
 		if (edid_blk0[iter] & BIT(2)) {
 			pr_debug("%s: DMT 1600x1200@60\n", __func__);
-			hdmi_edid_add_sink_video_format(sink_data,
+			hdmi_edid_add_sink_video_format(edid_ctrl,
 				HDMI_VFRMT_1600x1200p60_4_3);
 		}
 
 		if (edid_blk0[iter] & BIT(5)) {
 			pr_debug("%s: DMT 1680x1050@60\n", __func__);
-			hdmi_edid_add_sink_video_format(sink_data,
+			hdmi_edid_add_sink_video_format(edid_ctrl,
 				HDMI_VFRMT_1680x1050p60_16_10);
 		}
 
@@ -1224,7 +1228,7 @@ static void hdmi_edid_parse_et3(struct hdmi_edid_ctrl *edid_ctrl,
 		iter++;
 		if (edid_blk0[iter] & BIT(0)) {
 			pr_debug("%s: DMT 1920x1200@60\n", __func__);
-			hdmi_edid_add_sink_video_format(sink_data,
+			hdmi_edid_add_sink_video_format(edid_ctrl,
 				HDMI_VFRMT_1920x1200p60_16_10);
 		}
 
@@ -1285,7 +1289,7 @@ static void hdmi_edid_get_display_mode(struct hdmi_edid_ctrl *edid_ctrl,
 			else
 				video_format = (*svd & 0x7F);
 
-			hdmi_edid_add_sink_video_format(sink_data,
+			hdmi_edid_add_sink_video_format(edid_ctrl,
 				video_format);
 			
 			if (i == 0)
@@ -1317,14 +1321,15 @@ static void hdmi_edid_get_display_mode(struct hdmi_edid_ctrl *edid_ctrl,
 		
 		u32 desc_offset = 0;
 		while (4 > i && 0 != edid_blk0[0x36+desc_offset]) {
-			hdmi_edid_detail_desc(edid_blk0+0x36+desc_offset,
+			hdmi_edid_detail_desc(edid_ctrl,
+				edid_blk0+0x36+desc_offset,
 				&video_format);
 
 			DEV_DBG("[%s:%d] Block-0 Adding vid fmt = [%s]\n",
 				__func__, __LINE__,
 				msm_hdmi_mode_2string(video_format));
 
-			hdmi_edid_add_sink_video_format(sink_data,
+			hdmi_edid_add_sink_video_format(edid_ctrl,
 				video_format);
 
 			if (video_format == HDMI_VFRMT_640x480p60_4_3)
@@ -1342,14 +1347,15 @@ static void hdmi_edid_get_display_mode(struct hdmi_edid_ctrl *edid_ctrl,
 		u32 desc_offset = 0;
 
 		while (4 > i && 0 != edid_blk0[0x36+desc_offset]) {
-			hdmi_edid_detail_desc(edid_blk0+0x36+desc_offset,
+			hdmi_edid_detail_desc(edid_ctrl,
+				edid_blk0+0x36+desc_offset,
 				&video_format);
 
 			DEV_DBG("[%s:%d] Block-0 Adding vid fmt = [%s]\n",
 				__func__, __LINE__,
 				msm_hdmi_mode_2string(video_format));
 
-			hdmi_edid_add_sink_video_format(sink_data,
+			hdmi_edid_add_sink_video_format(edid_ctrl,
 				video_format);
 
 			if (video_format == HDMI_VFRMT_640x480p60_4_3)
@@ -1366,14 +1372,15 @@ static void hdmi_edid_get_display_mode(struct hdmi_edid_ctrl *edid_ctrl,
 
 		desc_offset = edid_blk1[0x02];
 		while (0 != edid_blk1[desc_offset]) {
-			hdmi_edid_detail_desc(edid_blk1+desc_offset,
+			hdmi_edid_detail_desc(edid_ctrl,
+				edid_blk1+desc_offset,
 				&video_format);
 
 			DEV_DBG("[%s:%d] Block-1 Adding vid fmt = [%s]\n",
 				__func__, __LINE__,
 				msm_hdmi_mode_2string(video_format));
 
-			hdmi_edid_add_sink_video_format(sink_data,
+			hdmi_edid_add_sink_video_format(edid_ctrl,
 				video_format);
 			if (video_format == HDMI_VFRMT_640x480p60_4_3)
 				has480p = true;
@@ -1395,14 +1402,14 @@ static void hdmi_edid_get_display_mode(struct hdmi_edid_ctrl *edid_ctrl,
 		    (edid_blk0[0x26 + offset + 1] == 0x80)) {
 			pr_debug("%s: 108MHz: off=[%x] stdblk=[%x]\n",
 				 __func__, offset, std_blk);
-			hdmi_edid_add_sink_video_format(sink_data,
+			hdmi_edid_add_sink_video_format(edid_ctrl,
 				HDMI_VFRMT_1280x1024p60_5_4);
 		}
 		if ((edid_blk0[0x26 + offset] == 0x61) &&
 		    (edid_blk0[0x26 + offset + 1] == 0x40)) {
 			pr_debug("%s: 65MHz: off=[%x] stdblk=[%x]\n",
 				 __func__, offset, std_blk);
-			hdmi_edid_add_sink_video_format(sink_data,
+			hdmi_edid_add_sink_video_format(edid_ctrl,
 				HDMI_VFRMT_1024x768p60_4_3);
 			break;
 		} else {
@@ -1414,7 +1421,7 @@ static void hdmi_edid_get_display_mode(struct hdmi_edid_ctrl *edid_ctrl,
 	
 	if (edid_blk0[0x23] & BIT(0)) {
 		pr_debug("%s: DMT: ETI: HDMI_VFRMT_800x600_4_3\n", __func__);
-		hdmi_edid_add_sink_video_format(sink_data,
+		hdmi_edid_add_sink_video_format(edid_ctrl,
 				HDMI_VFRMT_800x600p60_4_3);
 	}
 
@@ -1422,7 +1429,7 @@ static void hdmi_edid_get_display_mode(struct hdmi_edid_ctrl *edid_ctrl,
 	if (edid_blk0[0x24] & BIT(3)) {
 		pr_debug("%s: DMT: ETII: HDMI_VFRMT_1024x768p60_4_3\n",
 			__func__);
-		hdmi_edid_add_sink_video_format(sink_data,
+		hdmi_edid_add_sink_video_format(edid_ctrl,
 				HDMI_VFRMT_1024x768p60_4_3);
 	}
 
@@ -1465,7 +1472,7 @@ static void hdmi_edid_get_display_mode(struct hdmi_edid_ctrl *edid_ctrl,
 	}
 
 	if (!has480p)
-		hdmi_edid_add_sink_video_format(sink_data,
+		hdmi_edid_add_sink_video_format(edid_ctrl,
 			HDMI_VFRMT_640x480p60_4_3);
 
 	pr_err("write_burst_vic: %d\n", write_burst_vic);
