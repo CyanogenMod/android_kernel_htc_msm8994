@@ -1524,6 +1524,7 @@ static bool qtaguid_mt(const struct sk_buff *skb, struct xt_action_param *par)
 	bool set_sk_callback_lock = false;
 
 	bool do_tag_stat = !(info->match & XT_QTAGUID_UID);
+	bool set_sk_callback_lock = false;
 
 	if (unlikely(module_passive))
 		return (info->match ^ info->invert) == 0;
