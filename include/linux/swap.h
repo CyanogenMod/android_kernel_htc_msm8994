@@ -95,17 +95,17 @@ struct swap_extent {
 	((__swapoffset(magic.magic) - __swapoffset(info.badpages)) / sizeof(int))
 
 enum {
-	SWP_USED	= (1 << 0),	
-	SWP_WRITEOK	= (1 << 1),	
-	SWP_DISCARDABLE = (1 << 2),	
-	SWP_DISCARDING	= (1 << 3),	
-	SWP_SOLIDSTATE	= (1 << 4),	
-	SWP_CONTINUED	= (1 << 5),	
-	SWP_BLKDEV	= (1 << 6),	
-	SWP_FILE	= (1 << 7),	
-	SWP_FAST	= (1 << 8),	
-					
-	SWP_SCANNING	= (1 << 9),	
+	SWP_USED	= (1 << 0),	/* is slot in swap_info[] used? */
+	SWP_WRITEOK	= (1 << 1),	/* ok to write to this swap?	*/
+	SWP_DISCARDABLE = (1 << 2),	/* swapon+blkdev support discard */
+	SWP_DISCARDING	= (1 << 3),	/* now discarding a free cluster */
+	SWP_SOLIDSTATE	= (1 << 4),	/* blkdev seeks are cheap */
+	SWP_CONTINUED	= (1 << 5),	/* swap_map has count continuation */
+	SWP_BLKDEV	= (1 << 6),	/* its a block device */
+	SWP_FILE	= (1 << 7),	/* set after swap_activate success */
+					/* add others here before... */
+	SWP_SCANNING	= (1 << 8),	/* refcount in scan_swap_map */
+	SWP_FAST	= (1 << 9),	/* blkdev access is fast and cheap */
 };
 
 #define SWAP_CLUSTER_MAX 32UL
@@ -284,8 +284,13 @@ extern atomic_long_t nr_swap_pages;
 extern long total_swap_pages;
 extern bool is_swap_fast(swp_entry_t entry);
 
+/* Swap 50% full? Release swapcache more aggressively.. */
 static inline bool vm_swap_full(struct swap_info_struct *si)
 {
+	/*
+	 * If the swap device is fast, return true
+	 * not to delay swap free.
+	 */
 	if (si->flags & SWP_FAST)
 		return true;
 
