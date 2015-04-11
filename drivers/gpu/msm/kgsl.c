@@ -1628,7 +1628,7 @@ static void _kgsl_cmdbatch_timer(unsigned long data)
 	clear_bit(CMDBATCH_FLAG_FENCE_LOG, &cmdbatch->priv);
 
 	spin_lock(&cmdbatch->lock);
-	/* Print all the pending sync objects */
+	/* Print all the fences */
 	list_for_each_entry(event, &cmdbatch->synclist, node) {
 		if (KGSL_CMD_SYNCPOINT_TYPE_FENCE == event->type &&
 			event->handle && event->handle->fence)
@@ -1637,7 +1637,6 @@ static void _kgsl_cmdbatch_timer(unsigned long data)
 	spin_unlock(&cmdbatch->lock);
 	dev_err(device->dev, "--gpu syncpoint deadlock print end--\n");
 }
-
 /**
  * kgsl_cmdbatch_sync_event_destroy() - Destroy a sync event object
  * @kref: Pointer to the kref structure for this object
