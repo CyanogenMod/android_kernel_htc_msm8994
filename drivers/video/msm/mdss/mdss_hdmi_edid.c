@@ -1479,13 +1479,13 @@ static void hdmi_edid_get_display_mode(struct hdmi_edid_ctrl *edid_ctrl,
 	switch (write_burst_vic)
 	{
 		case 0x5d:
-			hdmi_edid_add_sink_video_format(sink_data, HDMI_VFRMT_3840x2160p24_16_9);
+			hdmi_edid_add_sink_video_format(edid_ctrl, HDMI_VFRMT_3840x2160p24_16_9);
 			break;
 		case 0x5e:
-			hdmi_edid_add_sink_video_format(sink_data, HDMI_VFRMT_3840x2160p25_16_9);
+			hdmi_edid_add_sink_video_format(edid_ctrl, HDMI_VFRMT_3840x2160p25_16_9);
 			break;
 		case 0x5f:
-			hdmi_edid_add_sink_video_format(sink_data, HDMI_VFRMT_3840x2160p30_16_9);
+			hdmi_edid_add_sink_video_format(edid_ctrl, HDMI_VFRMT_3840x2160p30_16_9);
 			break;
 	}
 } 
