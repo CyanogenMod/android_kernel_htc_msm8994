@@ -2271,6 +2271,8 @@ static int cwmcu_sensor_placement(struct cwmcu_data *mcu_data)
 
 	I("Set Sensor Placement\n");
 
+	return 0; 
+
 	for (i = 0; i < 3; i++) {
 		CWMCU_i2c_write_power(mcu_data, GENSOR_POSITION,
 				&mcu_data->acceleration_axes,
@@ -3866,6 +3868,11 @@ static void cwmcu_check_sensor_update(struct cwmcu_data *mcu_data)
 
 	for (id = 0; id < CW_SENSORS_ID_TOTAL; id++) {
 		mcu_data->time_diff[id] = temp - mcu_data->sensors_time[id];
+
+		if (mcu_data->time_diff[id] < 0) {
+			I("%s: time_diff overflow, id = %d\n", __func__, id);
+			mcu_data->time_diff[id] = mcu_data->report_period[id];
+		}
 
 		if ((mcu_data->time_diff[id] >= mcu_data->report_period[id])
 		    && (mcu_data->enabled_list & (1LL << id))) {

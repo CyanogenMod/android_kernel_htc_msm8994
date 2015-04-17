@@ -11003,6 +11003,19 @@ static s32 wl_escan_handler(struct bcm_cfg80211 *cfg, bcm_struct_cfgdev *cfgdev,
 					wl_cfg80211_find_removal_candidate(bss, candidate);
 #endif 
 
+#ifdef CUSTOMER_HW_ONE
+				if ((!bcmp(&bi->BSSID, &bss->BSSID, ETHER_ADDR_LEN)) &&
+					(!bi->RSSI)) {
+					WL_DBG(("%s : bi->ssid[%s]("MACDBG"), "
+					"bi RSSI ZERO not update it "
+					"bi: RSSI %d bss->SSID [%s]("MACDBG"), "
+					"bss: RSSI %d\n", __FUNCTION__,
+					bi->SSID, MAC2STRDBG(bi->BSSID.octet), bi->RSSI,
+					bss->SSID, MAC2STRDBG(bss->BSSID.octet), bss->RSSI));
+					continue;
+				}
+#endif 
+
 				if (!bcmp(&bi->BSSID, &bss->BSSID, ETHER_ADDR_LEN) &&
 					(CHSPEC_BAND(wl_chspec_driver_to_host(bi->chanspec))
 					== CHSPEC_BAND(wl_chspec_driver_to_host(bss->chanspec))) &&
@@ -11083,6 +11096,14 @@ static s32 wl_escan_handler(struct bcm_cfg80211 *cfg, bcm_struct_cfgdev *cfgdev,
 				goto exit;
 #endif 
 			}
+
+#ifdef CUSTOMER_HW_ONE
+			if (!bi->RSSI) {
+				WL_DBG(("%s("MACDBG"), bi RSSI(%d) ZERO not update\n",
+				bi->SSID, MAC2STRDBG(bi->BSSID.octet), bi->RSSI));
+				goto exit;
+			}
+#endif 
 
 			memcpy(&(((char *)list)[list->buflen]), bi, bi_length);
 			list->version = dtoh32(bi->version);

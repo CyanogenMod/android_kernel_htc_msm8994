@@ -68,6 +68,7 @@
 	extern unsigned int system_rev;
 #endif 
 
+int otp_write = 0;
 int dhd_dongle_memsize;
 int dhd_dongle_ramsize;
 #ifdef DHD_DEBUG
@@ -3241,7 +3242,10 @@ dhdpcie_bus_suspend(struct dhd_bus *bus, bool state)
 	bool pending;
 	unsigned long flags;
 	int rc = 0;
+	struct net_device *netdev = NULL;
+	dhd_pub_t *pub = (dhd_pub_t *)(bus->dhd);
 
+	netdev = dhd_idx2net(pub, 0);
 	if (bus->dhd == NULL) {
 		DHD_ERROR(("bus not inited\n"));
 		return BCME_ERROR;
@@ -3267,10 +3271,14 @@ dhdpcie_bus_suspend(struct dhd_bus *bus, bool state)
 		bus->wait_for_d3_ack = 0;
 		bus->suspended = TRUE;
 		DHD_GENERAL_LOCK(bus->dhd, flags);
+		netif_stop_queue(netdev);
+		DHD_INFO(("prepare in suspend mode stop net device traffic\n"));
 		bus->dhd->busstate = DHD_BUS_SUSPEND;
 		if (bus->dhd->tx_in_progress) {
 			DHD_ERROR(("Tx Request is not ended\n"));
 			bus->dhd->busstate = DHD_BUS_DATA;
+			DHD_ERROR(("1. fail to suspend, start net device traffic\n"));
+			netif_start_queue(netdev);
 			DHD_GENERAL_UNLOCK(bus->dhd, flags);
 			bus->suspended = FALSE;
 			return -EBUSY;
@@ -3300,6 +3308,8 @@ dhdpcie_bus_suspend(struct dhd_bus *bus, bool state)
 				bus->suspended = FALSE;
 				DHD_GENERAL_LOCK(bus->dhd, flags);
 				bus->dhd->busstate = DHD_BUS_DATA;
+				DHD_ERROR(("2. fail to suspend, start net device traffic\n"));
+				netif_start_queue(netdev);
 				DHD_GENERAL_UNLOCK(bus->dhd, flags);
 				rc = BCME_ERROR;
 			} else {
@@ -3329,6 +3339,8 @@ dhdpcie_bus_suspend(struct dhd_bus *bus, bool state)
 			bus->suspended = FALSE;
 			DHD_GENERAL_LOCK(bus->dhd, flags);
 			bus->dhd->busstate = DHD_BUS_DATA;
+			DHD_ERROR(("3. fail to suspend, start net device traffic\n"));
+			netif_start_queue(netdev);
 			DHD_GENERAL_UNLOCK(bus->dhd, flags);
 			if (bus->dhd->d3ackcnt_timeout >= MAX_CNTL_D3ACK_TIMEOUT) {
 				DHD_ERROR(("%s: Event HANG send up "
@@ -3350,6 +3362,8 @@ dhdpcie_bus_suspend(struct dhd_bus *bus, bool state)
 		DHD_GENERAL_LOCK(bus->dhd, flags);
 		bus->dhd->busstate = DHD_BUS_DATA;
 		DHD_GENERAL_UNLOCK(bus->dhd, flags);
+		DHD_INFO(("Normal resumed, start net device traffic\n"));
+		netif_wake_queue(netdev);
 		DHD_INTR(("%s: enable PCIE interrupts\n", __FUNCTION__));
 		dhdpcie_bus_intr_enable(bus);
 #ifdef BCMPCIE_OOB_HOST_WAKE
@@ -4307,8 +4321,10 @@ dhdpcie_chipmatch(uint16 vendor, uint16 device)
 #ifdef CUSTOMER_HW_ONE
 	if ( device == BCM4356_D11AC_ID ) {
 		DHD_ERROR(("%s: WIFI_OTP: OTP is NOT empty\n", __FUNCTION__));
+        otp_write = 1;
 	} else {
 		DHD_ERROR(("%s: WIFI_OTP: OTP is empty\n", __FUNCTION__));
+        otp_write = 0;
 	}
 #endif
 	

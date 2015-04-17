@@ -336,6 +336,7 @@ static int __rtc_set_alarm(struct rtc_device *rtc, struct rtc_wkalrm *alarm)
 {
 	struct rtc_time tm;
 	long now, scheduled;
+	unsigned long tmp;
 	int err;
 
 	err = rtc_valid_tm(&alarm->time);
@@ -357,12 +358,14 @@ static int __rtc_set_alarm(struct rtc_device *rtc, struct rtc_wkalrm *alarm)
 #ifdef CONFIG_HTC_PNPMGR
 		if (!strcmp(htc_get_bootmode(), "offmode_charging")) {
 			if (alarm->time.tm_min > offmode_alarm_min) {
-                alarm->time.tm_hour++;
+				rtc_tm_to_time(&alarm->time, &tmp);
+				rtc_time_to_tm(tmp + 3600, &alarm->time);
                 alarm->time.tm_min = offmode_alarm_min;
                 alarm->time.tm_sec = offmode_alarm_sec;
 			} else if (alarm->time.tm_min == offmode_alarm_min) {
 				if (alarm->time.tm_sec > offmode_alarm_sec) {
-					alarm->time.tm_hour++;
+					rtc_tm_to_time(&alarm->time, &tmp);
+					rtc_time_to_tm(tmp + 3600, &alarm->time);
 					alarm->time.tm_min = offmode_alarm_min;
 					alarm->time.tm_sec = offmode_alarm_sec;
 				} else {
@@ -374,15 +377,18 @@ static int __rtc_set_alarm(struct rtc_device *rtc, struct rtc_wkalrm *alarm)
 			}
 			pr_info("[RTC] offmode alarm group to: %02d:%02d:%02d\n", alarm->time.tm_hour, offmode_alarm_min, offmode_alarm_sec);
 		} else if ((powersave_enabled == 2) || (nightmode_enabled == 1)) {
-            if (alarm->time.tm_sec > grp_alarm_sec)
-                alarm->time.tm_min++;
+            if (alarm->time.tm_sec > grp_alarm_sec) {
+				rtc_tm_to_time(&alarm->time, &tmp);
+				rtc_time_to_tm(tmp + 60, &alarm->time);
+			}
             alarm->time.tm_sec = grp_alarm_sec;
 			pr_info("[RTC] powersave/nightmode alarm group to: %0d:%02d:%02d\n", alarm->time.tm_hour, alarm->time.tm_min, grp_alarm_sec);
 		} else if (screen_off) {
 			pr_info("[RTC] screeoff original alarm to: %02d:%02d:%02d\n", alarm->time.tm_hour, alarm->time.tm_min, alarm->time.tm_sec);
 			if (screenoff_policy == 1) {
 				if (alarm->time.tm_sec > screen_off_sec1) {
-					alarm->time.tm_min++;
+					rtc_tm_to_time(&alarm->time, &tmp);
+					rtc_time_to_tm(tmp + 60, &alarm->time);
 		           alarm->time.tm_sec = screen_off_sec4;
 				} else if (alarm->time.tm_sec > screen_off_sec2)
 			       alarm->time.tm_sec = screen_off_sec1;
@@ -394,7 +400,8 @@ static int __rtc_set_alarm(struct rtc_device *rtc, struct rtc_wkalrm *alarm)
 			       alarm->time.tm_sec = screen_off_sec4;
 			} else {
 				if (alarm->time.tm_sec > screen_off_sec1) {
-					alarm->time.tm_min++;
+					rtc_tm_to_time(&alarm->time, &tmp);
+					rtc_time_to_tm(tmp + 60, &alarm->time);
 		           alarm->time.tm_sec = screen_off_sec2;
 				} else if (alarm->time.tm_sec > screen_off_sec2)
 		           alarm->time.tm_sec = screen_off_sec1;
