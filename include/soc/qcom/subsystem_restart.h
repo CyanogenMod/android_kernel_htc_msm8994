@@ -25,27 +25,16 @@ enum {
 	RESET_LEVEL_MAX
 };
 
+#if defined(CONFIG_HTC_FEATURES_SSR)
+enum {
+	DISABLE_RAMDUMP = 0,
+	ENABLE_RAMDUMP,
+};
+#endif
+
 struct device;
 struct module;
 
-/**
- * struct subsys_desc - subsystem descriptor
- * @name: name of subsystem
- * @depends_on: subsystem this subsystem depends on to operate
- * @dev: parent device
- * @owner: module the descriptor belongs to
- * @shutdown: Stop a subsystem
- * @powerup: Start a subsystem
- * @crash_shutdown: Shutdown a subsystem when the system crashes (can't sleep)
- * @ramdump: Collect a ramdump of the subsystem
- * @is_not_loadable: Indicate if subsystem firmware is not loadable via pil
- * framework
- * @no_auth: Set if subsystem does not rely on PIL to authenticate and bring
- * it out of reset
- * @ssctl_instance_id: Instance id used to connect with SSCTL service
- * @sysmon_pid:	pdev id that sysmon is probed with for the subsystem
- * @sysmon_shutdown_ret: Return value for the call to sysmon_send_shutdown
- */
 struct subsys_desc {
 	const char *name;
 	const char *depends_on;
@@ -73,13 +62,6 @@ struct subsys_desc {
 	int sysmon_shutdown_ret;
 };
 
-/**
- * struct notif_data - additional notif information
- * @crashed: indicates if subsystem has crashed
- * @enable_ramdump: ramdumps disabled if set to 0
- * @no_auth: set if subsystem does not use PIL to bring it out of reset
- * @pdev: subsystem platform device pointer
- */
 struct notif_data {
 	bool crashed;
 	int enable_ramdump;
@@ -88,6 +70,15 @@ struct notif_data {
 };
 
 #if defined(CONFIG_MSM_SUBSYSTEM_RESTART)
+
+#if defined(CONFIG_HTC_DEBUG_SSR)
+void subsys_set_restart_reason(struct subsys_device *dev, const char *reason);
+#endif 
+
+#if defined(CONFIG_HTC_FEATURES_SSR)
+extern void subsys_set_enable_ramdump(struct subsys_device *dev, int enable);
+extern void subsys_set_restart_level(struct subsys_device *dev, int level);
+#endif
 
 extern int subsys_get_restart_level(struct subsys_device *dev);
 extern int subsystem_restart_dev(struct subsys_device *dev);
@@ -106,6 +97,25 @@ extern bool subsys_get_crash_status(struct subsys_device *dev);
 void notify_proxy_vote(struct device *device);
 void notify_proxy_unvote(struct device *device);
 #else
+
+#if defined(CONFIG_HTC_DEBUG_SSR)
+static inline void subsys_set_restart_reason(struct subsys_device *dev, const char *reason)
+{
+	return;
+}
+#endif 
+
+#if defined(CONFIG_HTC_FEATURES_SSR)
+static inline void subsys_set_enable_ramdump(struct subsys_device *dev, int enable)
+{
+	return 0;
+}
+
+static inline void subsys_set_restart_level(struct subsys_device *dev, int level)
+{
+	return 0;
+}
+#endif
 
 static inline int subsys_get_restart_level(struct subsys_device *dev)
 {
@@ -151,6 +161,6 @@ static inline bool subsys_get_crash_status(struct subsys_device *dev)
 }
 static inline void notify_proxy_vote(struct device *device) { }
 static inline void notify_proxy_unvote(struct device *device) { }
-#endif /* CONFIG_MSM_SUBSYSTEM_RESTART */
+#endif 
 
 #endif

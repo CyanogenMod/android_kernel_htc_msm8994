@@ -42,7 +42,6 @@ enum {
 #define MAX_COPPS_PER_PORT 0x8
 #define ADM_MAX_CHANNELS 8
 
-/* multiple copp per stream. */
 struct route_payload {
 	unsigned int copp_idx[MAX_COPPS_PER_PORT];
 	unsigned int port_id[MAX_COPPS_PER_PORT];
@@ -127,7 +126,9 @@ int adm_wait_timeout(int port_id, int copp_idx, int wait_time);
 int adm_store_cal_data(int port_id, int copp_idx, int path, int perf_mode,
 		       int cal_type, char *params, int *size);
 
+int q6adm_enable_effect(u16 port_id, int copp_idx, uint32_t copp_id, uint32_t param_id,
+		uint32_t payload_size, void *payload);
 int adm_send_compressed_device_mute(int port_id, int copp_idx, bool mute_on);
 
 int adm_send_compressed_device_latency(int port_id, int copp_idx, int latency);
-#endif /* __Q6_ADM_V2_H__ */
+#endif 

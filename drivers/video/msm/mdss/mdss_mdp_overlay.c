@@ -1,4 +1,4 @@
-/* Copyright (c) 2012-2015, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2012-2014, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -63,35 +63,6 @@ static inline bool is_ov_right_blend(struct mdp_rect *left_blend,
 		(left_blend->h == right_blend->h));
 }
 
-/**
- * __is_more_decimation_doable() -
- * @pipe: pointer to pipe data structure
- *
- * if per pipe BW exceeds the limit and user
- * has not requested decimation then return
- * -E2BIG error back to user else try more
- * decimation based on following table config.
- *
- * ----------------------------------------------------------
- * error | split mode | src_split | v_deci |     action     |
- * ------|------------|-----------|--------|----------------|
- *       |            |           |   00   | return error   |
- *       |            |  enabled  |--------|----------------|
- *       |            |           |   >1   | more decmation |
- *       |     yes    |-----------|--------|----------------|
- *       |            |           |   00   | return error   |
- *       |            | disabled  |--------|----------------|
- *       |            |           |   >1   | return error   |
- * E2BIG |------------|-----------|--------|----------------|
- *       |            |           |   00   | return error   |
- *       |            |  enabled  |--------|----------------|
- *       |            |           |   >1   | more decmation |
- *       |     no     |-----------|--------|----------------|
- *       |            |           |   00   | return error   |
- *       |            | disabled  |--------|----------------|
- *       |            |           |   >1   | more decmation |
- * ----------------------------------------------------------
- */
 static inline bool __is_more_decimation_doable(struct mdss_mdp_pipe *pipe)
 {
 	struct mdss_data_type *mdata = pipe->mixer_left->ctl->mdata;
@@ -154,31 +125,12 @@ static int mdss_mdp_ov_xres_check(struct msm_fb_data_type *mfd,
 
 			if (req->flags & MDSS_MDP_RIGHT_MIXER) {
 				pr_warn("invalid use of RIGHT_MIXER flag.\n");
-				/*
-				 * if chip-set is capable of source split then
-				 * all layers which are only on right LM should
-				 * have their x offset relative to left LM's
-				 * left-top or in other words relative to
-				 * panel width.
-				 * By modifying dst_x below, we are assuming
-				 * that client is running in legacy mode
-				 * chipset capable of source split.
-				 */
 				if (req->dst_rect.x < left_lm_w)
 					req->dst_rect.x += left_lm_w;
 
 				req->flags &= ~MDSS_MDP_RIGHT_MIXER;
 			}
 		} else if (req->dst_rect.x >= left_lm_w) {
-			/*
-			 * this is a step towards removing a reliance on
-			 * MDSS_MDP_RIGHT_MIXER flags. With the new src split
-			 * code, some clients of non-src-split chipsets have
-			 * stopped sending MDSS_MDP_RIGHT_MIXER flag and
-			 * modified their xres relative to full panel
-			 * dimensions. In such cases, we need to deduct left
-			 * layer mixer width before we programm this HW.
-			 */
 			req->dst_rect.x -= left_lm_w;
 			req->flags |= MDSS_MDP_RIGHT_MIXER;
 		}
@@ -241,10 +193,6 @@ int mdss_mdp_overlay_req_check(struct msm_fb_data_type *mfd,
 		return -ERANGE;
 	}
 
-	/*
-	 * Cursor overlays are only supported for targets
-	 * with dedicated cursors within VP
-	 */
 	if ((req->pipe_type == MDSS_MDP_PIPE_TYPE_CURSOR) &&
 		((req->z_order != mdata->max_target_zorder - 1) ||
 		 !mdata->ncursor_pipes ||
@@ -416,11 +364,6 @@ static int __mdp_pipe_tune_perf(struct mdss_mdp_pipe *pipe,
 			}
 		}
 
-		/*
-		 * if decimation is available try to reduce minimum clock rate
-		 * requirement by applying vertical decimation and reduce
-		 * mdp clock requirement
-		 */
 		if (mdata->has_decimation && (pipe->vert_deci < MAX_DECIMATION)
 			&& !pipe->bwc_mode && !pipe->src_fmt->tile &&
 			!pipe->scale.enable_pxl_ext)
@@ -443,19 +386,9 @@ static int __mdss_mdp_validate_pxl_extn(struct mdss_mdp_pipe *pipe)
 		u32 src_w = pipe->src.w >> pipe->horz_deci;
 		u32 src_h = pipe->src.h >> pipe->vert_deci;
 
-		/*
-		 * plane 1 and 2 are for chroma and are same. While configuring
-		 * HW, programming only one of the chroma components is
-		 * sufficient.
-		 */
 		if (plane == 2)
 			continue;
 
-		/*
-		 * For chroma plane, width is half for the following sub sampled
-		 * formats. Except in case of decimation, where hardware avoids
-		 * 1 line of decimation instead of downsampling.
-		 */
 		if (plane == 1 && !pipe->horz_deci &&
 		    ((pipe->src_fmt->chroma_sample == MDSS_MDP_CHROMA_420) ||
 		     (pipe->src_fmt->chroma_sample == MDSS_MDP_CHROMA_H2V1))) {
@@ -524,7 +457,7 @@ static int __mdss_mdp_overlay_setup_scaling(struct mdss_mdp_pipe *pipe)
 	rc = mdss_mdp_calc_phase_step(src, pipe->dst.w,
 			&pipe->scale.phase_step_x[0]);
 	if (rc == -EOVERFLOW) {
-		/* overflow on horizontal direction is acceptable */
+		
 		rc = 0;
 	} else if (rc) {
 		pr_err("Horizontal scaling calculation failed=%d! %d->%d\n",
@@ -537,10 +470,10 @@ static int __mdss_mdp_overlay_setup_scaling(struct mdss_mdp_pipe *pipe)
 			&pipe->scale.phase_step_y[0]);
 
 	if ((rc == -EOVERFLOW) && (pipe->type == MDSS_MDP_PIPE_TYPE_VIG)) {
-		/* overflow on Qseed2 scaler is acceptable */
+		
 		rc = 0;
 	} else if (rc == -EOVERFLOW) {
-		/* overflow expected and should fallback to GPU */
+		
 		rc = -ECANCELED;
 	} else if (rc) {
 		pr_err("Vertical scaling calculation failed=%d! %d->%d\n",
@@ -623,9 +556,6 @@ int mdss_mdp_overlay_pipe_setup(struct msm_fb_data_type *mfd,
 	bwc_enabled = req->flags & MDP_BWC_EN;
 	rot90 = req->flags & MDP_SOURCE_ROTATED_90;
 
-	/*
-	 * Always set yuv rotator output to pseudo planar.
-	 */
 	if (bwc_enabled || rot90) {
 		req->src.format =
 			mdss_mdp_get_rotator_dst_format(req->src.format, rot90,
@@ -685,7 +615,7 @@ int mdss_mdp_overlay_pipe_setup(struct msm_fb_data_type *mfd,
 
 		pipe = mdss_mdp_pipe_alloc(mixer, pipe_type, left_blend_pipe);
 
-		/* RGB pipes can be used instead of DMA */
+		
 		if (IS_ERR_OR_NULL(pipe) &&
 		    (req->pipe_type == PIPE_TYPE_AUTO) &&
 		    (pipe_type == MDSS_MDP_PIPE_TYPE_DMA)) {
@@ -696,7 +626,7 @@ int mdss_mdp_overlay_pipe_setup(struct msm_fb_data_type *mfd,
 				left_blend_pipe);
 		}
 
-		/* VIG pipes can also support RGB format */
+		
 		if (IS_ERR_OR_NULL(pipe) &&
 		    (req->pipe_type == PIPE_TYPE_AUTO) &&
 		    (pipe_type == MDSS_MDP_PIPE_TYPE_RGB)) {
@@ -776,10 +706,6 @@ int mdss_mdp_overlay_pipe_setup(struct msm_fb_data_type *mfd,
 			pipe->is_right_blend = true;
 		}
 	} else if (pipe->is_right_blend) {
-		/*
-		 * pipe used to be right blend need to update mixer
-		 * configuration to remove it as a right blend
-		 */
 		mdss_mdp_mixer_pipe_unstage(pipe, pipe->mixer_left);
 		mdss_mdp_mixer_pipe_unstage(pipe, pipe->mixer_right);
 		pipe->is_right_blend = false;
@@ -829,11 +755,6 @@ int mdss_mdp_overlay_pipe_setup(struct msm_fb_data_type *mfd,
 	pipe->horz_deci = req->horz_deci;
 	pipe->vert_deci = req->vert_deci;
 
-	/*
-	 * check if overlay span across two mixers and if source split is
-	 * available. If yes, enable src_split_req flag so that during mixer
-	 * staging, same pipe will be stagged on both layer mixers.
-	 */
 	if (mdata->has_src_split) {
 		if ((mixer_mux == MDSS_MDP_MIXER_MUX_LEFT) &&
 		    ((req->dst_rect.x + req->dst_rect.w) > mixer->width)) {
@@ -943,10 +864,6 @@ int mdss_mdp_overlay_pipe_setup(struct msm_fb_data_type *mfd,
 		}
 	}
 
-	/*
-	 * When scaling is enabled src crop and image
-	 * width and height is modified by user
-	 */
 	if ((pipe->flags & MDP_DEINTERLACE) && !pipe->scale.enable_pxl_ext) {
 		if (pipe->flags & MDP_SOURCE_ROTATED_90) {
 			pipe->src.x = DIV_ROUND_UP(pipe->src.x, 2);
@@ -1011,7 +928,7 @@ exit_fail:
 		mdss_mdp_pipe_destroy(pipe);
 	}
 
-	/* invalidate any overlays in this framebuffer after failure */
+	
 	list_for_each_entry(pipe, &mdp5_data->pipes_used, list) {
 		pr_debug("freeing allocations for pipe %d\n", pipe->num);
 		mdss_mdp_smp_unreserve(pipe);
@@ -1044,7 +961,7 @@ static int mdss_mdp_overlay_set(struct msm_fb_data_type *mfd,
 	} else {
 		struct mdss_mdp_pipe *pipe;
 
-		/* userspace zorder start with stage 0 */
+		
 		req->z_order += MDSS_MDP_STAGE_0;
 
 		ret = mdss_mdp_overlay_pipe_setup(mfd, req, &pipe, NULL, false);
@@ -1132,17 +1049,11 @@ void mdss_mdp_overlay_buf_free(struct msm_fb_data_type *mfd,
 static inline void __pipe_buf_mark_cleanup(struct msm_fb_data_type *mfd,
 		struct mdss_mdp_data *buf)
 {
-	/* buffer still in bufs_used, marking it as cleanup will clean it up */
+	
 	buf->state = MDP_BUF_STATE_CLEANUP;
 	list_del_init(&buf->pipe_list);
 }
 
-/**
- * __mdss_mdp_overlay_free_list_purge() - clear free list of buffers
- * @mfd:	Msm frame buffer data structure for the associated fb
- *
- * Frees memory and clears current list of buffers which are pending free
- */
 static void __mdss_mdp_overlay_free_list_purge(struct msm_fb_data_type *mfd)
 {
 	struct mdss_overlay_private *mdp5_data = mfd_to_mdp5_data(mfd);
@@ -1164,10 +1075,6 @@ static void __overlay_pipe_cleanup(struct msm_fb_data_type *mfd,
 		__pipe_buf_mark_cleanup(mfd, buf);
 		list_move(&buf->buf_list, &mdp5_data->bufs_freelist);
 
-		/*
-		 * in case of secure UI, the buffer needs to be released as
-		 * soon as session is closed.
-		 */
 		if (pipe->flags & MDP_SECURE_DISPLAY_OVERLAY_SESSION)
 			mdss_mdp_overlay_buf_free(mfd, buf);
 	}
@@ -1175,14 +1082,6 @@ static void __overlay_pipe_cleanup(struct msm_fb_data_type *mfd,
 	mdss_mdp_pipe_destroy(pipe);
 }
 
-/**
- * mdss_mdp_overlay_cleanup() - handles cleanup after frame commit
- * @mfd:           Msm frame buffer data structure for the associated fb
- * @destroy_pipes: list of pipes that should be destroyed as part of cleanup
- *
- * Goes through destroy_pipes list and ensures they are ready to be destroyed
- * and cleaned up. Also cleanup of any pipe buffers after flip.
- */
 static void mdss_mdp_overlay_cleanup(struct msm_fb_data_type *mfd,
 		struct list_head *destroy_pipes)
 {
@@ -1194,15 +1093,8 @@ static void mdss_mdp_overlay_cleanup(struct msm_fb_data_type *mfd,
 
 	mutex_lock(&mdp5_data->list_lock);
 	list_for_each_entry(pipe, destroy_pipes, list) {
-		/* make sure pipe fetch has been halted before freeing buffer */
+		
 		if (mdss_mdp_pipe_fetch_halt(pipe)) {
-			/*
-			 * if pipe is not able to halt. Enter recovery mode,
-			 * by un-staging any pipes that are attached to mixer
-			 * so that any freed pipes that are not able to halt
-			 * can be staged in solid fill mode and be reset
-			 * with next vsync
-			 */
 			if (!recovery_mode) {
 				recovery_mode = true;
 				mdss_mdp_mixer_unstage_all(ctl->mixer_left);
@@ -1273,15 +1165,6 @@ void mdss_mdp_handoff_cleanup_pipes(struct msm_fb_data_type *mfd,
 	}
 }
 
-/**
- * mdss_mdp_overlay_start() - Programs the MDP control data path to hardware
- * @mfd: Msm frame buffer structure associated with fb device.
- *
- * Program the MDP hardware with the control settings for the framebuffer
- * device. In addition to this, this function also handles the transition
- * from the the splash screen to the android boot animation when the
- * continuous splash screen feature is enabled.
- */
 int mdss_mdp_overlay_start(struct msm_fb_data_type *mfd)
 {
 	int rc;
@@ -1313,10 +1196,6 @@ int mdss_mdp_overlay_start(struct msm_fb_data_type *mfd)
 
 	mdss_mdp_clk_ctrl(MDP_BLOCK_POWER_ON);
 
-	/*
-	 * If idle pc feature is not enabled, then get a reference to the
-	 * runtime device which will be released when overlay is turned off
-	 */
 	if (!mdp5_data->mdata->idle_pc_enabled ||
 		(mfd->panel_info->type != MIPI_CMD_PANEL)) {
 		rc = pm_runtime_get_sync(&mfd->pdev->dev);
@@ -1327,14 +1206,6 @@ int mdss_mdp_overlay_start(struct msm_fb_data_type *mfd)
 		}
 	}
 
-	/*
-	 * We need to do hw init before any hw programming.
-	 * Also, hw init involves programming the VBIF registers which
-	 * should be done only after attaching IOMMU which in turn would call
-	 * in to TZ to restore security configs on the VBIF registers.
-	 * This is not needed when continuous splash screen is enabled since
-	 * we would have called in to TZ to restore security configs from LK.
-	 */
 	if (!mdata->mdss_util->iommu_attached()) {
 		if (!mfd->panel_info->cont_splash_enabled) {
 			rc = mdss_iommu_ctrl(1);
@@ -1347,11 +1218,6 @@ int mdss_mdp_overlay_start(struct msm_fb_data_type *mfd)
 		}
 	}
 
-	/*
-	 * Increment the overlay active count prior to calling ctl_start.
-	 * This is needed to ensure that if idle power collapse kicks in
-	 * right away, it would be handled correctly.
-	 */
 	atomic_inc(&mdp5_data->mdata->active_intf_cnt);
 	rc = mdss_mdp_ctl_start(ctl, false);
 	if (rc == 0) {
@@ -1398,21 +1264,12 @@ static int __overlay_queue_pipes(struct msm_fb_data_type *mfd)
 
 	list_for_each_entry(pipe, &mdp5_data->pipes_used, list) {
 		struct mdss_mdp_data *buf;
-		/*
-		 * When secure display is enabled, if there is a non secure
-		 * display pipe, skip that
-		 */
 		if (mdss_get_sd_client_cnt() &&
 			!(pipe->flags & MDP_SECURE_DISPLAY_OVERLAY_SESSION)) {
 			pr_warn("Non secure pipe during secure display: %u: %08X, skip\n",
 					pipe->num, pipe->flags);
 			continue;
 		}
-		/*
-		 * When external is connected and no dedicated wfd is present,
-		 * reprogram DMA pipe before kickoff to clear out any previous
-		 * block mode configuration.
-		 */
 		if ((pipe->type == MDSS_MDP_PIPE_TYPE_DMA) &&
 		    (ctl->shared_lock &&
 		    (ctl->mdata->wfd_mode == MDSS_MDP_WFD_SHARED))) {
@@ -1451,11 +1308,6 @@ static int __overlay_queue_pipes(struct msm_fb_data_type *mfd)
 							pipe->num);
 				} else {
 					struct mdss_mdp_data *tmp = buf;
-					/*
-					 * buffer flip, new buffer will
-					 * replace currently active one,
-					 * mark currently active for cleanup
-					 */
 					buf = list_next_entry(tmp, pipe_list);
 					__pipe_buf_mark_cleanup(mfd, tmp);
 				}
@@ -1468,7 +1320,7 @@ static int __overlay_queue_pipes(struct msm_fb_data_type *mfd)
 			}
 		}
 
-		/* ensure pipes are reconfigured after power off/on */
+		
 		if (ctl->play_cnt == 0)
 			pipe->params_changed++;
 
@@ -1476,7 +1328,7 @@ static int __overlay_queue_pipes(struct msm_fb_data_type *mfd)
 			buf->state = MDP_BUF_STATE_ACTIVE;
 			ret = mdss_mdp_data_map(buf);
 		} else if (!pipe->params_changed) {
-			/* nothing to update so continue with next */
+			
 			continue;
 		} else if (buf) {
 			BUG_ON(buf->state != MDP_BUF_STATE_ACTIVE);
@@ -1488,10 +1340,6 @@ static int __overlay_queue_pipes(struct msm_fb_data_type *mfd)
 			ret = -EINVAL;
 		}
 
-		/*
-		 * if we reach here without errors and buf == NULL
-		 * then solid fill will be set
-		 */
 		if (!IS_ERR_VALUE(ret))
 			ret = mdss_mdp_pipe_queue_data(pipe, buf);
 
@@ -1516,7 +1364,7 @@ static void __overlay_kickoff_requeue(struct msm_fb_data_type *mfd)
 	mdss_mdp_display_commit(ctl, NULL, NULL);
 	mdss_mdp_display_wait4comp(ctl);
 
-	/* unstage any recovery pipes and re-queue used pipes */
+	
 	mdss_mdp_mixer_unstage_all(ctl->mixer_left);
 	mdss_mdp_mixer_unstage_all(ctl->mixer_right);
 
@@ -1612,9 +1460,6 @@ int mdss_mdp_overlay_kickoff(struct msm_fb_data_type *mfd,
 	}
 	mutex_lock(&mdp5_data->list_lock);
 
-	/*
-	 * check if there is a secure display session
-	 */
 	list_for_each_entry(pipe, &mdp5_data->pipes_used, list) {
 		if (pipe->flags & MDP_SECURE_DISPLAY_OVERLAY_SESSION) {
 			sd_in_pipe = 1;
@@ -1622,12 +1467,8 @@ int mdss_mdp_overlay_kickoff(struct msm_fb_data_type *mfd,
 					pipe->num, pipe->flags);
 		}
 	}
-	/*
-	 * If there is no secure display session and sd_enabled, disable the
-	 * secure display session
-	 */
 	if (!sd_in_pipe && mdp5_data->sd_enabled) {
-		/* disable the secure display on last client */
+		
 		if (mdss_get_sd_client_cnt() == 1)
 			ret = mdss_mdp_secure_display_ctrl(0);
 		if (!ret) {
@@ -1644,13 +1485,6 @@ int mdss_mdp_overlay_kickoff(struct msm_fb_data_type *mfd,
 	__vsync_set_vsync_handler(mfd);
 
 
-	/*
-	 * partial update should not be enabled if the source pipe has
-	 * scaling enabled and that pipe's dst roi is intersecting with
-	 * final roi. If this condition is detected then it is too late
-	 * to return an error and force fallback strategy. Instead change
-	 * the ROI to be full screen and continue with the update.
-	 */
 	if (data && ctl->panel_data->panel_info.partial_update_enabled) {
 		struct mdss_rect ctl_roi;
 		struct mdp_rect *in_roi;
@@ -1686,13 +1520,7 @@ int mdss_mdp_overlay_kickoff(struct msm_fb_data_type *mfd,
 		mdss_mdp_set_roi(ctl, &temp_data);
 	}
 
-	if (ctl->wait_pingpong && mdp5_data->mdata->serialize_wait4pp)
-		mdss_mdp_display_wait4pingpong(ctl, true);
 
-	/*
-	 * Setup pipe in solid fill before unstaging,
-	 * to ensure no fetches are happening after dettach or reattach.
-	 */
 	list_for_each_entry_safe(pipe, tmp, &mdp5_data->pipes_cleanup, list) {
 		mdss_mdp_pipe_queue_data(pipe, NULL);
 		mdss_mdp_mixer_pipe_unstage(pipe, pipe->mixer_left);
@@ -1858,16 +1686,6 @@ done:
 	return ret;
 }
 
-/**
- * mdss_mdp_overlay_release_all() - release any overlays associated with fb dev
- * @mfd:	Msm frame buffer structure associated with fb device
- * @release_all: ignore pid and release all the pipes
- *
- * Release any resources allocated by calling process, this can be called
- * on fb_release to release any overlays/rotator sessions left open.
- *
- * Return number of resources released
- */
 static int __mdss_mdp_overlay_release_all(struct msm_fb_data_type *mfd,
 	bool release_all, uint32_t pid)
 {
@@ -1905,6 +1723,9 @@ static int __mdss_mdp_overlay_release_all(struct msm_fb_data_type *mfd,
 	}
 	mutex_unlock(&mdp5_data->ov_lock);
 
+	if (cnt)
+		mfd->mdp.kickoff_fnc(mfd, NULL);
+
 	list_for_each_entry_safe(rot, tmp, &mdp5_data->rot_proc_list, list) {
 		if (rot->pid == pid) {
 			if (!list_empty(&rot->list))
@@ -1913,7 +1734,7 @@ static int __mdss_mdp_overlay_release_all(struct msm_fb_data_type *mfd,
 		}
 	}
 
-	return cnt;
+	return 0;
 }
 
 static int mdss_mdp_overlay_play_wait(struct msm_fb_data_type *mfd,
@@ -2267,7 +2088,6 @@ static void mdss_mdp_recover_underrun_handler(struct mdss_mdp_ctl *ctl,
 	schedule_work(&ctl->remove_underrun_handler);
 }
 
-/* function is called in irq context should have minimum processing */
 static void mdss_mdp_overlay_handle_vsync(struct mdss_mdp_ctl *ctl,
 						ktime_t t)
 {
@@ -2351,7 +2171,7 @@ static ssize_t dynamic_fps_sysfs_rda_dfps(struct device *dev,
 	mutex_unlock(&mdp5_data->dfps_lock);
 
 	return ret;
-} /* dynamic_fps_sysfs_rda_dfps */
+} 
 
 static ssize_t dynamic_fps_sysfs_wta_dfps(struct device *dev,
 	struct device_attribute *attr, const char *buf, size_t count)
@@ -2408,7 +2228,7 @@ static ssize_t dynamic_fps_sysfs_wta_dfps(struct device *dev,
 	pdata->panel_info.new_fps = dfps;
 	mutex_unlock(&mdp5_data->dfps_lock);
 	return count;
-} /* dynamic_fps_sysfs_wta_dfps */
+} 
 
 
 static DEVICE_ATTR(dynamic_fps, S_IRUGO | S_IWUSR, dynamic_fps_sysfs_rda_dfps,
@@ -2631,11 +2451,11 @@ static ssize_t mdss_mdp_cmd_autorefresh_store(struct device *dev,
 			return rc;
 
 		if (frame_cnt) {
-			/* enable autorefresh */
+			
 			mfd->mdp_sync_pt_data.threshold = 2;
 			mfd->mdp_sync_pt_data.retire_threshold = 0;
 		} else {
-			/* disable autorefresh */
+			
 			mfd->mdp_sync_pt_data.threshold = 1;
 			mfd->mdp_sync_pt_data.retire_threshold = 1;
 		}
@@ -2708,9 +2528,9 @@ static void mdss_mdp_hw_cursor_setimage(struct mdss_mdp_mixer *mixer,
 	alpha = (img->fg_color & 0xff000000) >> 24;
 
 	if (alpha)
-		calpha_en = 0x0; /* xrgb */
+		calpha_en = 0x0; 
 	else
-		calpha_en = 0x2; /* argb */
+		calpha_en = 0x2; 
 
 	roi_size = (roi->h << 16) | roi->w;
 	size = (img->height << 16) | img->width;
@@ -2890,7 +2710,7 @@ static int mdss_mdp_hw_cursor_pipe_update(struct msm_fb_data_type *mfd,
 			(cursor->hot.y < img->height)) {
 			mixer->cursor_hotx = cursor->hot.x;
 			mixer->cursor_hoty = cursor->hot.y;
-			 /* Update cursor position */
+			 
 			cursor->set |= FB_CUR_SETPOS;
 		} else {
 			pr_err("Invalid cursor hotspot coordinates\n");
@@ -3056,7 +2876,7 @@ static int mdss_mdp_hw_cursor_update(struct msm_fb_data_type *mfd,
 			(cursor->hot.y < img->height)) {
 			cursor_hot.x = cursor->hot.x;
 			cursor_hot.y = cursor->hot.y;
-			 /* Update cursor position */
+			 
 			cursor->set |= FB_CUR_SETPOS;
 		} else {
 			pr_err("Invalid cursor hotspot coordinates\n");
@@ -3160,7 +2980,7 @@ static int mdss_bl_scale_config(struct msm_fb_data_type *mfd,
 	pr_debug("update scale = %d, min_lvl = %d\n", mfd->bl_scale,
 							mfd->bl_min_lvl);
 
-	/* update current backlight to use new scaling*/
+	
 	mdss_fb_set_backlight(mfd, curr_bl);
 	mutex_unlock(&mfd->bl_lock);
 	return ret;
@@ -3239,9 +3059,6 @@ static int mdss_mdp_pp_ioctl(struct msm_fb_data_type *mfd,
 	if (ret)
 		return ret;
 
-	/* Support only PP init cfg op if partial update is enabled for allowing
-	 * overriding of partial update
-	*/
 	if (mdata->pp_enable == MDP_PP_DISABLE &&
 				mdp_pp.op != mdp_op_pp_init_cfg) {
 		pr_err("Partial update feature is enabled\n");
@@ -3254,8 +3071,6 @@ static int mdss_mdp_pp_ioctl(struct msm_fb_data_type *mfd,
 		return -EPERM;
 	}
 
-	/* Supprt only MDP register read/write and
-	exit_dcm in DCM state*/
 	if (mfd->dcm_state == DCM_ENTER &&
 			(mdp_pp.op != mdp_op_calib_buffer &&
 			mdp_pp.op != mdp_op_calib_dcm_state))
@@ -3541,13 +3356,6 @@ static int mdss_fb_get_metadata(struct msm_fb_data_type *mfd,
 	return ret;
 }
 
-/*
- * This routine serves two purposes.
- * 1. Propagate overlay_id returned from sorted list to original list
- *    to user-space.
- * 2. In case of error processing sorted list, map the error overlay's
- *    index to original list because user-space is not aware of the sorted list.
- */
 static int __mdss_overlay_map(struct mdp_overlay *ovs,
 	struct mdp_overlay *op_ovs, int num_ovs, int num_ovs_processed)
 {
@@ -3593,10 +3401,6 @@ static inline int __zorder_dstx_cmp_func(const void *a, const void *b)
 	return rc;
 }
 
-/*
- * first sort list of overlays based on z_order and then within
- * same z_order sort them on dst_x.
- */
 static int __mdss_overlay_src_split_sort(struct msm_fb_data_type *mfd,
 	struct mdp_overlay *ovs, int num_ovs)
 {
@@ -3695,12 +3499,6 @@ static int __handle_overlay_prepare(struct msm_fb_data_type *mfd,
 			req = &sorted_ovs[i];
 			prev_req = (i > 0) ? &sorted_ovs[i - 1] : NULL;
 
-			/*
-			 * check if current overlay is at same z_order as
-			 * previous one and qualifies as a right blend. If yes,
-			 * pass a pointer to the pipe representing previous
-			 * overlay or in other terms left blend overlay.
-			 */
 			if (prev_req && (prev_req->z_order == req->z_order) &&
 			    is_ov_right_blend(&prev_req->dst_rect,
 				    &req->dst_rect, left_lm_w)) {
@@ -3728,7 +3526,7 @@ static int __handle_overlay_prepare(struct msm_fb_data_type *mfd,
 			pipe->num, req->id, req->flags, req->dst_rect.x,
 			left_blend_pipe ? left_blend_pipe->num : -1);
 
-		/* keep track of the new overlays to unset in case of errors */
+		
 		if (pipe->play_cnt == 0)
 			new_reqs |= pipe->ndx;
 
@@ -3970,16 +3768,6 @@ static int mdss_mdp_overlay_ioctl_handler(struct msm_fb_data_type *mfd,
 	return ret;
 }
 
-/**
- * __mdss_mdp_overlay_ctl_init - Helper function to intialize control structure
- * @mfd: msm frame buffer data structure associated with the fb device.
- *
- * Helper function that allocates and initializes the mdp control structure
- * for a frame buffer device. Whenver applicable, this function will also setup
- * the control for the split display path as well.
- *
- * Return: pointer to the newly allocated control structure.
- */
 static struct mdss_mdp_ctl *__mdss_mdp_overlay_ctl_init(
 	struct msm_fb_data_type *mfd)
 {
@@ -4016,7 +3804,7 @@ static struct mdss_mdp_ctl *__mdss_mdp_overlay_ctl_init(
 				remove_underrun_vsync_handler);
 
 	if (mfd->split_mode == MDP_DUAL_LM_DUAL_DISPLAY) {
-		/* enable split display */
+		
 		rc = mdss_mdp_ctl_split_display_setup(ctl, pdata->next);
 		if (rc) {
 			mdss_mdp_ctl_destroy(ctl);
@@ -4117,12 +3905,6 @@ static int mdss_mdp_overlay_off(struct msm_fb_data_type *mfd)
 		return 0;
 	}
 
-	/*
-	 * Keep a reference to the runtime pm until the overlay is turned
-	 * off, and then release this last reference at the end. This will
-	 * help in distinguishing between idle power collapse versus suspend
-	 * power collapse
-	 */
 	pm_runtime_get_sync(&mfd->pdev->dev);
 
 	if (mdss_fb_is_power_on_lp(mfd)) {
@@ -4152,11 +3934,6 @@ static int mdss_mdp_overlay_off(struct msm_fb_data_type *mfd)
 		mdss_mdp_overlay_kickoff(mfd, NULL);
 	}
 
-	/*
-	 * If retire fences are still active wait for a vsync time
-	 * for retire fence to be updated.
-	 * As a last resort signal the timeline if vsync doesn't arrive.
-	 */
 	if (mdp5_data->retire_cnt) {
 		u32 fps = mdss_panel_get_framerate(mfd->panel_info);
 		u32 vsync_time = 1000 / (fps ? : DEFAULT_FRAME_RATE);
@@ -4200,7 +3977,7 @@ ctl_stop:
 	}
 	mutex_unlock(&mdp5_data->ov_lock);
 
-	/* Release the last reference to the runtime device */
+	
 	rc = pm_runtime_put(&mfd->pdev->dev);
 	if (rc)
 		pr_err("unable to suspend w/pm_runtime_put (%d)\n", rc);
@@ -4228,7 +4005,7 @@ static int __mdss_mdp_ctl_handoff(struct mdss_mdp_ctl *ctl,
 			u32 cfg = j * 3;
 			if ((j == MDSS_MDP_SSPP_VIG3) ||
 			    (j == MDSS_MDP_SSPP_RGB3)) {
-				/* Add 2 to account for Cursor & Border bits */
+				
 				cfg += 2;
 			}
 			if (mixercfg & (0x7 << cfg)) {
@@ -4258,16 +4035,6 @@ exit:
 	return rc;
 }
 
-/**
- * mdss_mdp_overlay_handoff() - Read MDP registers to handoff an active ctl path
- * @mfd: Msm frame buffer structure associated with the fb device.
- *
- * This function populates the MDP software structures with the current state of
- * the MDP hardware to handoff any active control path for the framebuffer
- * device. This is needed to identify any ctl, mixers and pipes being set up by
- * the bootloader to display the splash screen when the continuous splash screen
- * feature is enabled in kernel.
- */
 static int mdss_mdp_overlay_handoff(struct msm_fb_data_type *mfd)
 {
 	int rc = 0;
@@ -4287,10 +4054,6 @@ static int mdss_mdp_overlay_handoff(struct msm_fb_data_type *mfd)
 		ctl = mdp5_data->ctl;
 	}
 
-	/*
-	 * vsync interrupt needs on during continuous splash, this is
-	 * to initialize necessary ctl members here.
-	 */
 	rc = mdss_mdp_ctl_start(ctl, true);
 	if (rc) {
 		pr_err("Failed to initialize ctl\n");
@@ -4472,10 +4235,6 @@ static int mdss_mdp_update_panel_info(struct msm_fb_data_type *mfd, int mode)
 	if (ret)
 		pr_err("Dynamic switch to %s mode failed!\n",
 					mode ? "command" : "video");
-	/*
-	 * Destroy current ctrl sturcture as this is
-	 * going to be re-initialized with the requested mode.
-	 */
 	mdss_mdp_ctl_destroy(mdp5_data->ctl);
 	mdp5_data->ctl = NULL;
 
@@ -4550,10 +4309,6 @@ int mdss_mdp_overlay_init(struct msm_fb_data_type *mfd)
 	if (rc)
 		return rc;
 
-	/*
-	 * disable BWC if primary panel is video mode on specific
-	 * chipsets to workaround HW problem.
-	 */
 	if (mdss_has_quirk(mdp5_data->mdata, MDSS_QUIRK_BWCPANIC) &&
 	    mfd->panel_info->type == MIPI_VIDEO_PANEL && (0 == mfd->index))
 		mdp5_data->mdata->has_bwc = false;
@@ -4623,12 +4378,6 @@ int mdss_mdp_overlay_init(struct msm_fb_data_type *mfd)
 	if (mfd->panel_info->cont_splash_enabled) {
 		rc = mdss_mdp_overlay_handoff(mfd);
 		if (rc) {
-			/*
-			 * Even though handoff failed, it is not fatal.
-			 * MDP can continue, just that we would have a longer
-			 * delay in transitioning from splash screen to boot
-			 * animation
-			 */
 			pr_warn("Overlay handoff failed for fb%d. rc=%d\n",
 				mfd->index, rc);
 			rc = 0;

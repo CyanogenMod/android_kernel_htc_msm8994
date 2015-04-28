@@ -15,6 +15,7 @@
 #include <linux/workqueue.h>
 #include <linux/debugfs.h>
 #include <linux/seq_file.h>
+#include <linux/time.h>
 
 #include "power.h"
 
@@ -22,7 +23,6 @@ DEFINE_MUTEX(pm_mutex);
 
 #ifdef CONFIG_PM_SLEEP
 
-/* Routines for PM-transition notifications */
 
 static BLOCKING_NOTIFIER_HEAD(pm_chain_head);
 
@@ -45,7 +45,6 @@ int pm_notifier_call_chain(unsigned long val)
 	return notifier_to_errno(ret);
 }
 
-/* If set, devices may be suspended and resumed asynchronously. */
 int pm_async_enabled = 1;
 
 static ssize_t pm_async_show(struct kobject *kobj, struct kobj_attribute *attr,
@@ -98,7 +97,7 @@ static ssize_t pm_test_show(struct kobject *kobj, struct kobj_attribute *attr,
 		}
 
 	if (s != buf)
-		/* convert the last space to a newline */
+		
 		*(s-1) = '\n';
 
 	return (s - buf);
@@ -132,7 +131,7 @@ static ssize_t pm_test_store(struct kobject *kobj, struct kobj_attribute *attr,
 }
 
 power_attr(pm_test);
-#endif /* CONFIG_PM_DEBUG */
+#endif 
 
 #ifdef CONFIG_DEBUG_FS
 static char *suspend_step_name(enum suspend_stat_step step)
@@ -231,17 +230,11 @@ static int __init pm_debugfs_init(void)
 }
 
 late_initcall(pm_debugfs_init);
-#endif /* CONFIG_DEBUG_FS */
+#endif 
 
-#endif /* CONFIG_PM_SLEEP */
+#endif 
 
 #ifdef CONFIG_PM_SLEEP_DEBUG
-/*
- * pm_print_times: print time taken by devices to suspend and resume.
- *
- * show() returns whether printing of suspend and resume times is enabled.
- * store() accepts 0 or 1.  0 disables printing and 1 enables it.
- */
 bool pm_print_times_enabled;
 
 static ssize_t pm_print_times_show(struct kobject *kobj,
@@ -272,22 +265,12 @@ static inline void pm_print_times_init(void)
 {
 	pm_print_times_enabled = !!initcall_debug;
 }
-#else /* !CONFIG_PP_SLEEP_DEBUG */
+#else 
 static inline void pm_print_times_init(void) {}
-#endif /* CONFIG_PM_SLEEP_DEBUG */
+#endif 
 
 struct kobject *power_kobj;
 
-/**
- *	state - control system power state.
- *
- *	show() returns what states are supported, which is hard-coded to
- *	'standby' (Power-On Suspend), 'mem' (Suspend-to-RAM), and
- *	'disk' (Suspend-to-Disk).
- *
- *	store() accepts one of those strings, translates it into the
- *	proper enumerated value, and initiates a suspend transition.
- */
 static ssize_t state_show(struct kobject *kobj, struct kobj_attribute *attr,
 			  char *buf)
 {
@@ -304,7 +287,7 @@ static ssize_t state_show(struct kobject *kobj, struct kobj_attribute *attr,
 	s += sprintf(s, "%s\n", "disk");
 #else
 	if (s != buf)
-		/* convert the last space to a newline */
+		
 		*(s-1) = '\n';
 #endif
 	return (s - buf);
@@ -322,7 +305,7 @@ static suspend_state_t decode_state(const char *buf, size_t n)
 	p = memchr(buf, '\n', n);
 	len = p ? p - buf : n;
 
-	/* Check hibernation first. */
+	
 	if (len == 4 && !strncmp(buf, "disk", len))
 		return PM_SUSPEND_MAX;
 
@@ -471,7 +454,7 @@ static ssize_t autosleep_store(struct kobject *kobj,
 }
 
 power_attr(autosleep);
-#endif /* CONFIG_PM_AUTOSLEEP */
+#endif 
 
 #ifdef CONFIG_PM_WAKELOCKS
 static ssize_t wake_lock_show(struct kobject *kobj,
@@ -508,8 +491,8 @@ static ssize_t wake_unlock_store(struct kobject *kobj,
 
 power_attr(wake_unlock);
 
-#endif /* CONFIG_PM_WAKELOCKS */
-#endif /* CONFIG_PM_SLEEP */
+#endif 
+#endif 
 
 #ifdef CONFIG_PM_TRACE
 int pm_trace_enabled;
@@ -551,7 +534,7 @@ pm_trace_dev_match_store(struct kobject *kobj, struct kobj_attribute *attr,
 
 power_attr(pm_trace_dev_match);
 
-#endif /* CONFIG_PM_TRACE */
+#endif 
 
 #ifdef CONFIG_FREEZER
 static ssize_t pm_freeze_timeout_show(struct kobject *kobj,
@@ -575,7 +558,92 @@ static ssize_t pm_freeze_timeout_store(struct kobject *kobj,
 
 power_attr(pm_freeze_timeout);
 
-#endif	/* CONFIG_FREEZER*/
+#endif	
+
+#ifdef CONFIG_HTC_PNPMGR
+int grp_alarm_sec = 0;
+
+int nightmode_enabled = 0;
+static ssize_t
+nightmode_show(struct kobject *kobj, struct kobj_attribute *attr,
+                char *buf)
+{
+        return sprintf(buf, "%d\n", nightmode_enabled);
+}
+
+static ssize_t
+nightmode_store(struct kobject *kobj, struct kobj_attribute *attr,
+                const char *buf, size_t n)
+{
+        unsigned long val;
+        struct timespec ts;
+
+        if (strict_strtoul(buf, 10, &val))
+                return -EINVAL;
+
+        nightmode_enabled = val;
+        if(nightmode_enabled == 1){
+            getnstimeofday(&ts);
+            grp_alarm_sec = ts.tv_sec % 60;
+        }
+        printk(KERN_INFO "Set nightmode to %d, group alarm second to %d\n", nightmode_enabled, grp_alarm_sec);
+        sysfs_notify(kobj, NULL, "nightmode");
+        return n;
+}
+power_attr(nightmode);
+
+int powersave_enabled = 0;
+static ssize_t
+powersave_show(struct kobject *kobj, struct kobj_attribute *attr,
+                char *buf)
+{
+	return sprintf(buf, "%d\n", powersave_enabled);
+}
+
+static ssize_t
+powersave_store(struct kobject *kobj, struct kobj_attribute *attr,
+                const char *buf, size_t n)
+{
+	unsigned long val;
+
+	if (strict_strtoul(buf, 10, &val))
+		return -EINVAL;
+
+	printk(KERN_INFO "Change powersave attr from %d to %ld\n", powersave_enabled, val);
+	powersave_enabled = val;
+	sysfs_notify(kobj, NULL, "powersave");
+	return n;
+}
+power_attr(powersave);
+
+int screenoff_policy = 0;
+extern void screenoff_policy_change(void);
+static ssize_t
+screenoff_policy_show(struct kobject *kobj, struct kobj_attribute *attr,
+                char *buf)
+{
+	return sprintf(buf, "%d\n", screenoff_policy);
+}
+
+static ssize_t
+screenoff_policy_store(struct kobject *kobj, struct kobj_attribute *attr,
+                const char *buf, size_t n)
+{
+	unsigned long val;
+
+	if (strict_strtoul(buf, 10, &val))
+		return -EINVAL;
+
+	printk(KERN_INFO "Change screeoff policy from %d to %ld\n", screenoff_policy, val);
+	if (screenoff_policy != val) {
+		screenoff_policy = val;
+		screenoff_policy_change();
+		sysfs_notify(kobj, NULL, "screenoff_policy");
+	}
+	return n;
+}
+power_attr(screenoff_policy);
+#endif
 
 static struct attribute * g[] = {
 	&state_attr.attr,
@@ -602,6 +670,11 @@ static struct attribute * g[] = {
 #endif
 #ifdef CONFIG_FREEZER
 	&pm_freeze_timeout_attr.attr,
+#endif
+#ifdef CONFIG_HTC_PNPMGR
+	&nightmode_attr.attr,
+	&powersave_attr.attr,
+	&screenoff_policy_attr.attr,
 #endif
 	NULL,
 };

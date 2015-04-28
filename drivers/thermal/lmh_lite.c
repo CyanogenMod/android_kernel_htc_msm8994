@@ -196,8 +196,6 @@ static int lmh_reset(struct lmh_sensor_ops *ops)
 reset_exit:
 	up_write(&lmh_sensor_access);
 	if (!lmh_data->intr_status_val) {
-		/* cancel the poll work after releasing the lock to avoid
-		** deadlock situation */
 		pr_debug("Zero throttling. Re-enabling interrupt\n");
 		cancel_delayed_work_sync(&lmh_data->poll_work);
 		enable_irq(lmh_data->irq_num);
@@ -212,7 +210,7 @@ static void lmh_read_and_update(struct lmh_driver_data *lmh_dat)
 	static struct lmh_sensor_packet payload;
 	struct scm_desc desc_arg;
 	struct {
-		/* TZ is 32-bit right now */
+		
 		uint32_t addr;
 		uint32_t size;
 	} cmd_buf;

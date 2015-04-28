@@ -16,36 +16,39 @@ qcom,itech-3020mah {
 	qcom,chg-term-ua = <100000>;
 	qcom,batt-id-kohm = <100>;
 	qcom,battery-type = "itech_3020mah";
+	htc,batt_id = <2>;
+	htc,id_raw_min = <331>;
+	htc,id_raw_max = <550>;
 	qcom,fg-profile-data = [
-		 E8 83 0C 7D
-		 E9 80 B2 76
-		 20 83 40 73
-		 D7 6C 59 7E
-		 FB 81 58 93
-		 0D AE 02 B1
-		 5B 12 D7 82
-		 86 78 F3 76
-		 4A 71 0C 83
-		 1B 80 73 8D
-		 49 89 07 82
-		 D8 99 79 BC
-		 AA C8 7C 17
-		 F8 0B F4 5B
-		 CE 6E 71 FD
-		 09 2E 79 44
-		 52 43 00 00
-		 DE 3D 2A 37
-		 D3 46 00 00
+		 E4 83 A6 7C
+		 94 80 1F 76
+		 70 83 02 7C
+		 33 8B 67 95
+		 EA 81 EB 99
+		 0A BC 5C C3
+		 5B 18 32 88
+		 75 84 B6 83
+		 06 7E 5B 83
+		 07 51 F7 80
+		 33 8C 74 82
+		 FD 93 B4 B5
+		 7A C1 64 13
+		 3C 0A B9 5B
+		 CE 6E 29 FC
+		 3E 2C 96 45
+		 C6 3A 00 00
+		 34 3D 1E 45
+		 1C 36 00 00
 		 00 00 00 00
 		 00 00 00 00
-		 3A 6B B7 69
-		 DD 6C 83 83
-		 42 76 CA 68
-		 78 75 EF 80
-		 D4 74 56 5B
+		 17 70 68 6B
+		 CC 72 15 88
+		 DE 74 E0 63
+		 3E 6A 11 81
+		 A2 6F 11 60
 		 00 00 00 00
-		 0A A5 5A D2
-		 54 A0 71 0C
+		 0A 54 60 B6
+		 56 A0 71 0C
 		 28 00 FF 36
 		 F0 11 30 03
 		 00 00 00 00

@@ -95,6 +95,7 @@ struct msm_actuator_ctrl_t {
 	uint16_t pwd_step;
 	uint16_t initial_code;
 	struct msm_camera_i2c_reg_array *i2c_reg_tbl;
+	struct msm_actuator_af_OTP_info_t af_OTP_info;
 	uint16_t i2c_tbl_index;
 	enum cci_i2c_master_t cci_master;
 	uint32_t subdev_id;
@@ -102,6 +103,10 @@ struct msm_actuator_ctrl_t {
 	struct msm_actuator_vreg vreg_cfg;
 	struct park_lens_data_t park_lens;
 	uint32_t max_code_size;
+	
+	enum actuator_I2C_func_select act_i2c_select;
+	uint8_t enable_focus_step_log;
+	
 };
 
 #endif

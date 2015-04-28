@@ -227,6 +227,34 @@ exit_flush_bw_data:
 
 }
 
+#ifdef CONFIG_HTC_DEBUG_MSMBUS
+#include <linux/hrtimer.h>
+struct htc_noc_data_type {
+	unsigned long vote;
+	unsigned int dirty;
+};
+
+static char htc_noc_log[HTC_MAX_NOC_LOG_BUF];
+unsigned int htc_noc_log_idx;
+
+
+static struct htc_noc_data_type htc_noc[HTC_MAX_NOC_NOC];
+char htc_noc_client_name[HTC_MAX_NOC_CLIENT][HTC_MAX_NOC_NAME];
+static char *htc_noc_str[HTC_MAX_NOC_NOC] = {
+	"BIMC",
+	"SNOC",
+	"MMSSNOC",
+	"reserved",
+	"PNOC/PCNOC",
+	"CNOC",
+	"ovirt" };
+
+static void log_htc_noc_log(char *log) {
+	if((htc_noc_log_idx + HTC_MAX_NOC_LOG_LENGTH) > HTC_MAX_NOC_LOG_BUF) htc_noc_log_idx = 0;
+	htc_noc_log_idx += scnprintf(htc_noc_log + htc_noc_log_idx, HTC_MAX_NOC_LOG_BUF - htc_noc_log_idx, "|%s|\n", log);
+}
+#endif
+
 static int flush_clk_data(struct device *node_device, int ctx)
 {
 	struct msm_bus_node_device_type *node;
@@ -265,8 +293,17 @@ static int flush_clk_data(struct device *node_device, int ctx)
 			}
 
 			ret = enable_nodeclk(nodeclk);
-		} else
+
+			if ((node->node_info->is_fab_dev) &&
+				!IS_ERR_OR_NULL(node->qos_clk.clk))
+					ret = enable_nodeclk(&node->qos_clk);
+		} else {
+			if ((node->node_info->is_fab_dev) &&
+				!IS_ERR_OR_NULL(node->qos_clk.clk))
+					ret = disable_nodeclk(&node->qos_clk);
+
 			ret = disable_nodeclk(nodeclk);
+		}
 
 		if (ret) {
 			MSM_BUS_ERR("%s: Failed to enable for %d", __func__,
@@ -277,9 +314,22 @@ static int flush_clk_data(struct device *node_device, int ctx)
 		MSM_BUS_DBG("%s: Updated %d clk to %llu", __func__,
 				node->node_info->id, nodeclk->rate);
 
+#ifdef CONFIG_HTC_DEBUG_MSMBUS
+		if(node->node_info->is_fab_dev) {
+			int noc_idx = node->node_info->id >> 10;
+
+			if(noc_idx >= HTC_MAX_NOC_NOC)
+				goto exit_flush_clk_data;
+
+			if(htc_noc[noc_idx].vote != rounded_rate) {
+				htc_noc[noc_idx].vote = rounded_rate;
+				htc_noc[noc_idx].dirty = 1;
+			}
+		}
+#endif
 	}
 exit_flush_clk_data:
-	/* Reset the aggregated clock rate for fab devices*/
+	
 	if (node && node->node_info->is_fab_dev)
 		node->cur_clk_hz[ctx] = 0;
 
@@ -288,12 +338,16 @@ exit_flush_clk_data:
 	return ret;
 }
 
+#ifdef CONFIG_HTC_DEBUG_MSMBUS
+int msm_bus_commit_data(int *dirty_nodes, int ctx, int num_dirty, int cl)
+#else
 int msm_bus_commit_data(int *dirty_nodes, int ctx, int num_dirty)
+#endif
 {
 	int ret = 0;
 	int i = 0;
 
-	/* Aggregate the bus clocks */
+	
 	bus_for_each_dev(&msm_bus_type, NULL, (void *)&ctx,
 				msm_bus_agg_fab_clks);
 
@@ -318,8 +372,33 @@ int msm_bus_commit_data(int *dirty_nodes, int ctx, int num_dirty)
 			MSM_BUS_ERR("%s: Error flushing clk data for node %d",
 					__func__, dirty_nodes[i]);
 	}
+
+#ifdef CONFIG_HTC_DEBUG_MSMBUS
+	{
+		bool __dirty = false;
+		char buf[HTC_MAX_NOC_LOG_LENGTH];
+		int idx = 0;
+		struct timespec ts;
+
+		for(i = 0; i < HTC_MAX_NOC_NOC; i++) __dirty |= htc_noc[i].dirty;
+
+		if(__dirty) {
+			ts = ktime_to_timespec(ktime_get());
+			idx += scnprintf(buf + idx, HTC_MAX_NOC_LOG_LENGTH - idx, "%d.%09d ", (int)ts.tv_sec, (int)ts.tv_nsec);
+			idx += scnprintf(buf + idx, HTC_MAX_NOC_LOG_LENGTH - idx, "[MSMBUS] %s: ", htc_noc_client_name[cl]);
+			for(i = 0; i < HTC_MAX_NOC_NOC; i++) {
+				if(htc_noc[i].dirty) {
+					idx += scnprintf(buf + idx, HTC_MAX_NOC_LOG_LENGTH - idx, "%s=>%lu ", htc_noc_str[i], htc_noc[i].vote);
+					htc_noc[i].dirty = 0;
+				}
+			}
+			log_htc_noc_log(buf);
+		}
+	}
+#endif
+
 	kfree(dirty_nodes);
-	/* Aggregate the bus clocks */
+	
 	bus_for_each_dev(&msm_bus_type, NULL, (void *)&ctx,
 				msm_bus_reset_fab_clks);
 	return ret;
@@ -561,11 +640,6 @@ static int msm_bus_qos_enable_clk(struct msm_bus_node_device_type *node)
 		goto exit_enable_qos_clk;
 	}
 
-	/* Check if the bus clk is already set before trying to set it
-	 * Do this only during
-	 *	a. Bootup
-	 *	b. Only for bus clks
-	 **/
 	if (!clk_get_rate(bus_node->clk[DUAL_CTX].clk)) {
 		rounded_rate = clk_round_rate(bus_node->clk[DUAL_CTX].clk, 1);
 		ret = setrate_nodeclk(&bus_node->clk[DUAL_CTX], rounded_rate);
@@ -583,6 +657,15 @@ static int msm_bus_qos_enable_clk(struct msm_bus_node_device_type *node)
 		goto exit_enable_qos_clk;
 	}
 	bus_qos_enabled = 1;
+
+	if (!IS_ERR_OR_NULL(bus_node->qos_clk.clk)) {
+		ret = enable_nodeclk(&bus_node->qos_clk);
+		if (ret) {
+			MSM_BUS_ERR("%s: Failed to enable bus QOS clk, node %d",
+				__func__, node->node_info->id);
+			goto exit_enable_qos_clk;
+		}
+	}
 
 	if (!IS_ERR_OR_NULL(node->qos_clk.clk)) {
 		rounded_rate = clk_round_rate(node->qos_clk.clk, 1);
@@ -634,7 +717,6 @@ int msm_bus_enable_limiter(struct msm_bus_node_device_type *node_dev,
 	}
 	if (bus_node_dev->fabdev &&
 		bus_node_dev->fabdev->noc_ops.limit_mport) {
-		ret = msm_bus_qos_enable_clk(node_dev);
 		if (ret < 0) {
 			MSM_BUS_ERR("Can't Enable QoS clk %d",
 				node_dev->node_info->id);
@@ -647,7 +729,6 @@ int msm_bus_enable_limiter(struct msm_bus_node_device_type *node_dev,
 				bus_node_dev->fabdev->qos_off,
 				bus_node_dev->fabdev->qos_freq,
 				enable, lim_bw);
-		ret = msm_bus_qos_disable_clk(node_dev, ret);
 	}
 
 exit_enable_limiter:
@@ -765,8 +846,6 @@ static int msm_bus_fabric_init(struct device *dev,
 		goto exit_fabric_init;
 	}
 
-	/*if (msmbus_coresight_init(pdev))
-		pr_warn("Coresight support absent for bus: %d\n", pdata->id);*/
 exit_fabric_init:
 	return ret;
 }
@@ -928,9 +1007,6 @@ static struct device *msm_bus_device_init(
 		bus_dev = NULL;
 		goto exit_device_init;
 	}
-	/**
-	* Init here so we can use devm calls
-	*/
 	device_initialize(bus_dev);
 
 	bus_node = devm_kzalloc(bus_dev,
@@ -999,7 +1075,7 @@ static int msm_bus_setup_dev_conn(struct device *bus_dev, void *data)
 		goto exit_setup_dev_conn;
 	}
 
-	/* Setup parent bus device for this node */
+	
 	if (!bus_node->node_info->is_fab_dev) {
 		struct device *bus_parent_device =
 			bus_find_device(&msm_bus_type, NULL,
@@ -1089,7 +1165,7 @@ static int msm_bus_device_probe(struct platform_device *pdev)
 	unsigned int i, ret;
 	struct msm_bus_device_node_registration *pdata;
 
-	/* If possible, get pdata from device-tree */
+	
 	if (pdev->dev.of_node)
 		pdata = msm_bus_of_to_pdata(pdev);
 	else {
@@ -1116,7 +1192,7 @@ static int msm_bus_device_probe(struct platform_device *pdev)
 		}
 
 		ret = msm_bus_init_clk(node_dev, &pdata->info[i]);
-		/*Is this a fabric device ?*/
+		
 		if (pdata->info[i].node_info->is_fab_dev) {
 			MSM_BUS_DBG("%s: %d is a fab", __func__,
 						pdata->info[i].node_info->id);
@@ -1143,8 +1219,15 @@ static int msm_bus_device_probe(struct platform_device *pdev)
 	}
 
 
-	/* Register the arb layer ops */
+	
 	msm_bus_arb_setops_adhoc(&arb_ops);
+
+#ifdef CONFIG_HTC_DEBUG_MSMBUS
+	memset(htc_noc, 0, sizeof(htc_noc));
+	memset(htc_noc_client_name, 0, sizeof(htc_noc_client_name));
+	memset(htc_noc_log, 0, sizeof(htc_noc_log));
+	htc_noc_log_idx = 0;
+#endif
 	bus_for_each_dev(&msm_bus_type, NULL, NULL, msm_bus_node_debug);
 
 	devm_kfree(&pdev->dev, pdata->info);

@@ -18,13 +18,6 @@
 
 static int num_rounds(struct crypto_aes_ctx *ctx)
 {
-	/*
-	 * # of rounds specified by AES:
-	 * 128 bit key		10 rounds
-	 * 192 bit key		12 rounds
-	 * 256 bit key		14 rounds
-	 * => n byte key	=> 6 + (n/4) rounds
-	 */
 	return 6 + ctx->key_length / 4;
 }
 
@@ -69,30 +62,19 @@ static int ccm_init_mac(struct aead_request *req, u8 maciv[], u32 msglen)
 	__be32 *n = (__be32 *)&maciv[AES_BLOCK_SIZE - 8];
 	u32 l = req->iv[0] + 1;
 
-	/* verify that CCM dimension 'L' is set correctly in the IV */
+	
 	if (l < 2 || l > 8)
 		return -EINVAL;
 
-	/* verify that msglen can in fact be represented in L bytes */
+	
 	if (l < 4 && msglen >> (8 * l))
 		return -EOVERFLOW;
 
-	/*
-	 * Even if the CCM spec allows L values of up to 8, the Linux cryptoapi
-	 * uses a u32 type to represent msglen so the top 4 bytes are always 0.
-	 */
 	n[0] = 0;
 	n[1] = cpu_to_be32(msglen);
 
 	memcpy(maciv, req->iv, AES_BLOCK_SIZE - l);
 
-	/*
-	 * Meaning of byte 0 according to CCM spec (RFC 3610/NIST 800-38C)
-	 * - bits 0..2	: max # of bytes required to represent msglen, minus 1
-	 *                (already set by caller)
-	 * - bits 3..5	: size of auth tag (1 => 4 bytes, 2 => 6 bytes, etc)
-	 * - bit 6	: indicates presence of authenticate-only data
-	 */
 	maciv[0] |= (crypto_aead_authsize(aead) - 2) << 2;
 	if (req->assoclen)
 		maciv[0] |= 0x40;
@@ -106,11 +88,11 @@ static void ccm_calculate_auth_mac(struct aead_request *req, u8 mac[])
 	struct crypto_aead *aead = crypto_aead_reqtfm(req);
 	struct crypto_aes_ctx *ctx = crypto_aead_ctx(aead);
 	struct __packed { __be16 l; __be32 h; u16 len; } ltag;
-	struct scatter_walk walk;
+	struct scatter_walk walk={};
 	u32 len = req->assoclen;
 	u32 macp = 0;
 
-	/* prepend the AAD with a length tag */
+	
 	if (len < 0xff00) {
 		ltag.l = cpu_to_be16(len);
 		ltag.len = 2;
@@ -148,7 +130,7 @@ static int ccm_encrypt(struct aead_request *req)
 	struct crypto_aead *aead = crypto_aead_reqtfm(req);
 	struct crypto_aes_ctx *ctx = crypto_aead_ctx(aead);
 	struct blkcipher_desc desc = { .info = req->iv };
-	struct blkcipher_walk walk;
+	struct blkcipher_walk walk={};
 	u8 __aligned(8) mac[AES_BLOCK_SIZE];
 	u8 buf[AES_BLOCK_SIZE];
 	u32 len = req->cryptlen;
@@ -163,7 +145,7 @@ static int ccm_encrypt(struct aead_request *req)
 	if (req->assoclen)
 		ccm_calculate_auth_mac(req, mac);
 
-	/* preserve the original iv for the final round */
+	
 	memcpy(buf, req->iv, AES_BLOCK_SIZE);
 
 	blkcipher_walk_init(&walk, req->dst, req->src, len);
@@ -191,7 +173,7 @@ static int ccm_encrypt(struct aead_request *req)
 	if (err)
 		return err;
 
-	/* copy authtag to end of dst */
+	
 	scatterwalk_map_and_copy(mac, req->dst, req->cryptlen,
 				 crypto_aead_authsize(aead), 1);
 
@@ -204,7 +186,7 @@ static int ccm_decrypt(struct aead_request *req)
 	struct crypto_aes_ctx *ctx = crypto_aead_ctx(aead);
 	unsigned int authsize = crypto_aead_authsize(aead);
 	struct blkcipher_desc desc = { .info = req->iv };
-	struct blkcipher_walk walk;
+	struct blkcipher_walk walk={};
 	u8 __aligned(8) mac[AES_BLOCK_SIZE];
 	u8 buf[AES_BLOCK_SIZE];
 	u32 len = req->cryptlen - authsize;
@@ -219,7 +201,7 @@ static int ccm_decrypt(struct aead_request *req)
 	if (req->assoclen)
 		ccm_calculate_auth_mac(req, mac);
 
-	/* preserve the original iv for the final round */
+	
 	memcpy(buf, req->iv, AES_BLOCK_SIZE);
 
 	blkcipher_walk_init(&walk, req->dst, req->src, len);
@@ -247,7 +229,7 @@ static int ccm_decrypt(struct aead_request *req)
 	if (err)
 		return err;
 
-	/* compare calculated auth tag with the stored one */
+	
 	scatterwalk_map_and_copy(buf, req->src, req->cryptlen - authsize,
 				 authsize, 0);
 

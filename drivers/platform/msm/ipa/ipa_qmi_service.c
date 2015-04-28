@@ -49,7 +49,6 @@ static bool is_load_uc;
 static uint32_t ipa_wan_platform;
 
 
-/* QMI A5 service */
 
 static struct msg_desc ipa_indication_reg_req_desc = {
 	.max_msg_len = QMI_IPA_INDICATION_REGISTER_REQ_MAX_MSG_LEN_V01,
@@ -102,7 +101,7 @@ static int handle_indication_req(void *req_h, void *req)
 	rc = qmi_send_resp_from_cb(ipa_svc_handle, curr_conn, req_h,
 			&ipa_indication_reg_resp_desc, &resp, sizeof(resp));
 	qmi_indication_fin = true;
-	/* check if need sending indication to modem */
+	
 	if (qmi_modem_init_fin)	{
 		IPAWANDBG("send indication to modem (%d)\n",
 		qmi_modem_init_fin);
@@ -155,7 +154,7 @@ static int handle_install_filter_rule_req(void *req_h, void *req)
 		resp.filter_handle_list_valid = false;
 	}
 
-	/* construct UL filter rules response to Modem*/
+	
 	for (i = 0; i < resp.filter_handle_list_len; i++) {
 		resp.filter_handle_list[i].filter_spec_identifier =
 			rule_req->filter_spec_list[i].filter_spec_identifier;
@@ -297,16 +296,12 @@ static struct qmi_svc_ops_options ipa_a5_svc_ops_options = {
 };
 
 
-/****************************************************/
-/*                 QMI A5 client ->Q6               */
-/****************************************************/
 static void ipa_q6_clnt_recv_msg(struct work_struct *work);
 static DECLARE_DELAYED_WORK(work_recv_msg_client, ipa_q6_clnt_recv_msg);
 static void ipa_q6_clnt_svc_arrive(struct work_struct *work);
 static DECLARE_DELAYED_WORK(work_svc_arrive, ipa_q6_clnt_svc_arrive);
 static void ipa_q6_clnt_svc_exit(struct work_struct *work);
 static DECLARE_DELAYED_WORK(work_svc_exit, ipa_q6_clnt_svc_exit);
-/* Test client port for IPC Router */
 static struct qmi_handle *ipa_q6_clnt;
 static int ipa_q6_clnt_reset;
 
@@ -380,10 +375,10 @@ static int qmi_init_modem_send_sync_msg(void)
 	req.ctrl_comm_dest_end_pt_valid = true;
 	req.ctrl_comm_dest_end_pt =
 		ipa_get_ep_mapping(IPA_CLIENT_APPS_WAN_CONS);
-	if (is_load_uc) {  /* First time boot */
+	if (is_load_uc) {  
 		req.is_ssr_bootup_valid = false;
 		req.is_ssr_bootup = 0;
-	} else {  /* After SSR boot */
+	} else {  
 		req.is_ssr_bootup_valid = true;
 		req.is_ssr_bootup = 1;
 	}
@@ -432,14 +427,13 @@ static int qmi_init_modem_send_sync_msg(void)
 		resp.resp.error, "ipa_init_modem_driver_resp_msg_v01");
 }
 
-/* sending filter-install-request to modem*/
 int qmi_filter_request_send(struct ipa_install_fltr_rule_req_msg_v01 *req)
 {
 	struct ipa_install_fltr_rule_resp_msg_v01 resp;
 	struct msg_desc req_desc, resp_desc;
 	int rc;
 
-	/* check if the filter rules from IPACM is valid */
+	
 	if (req->filter_spec_list_len == 0) {
 		IPAWANDBG("IPACM pass zero rules to Q6\n");
 	} else {
@@ -468,14 +462,13 @@ int qmi_filter_request_send(struct ipa_install_fltr_rule_req_msg_v01 *req)
 }
 
 
-/* sending filter-installed-notify-request to modem*/
 int qmi_filter_notify_send(struct ipa_fltr_installed_notif_req_msg_v01 *req)
 {
 	struct ipa_fltr_installed_notif_resp_msg_v01 resp;
 	struct msg_desc req_desc, resp_desc;
 	int rc = 0, i = 0;
 
-	/* check if the filter rules from IPACM is valid */
+	
 	if (req->filter_index_list_len == 0) {
 		IPAWANERR(" delete UL filter rule for pipe %d\n",
 		req->source_pipe_index);
@@ -542,7 +535,7 @@ static void ipa_q6_clnt_svc_arrive(struct work_struct *work)
 	int rc;
 	struct ipa_master_driver_init_complt_ind_msg_v01 ind;
 
-	/* Create a Local client port for QMI communication */
+	
 	ipa_q6_clnt = qmi_handle_create(ipa_q6_clnt_notify, NULL);
 	if (!ipa_q6_clnt) {
 		IPAWANERR("QMI client handle alloc failed\n");
@@ -563,20 +556,16 @@ static void ipa_q6_clnt_svc_arrive(struct work_struct *work)
 	}
 	ipa_q6_clnt_reset = 0;
 	IPAWANDBG("Q6 QMI service available now\n");
-	/* Initialize modem IPA-driver */
+	
 	IPAWANDBG("send qmi_init_modem_send_sync_msg to modem\n");
 	rc = qmi_init_modem_send_sync_msg();
 	if (rc == -ENETRESET) {
 		IPAWANERR("qmi_init_modem_send_sync_msg failed due to SSR!\n");
-		/* Cleanup will take place when ipa_wwan_remove is called */
+		
 		return;
 	}
 	if (rc != 0) {
 		IPAWANERR("qmi_init_modem_send_sync_msg failed\n");
-		/*
-		 * This is a very unexpected scenario, which requires a kernel
-		 * panic in order to force dumps for QMI/Q6 side analysis.
-		 */
 		BUG();
 		return;
 	}
@@ -641,7 +630,7 @@ static void ipa_qmi_service_init_worker(struct work_struct *work)
 {
 	int rc;
 
-	/* Initialize QMI-service*/
+	
 	IPAWANDBG("IPA A7 QMI init OK :>>>>\n");
 
 	ipa_svc_workqueue = create_singlethread_workqueue("ipa_A7_svc");
@@ -656,11 +645,6 @@ static void ipa_qmi_service_init_worker(struct work_struct *work)
 		goto destroy_ipa_A7_svc_wq;
 	}
 
-	/*
-	 * Setting the current connection to NULL, as due to a race between
-	 * server and client clean-up in SSR, the disconnect_cb might not
-	 * have necessarily been called
-	 */
 	curr_conn = NULL;
 
 	rc = qmi_svc_register(ipa_svc_handle, &ipa_a5_svc_ops_options);
@@ -670,7 +654,7 @@ static void ipa_qmi_service_init_worker(struct work_struct *work)
 		goto destroy_qmi_handle;
 	}
 
-	/* Initialize QMI-client */
+	
 
 	ipa_clnt_req_workqueue = create_singlethread_workqueue("clnt_req");
 	if (!ipa_clnt_req_workqueue) {
@@ -692,7 +676,7 @@ static void ipa_qmi_service_init_worker(struct work_struct *work)
 		goto destroy_clnt_resp_wq;
 	}
 
-	/* get Q6 service and start send modem-initial to Q6 */
+	
 	IPAWANDBG("wait service available\n");
 	return;
 
@@ -730,8 +714,7 @@ int ipa_qmi_service_init(bool load_uc, uint32_t wan_platform_type)
 void ipa_qmi_service_exit(void)
 {
 	int ret = 0;
-
-	/* qmi-service */
+	
 	if (ipa_svc_handle) {
 		ret = qmi_svc_unregister(ipa_svc_handle);
 		if (ret < 0)
@@ -751,9 +734,9 @@ void ipa_qmi_service_exit(void)
 			ipa_svc_handle, ret);
 	}
 
-	/* qmi-client */
+	
 
-	/* Unregister from events */
+	
 	ret = qmi_svc_event_notifier_unregister(IPA_Q6_SERVICE_SVC_ID,
 				IPA_Q6_SVC_VERS,
 				IPA_Q6_SERVICE_INS_ID, &ipa_q6_clnt_nb);
@@ -762,7 +745,7 @@ void ipa_qmi_service_exit(void)
 		"Error qmi_svc_event_notifier_unregister service %d, ret=%d\n",
 		IPA_Q6_SERVICE_SVC_ID, ret);
 
-	/* Release client handle */
+	
 	ipa_q6_clnt_svc_exit(0);
 
 	if (ipa_clnt_req_workqueue) {

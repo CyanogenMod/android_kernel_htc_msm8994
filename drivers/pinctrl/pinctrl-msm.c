@@ -25,23 +25,13 @@
 #include "core.h"
 #include "pinconf.h"
 #include "pinctrl-msm.h"
+#if defined(CONFIG_HTC_POWER_DEBUG) && defined(CONFIG_PINCTRL_MSM_TLMM)
+#include <linux/debugfs.h>
+#include <linux/seq_file.h>
+#include <linux/qpnp/pin.h>
+#include <soc/qcom/pm.h>
+#endif
 
-/**
- * struct msm_pinctrl_dd: represents the pinctrol driver data.
- * @base: virtual base of TLMM.
- * @irq: interrupt number for TLMM summary interrupt.
- * @num_pins: Number of total pins present on TLMM.
- * @msm_pindesc: list of descriptors for each pin.
- * @num_pintypes: number of pintypes on TLMM.
- * @msm_pintype: points to the representation of all pin types supported.
- * @pctl: pin controller instance managed by the driver.
- * @pctl_dev: pin controller descriptor registered with the pinctrl subsystem.
- * @pin_grps: list of pin groups available to the driver.
- * @num_grps: number of groups.
- * @pmx_funcs:list of pin functions available to the driver
- * @num_funcs: number of functions.
- * @dev: pin contol device.
- */
 struct msm_pinctrl_dd {
 	void __iomem *base;
 	int	irq;
@@ -58,12 +48,6 @@ struct msm_pinctrl_dd {
 	struct device *dev;
 };
 
-/**
- * struct msm_irq_of_info: represents of init data for tlmm interrupt
- * controllers
- * @compat: compat string for tlmm interrup controller instance.
- * @irq_init: irq chip initialization callback.
- */
 struct msm_irq_of_info {
 	const char *compat;
 	int (*irq_init)(struct device_node *np, struct irq_chip *ic);
@@ -111,10 +95,6 @@ static void msm_pmx_prg_fn(struct pinctrl_dev *pctldev, unsigned selector,
 	pins = dd->pin_grps[group].pins;
 	pindesc = dd->msm_pindesc;
 
-	/*
-	 * for each pin in the pin group selected, program the correspoding
-	 * pin function number in the config register.
-	 */
 	for (cnt = 0; cnt < dd->pin_grps[group].num_pins; cnt++) {
 		pin = pins[cnt];
 		pinfo = pindesc[pin].pin_info;
@@ -137,7 +117,6 @@ static void msm_pmx_disable(struct pinctrl_dev *pctldev,
 	msm_pmx_prg_fn(pctldev, selector, group, false);
 }
 
-/* Enable gpio function for a pin */
 static int msm_pmx_gpio_request(struct pinctrl_dev *pctldev,
 				struct pinctrl_gpio_range *grange,
 				unsigned pin)
@@ -149,7 +128,7 @@ static int msm_pmx_gpio_request(struct pinctrl_dev *pctldev,
 	dd = pinctrl_dev_get_drvdata(pctldev);
 	pindesc = dd->msm_pindesc;
 	pinfo = pindesc[pin].pin_info;
-	/* All TLMM versions use function 0 for gpio function */
+	
 	pinfo->prg_func(pin, 0, true, pinfo);
 	return 0;
 }
@@ -259,9 +238,9 @@ static struct msm_pintype_info *msm_pgrp_to_pintype(struct device_node *nd,
 	struct msm_pintype_info *pinfo = NULL;
 	int idx = 0;
 
-	/*Extract pin type node from parent node */
+	
 	ptype_nd = of_parse_phandle(nd, "qcom,pins", 0);
-	/* find the pin type info for this pin type node */
+	
 	for (idx = 0; idx < dd->num_pintypes; idx++) {
 		pinfo = &dd->msm_pintype[idx];
 		if (ptype_nd == pinfo->node) {
@@ -272,7 +251,6 @@ static struct msm_pintype_info *msm_pgrp_to_pintype(struct device_node *nd,
 	return pinfo;
 }
 
-/* create pinctrl_map entries by parsing device tree nodes */
 static int msm_dt_node_to_map(struct pinctrl_dev *pctldev,
 			struct device_node *cfg_np, struct pinctrl_map **maps,
 			unsigned *nmaps)
@@ -290,17 +268,13 @@ static int msm_dt_node_to_map(struct pinctrl_dev *pctldev,
 
 	dd = pinctrl_dev_get_drvdata(pctldev);
 	pindesc = dd->msm_pindesc;
-	/* get parent node of config node */
+	
 	parent = of_get_parent(cfg_np);
-	/*
-	 * parent node contains pin grouping
-	 * get pin type from pin grouping
-	 */
 	pinfo = msm_pgrp_to_pintype(parent, dd);
-	/* check if there is a function associated with the parent pin group */
+	
 	if (of_find_property(parent, "qcom,pin-func", NULL))
 		func_cnt++;
-	/* get pin configs */
+	
 	ret = pinconf_generic_parse_dt_config(cfg_np, &cfg, &cfg_cnt);
 	if (ret) {
 		dev_err(dd->dev, "properties incorrect\n");
@@ -309,27 +283,27 @@ static int msm_dt_node_to_map(struct pinctrl_dev *pctldev,
 
 	map_cnt = cfg_cnt + func_cnt;
 
-	/* Allocate memory for pin-map entries */
+	
 	map = kzalloc(sizeof(*map) * map_cnt, GFP_KERNEL);
 	if (!map)
 		return -ENOMEM;
 	*nmaps = 0;
 
-	/* Get group name from node */
+	
 	of_property_read_string(parent, "label", &grp_name);
-	/* create the config map entry */
+	
 	map[*nmaps].data.configs.group_or_pin = grp_name;
 	map[*nmaps].data.configs.configs = cfg;
 	map[*nmaps].data.configs.num_configs = cfg_cnt;
 	map[*nmaps].type = PIN_MAP_TYPE_CONFIGS_GROUP;
 	*nmaps += 1;
 
-	/* If there is no function specified in device tree return */
+	
 	if (func_cnt == 0) {
 		*maps = map;
 		goto no_func;
 	}
-	/* Get function mapping */
+	
 	of_property_read_u32(parent, "qcom,pin-func", &val);
 	fn_name = kzalloc(strlen(grp_name) + strlen("-func"),
 						GFP_KERNEL);
@@ -355,7 +329,6 @@ no_func:
 	return ret;
 }
 
-/* free the memory allocated to hold the pin-map table */
 static void msm_dt_free_map(struct pinctrl_dev *pctldev,
 			     struct pinctrl_map *map, unsigned num_maps)
 {
@@ -405,20 +378,16 @@ static int msm_of_get_pin(struct device_node *np, int index,
 	num_pintypes = dd->num_pintypes;
 	for (i = 0; i < num_pintypes; i++)  {
 		pinfo = &pintype[i];
-		/* Find the matching pin type node */
+		
 		if (pargs.np != pinfo->node)
 			continue;
-		/* Check if arg specified is in valid range for pin type */
+		
 		if (pargs.args[0] > pinfo->num_pins) {
 			ret = -EINVAL;
 			dev_err(dd->dev, "Invalid pin number for type %s\n",
 								pinfo->name);
 			goto out;
 		}
-		/*
-		 * Pin number = index within pin type + start of pin numbers
-		 * for this pin type
-		 */
 		*pin = pargs.args[0] + pinfo->pin_start;
 	}
 out:
@@ -463,16 +432,11 @@ static int msm_pinctrl_dt_parse_pins(struct device_node *dev_node,
 		dev_err(dev, "Failed to allocate grp desc\n");
 		return -ENOMEM;
 	}
-	/*
-	 * Iterate over all child nodes, and for nodes containing pin lists
-	 * populate corresponding pin group, and if provided, corresponding
-	 * function
-	 */
 	for_each_child_of_node(dev_node, pgrp_np) {
 		if (!of_find_property(pgrp_np, "qcom,pins", NULL))
 			continue;
 		curr_grp = pin_grps + grp_index;
-		/* Get group name from label*/
+		
 		ret = of_property_read_string(pgrp_np, "label", &grp_name);
 		if (ret) {
 			dev_err(dev, "Unable to allocate group name\n");
@@ -505,7 +469,7 @@ static int msm_pinctrl_dt_parse_pins(struct device_node *dev_node,
 		curr_grp->num_pins = num_pins;
 		curr_grp->name = grp_name;
 		grp_index++;
-		/* Check if func specified */
+		
 		if (!of_find_property(pgrp_np, "qcom,pin-func", NULL))
 			continue;
 		curr_func = pmx_funcs + func_index;
@@ -604,14 +568,14 @@ static int msm_pinctrl_dt_parse_pintype(struct device_node *dev_node,
 				continue;
 			of_node_get(pt_node);
 			pintype->node = pt_node;
-			/* determine number of pins of given pin type */
+			
 			ret = of_property_read_u32(pt_node, "qcom,num-pins",
 								&num_pins);
 			if (ret) {
 				dev_err(dd->dev, "num pins not specified\n");
 				goto fail;
 			}
-			/* determine pin number range for given pin type */
+			
 			pintype->num_pins = num_pins;
 			pintype->pin_start = curr_pins;
 			pintype->pin_end = curr_pins + num_pins;
@@ -630,13 +594,9 @@ static int msm_pinctrl_dt_parse_pintype(struct device_node *dev_node,
 
 	dd->num_pins = total_pins;
 	msm_pindesc = dd->msm_pindesc;
-	/*
-	 * Populate pin descriptor based on each pin type present in Device
-	 * tree and supported by the driver
-	 */
 	for (i = 0; i < pinfo_entries; i++) {
 		pintype = &pinfo[i];
-		/* If entry not in device tree, skip */
+		
 		if (!pintype->node)
 			continue;
 		msm_populate_pindesc(pintype, msm_pindesc);
@@ -651,6 +611,146 @@ fail:
 	return -ENOMEM;
 }
 
+#if defined(CONFIG_HTC_POWER_DEBUG) && defined(CONFIG_PINCTRL_MSM_TLMM)
+static struct dentry *debugfs_base;
+struct gpio_chip *g_chip;
+
+int msm_dump_gpios(struct seq_file *m, int curr_len, char *gpio_buffer)
+{
+        unsigned int i, len;
+        struct msm_gpio_dump_info data;
+        char list_gpio[100];
+        char *title_msg = "------------ MSM GPIO -------------";
+
+        if (m) {
+                seq_printf(m, "%s\n", title_msg);
+        } else {
+                pr_info("%s\n", title_msg);
+                curr_len += sprintf(gpio_buffer + curr_len,
+                "%s\n", title_msg);
+        }
+
+        for (i = 0; i < g_chip->ngpio; i++) {
+                memset(list_gpio, 0 , sizeof(list_gpio));
+                len = 0;
+                __msm_gpio_get_dump_info(g_chip, i, &data);
+                len += sprintf(list_gpio + len, "GPIO[%3d]: ", i);
+
+                len += sprintf(list_gpio + len, "[FS]0x%x, ", data.func_sel);
+
+                if (data.dir)
+                        len += sprintf(list_gpio + len, "[DIR]OUT, [VAL]%s ", data.value ? "HIGH" : " LOW");
+                else
+                        len += sprintf(list_gpio + len, "[DIR] IN, [VAL]%s ", data.value ? "HIGH" : " LOW");
+
+                switch (data.pull) {
+                case 0x0:
+                        len += sprintf(list_gpio + len, "[PULL]NO, ");
+                        break;
+                case 0x1:
+                        len += sprintf(list_gpio + len, "[PULL]PD, ");
+                        break;
+                case 0x2:
+                        len += sprintf(list_gpio + len, "[PULL]KP, ");
+                        break;
+                case 0x3:
+                        len += sprintf(list_gpio + len, "[PULL]PU, ");
+                        break;
+                default:
+                        break;
+                }
+
+                len += sprintf(list_gpio + len, "[DRV]%2dmA, ", 2*(data.drv+1));
+
+                if (!data.dir) {
+                        len += sprintf(list_gpio + len, "[INT]%s, ", data.int_en ? "YES" : " NO");
+                        if (data.int_en) {
+                                switch (data.int_owner) {
+                                case 0x0:
+                                        len += sprintf(list_gpio + len, " WC_PROC, ");
+                                        break;
+                                case 0x1:
+                                        len += sprintf(list_gpio + len, "SPS_PROC, ");
+                                        break;
+                                case 0x2:
+                                        len += sprintf(list_gpio + len, " LPA_DSP, ");
+                                        break;
+                                case 0x3:
+                                        len += sprintf(list_gpio + len, "RPM_PROC, ");
+                                        break;
+                                case 0x4:
+                                        len += sprintf(list_gpio + len, " KP_PROC, ");
+                                        break;
+                                case 0x5:
+                                        len += sprintf(list_gpio + len, "MSS_PROC, ");
+                                        break;
+                                case 0x6:
+                                        len += sprintf(list_gpio + len, " TZ_PROC, ");
+                                        break;
+                                case 0x7:
+                                        len += sprintf(list_gpio + len, "    NONE, ");
+                                        break;
+                                default:
+                                        break;
+                                }
+                        }
+                }
+
+                list_gpio[99] = '\0';
+                if (m) {
+                        seq_printf(m, "%s\n", list_gpio);
+                } else {
+                        pr_info("%s\n", list_gpio);
+                        curr_len += sprintf(gpio_buffer +
+                        curr_len, "%s\n", list_gpio);
+                }
+        }
+        return curr_len;
+}
+
+static int list_gpios_show(struct seq_file *m, void *unused)
+{
+        msm_dump_gpios(m, 0, NULL);
+        qpnp_pin_dump(m, 0, NULL);
+        return 0;
+}
+
+static int list_sleep_gpios_show(struct seq_file *m, void *unused)
+{
+        print_gpio_buffer(m);
+        return 0;
+}
+
+static int list_sleep_gpios_open(struct inode *inode, struct file *file)
+{
+        return single_open(file, list_sleep_gpios_show, inode->i_private);
+}
+
+static int list_sleep_gpios_release(struct inode *inode, struct file *file)
+{
+        free_gpio_buffer();
+        return single_release(inode, file);
+}
+
+static int list_gpios_open(struct inode *inode, struct file *file)
+{
+        return single_open(file, list_gpios_show, inode->i_private);
+}
+
+static const struct file_operations list_gpios_fops = {
+        .open           = list_gpios_open,
+        .read           = seq_read,
+        .llseek         = seq_lseek,
+        .release        = single_release,
+};
+
+static const struct file_operations list_sleep_gpios_fops = {
+        .open           = list_sleep_gpios_open,
+        .read           = seq_read,
+        .llseek         = seq_lseek,
+        .release        = list_sleep_gpios_release,
+};
+#endif
 
 static void msm_pinctrl_cleanup_dd(struct msm_pinctrl_dd *dd)
 {
@@ -753,6 +853,10 @@ static void msm_register_gpiochip(struct msm_pinctrl_dd *dd)
 			pinfo->supports_gpio = false;
 		}
 	}
+#if defined(CONFIG_HTC_POWER_DEBUG) && defined(CONFIG_PINCTRL_MSM_TLMM)
+        g_chip = gc;
+#endif
+
 }
 
 static int msm_register_irqchip(struct msm_pinctrl_dd *dd)
@@ -801,6 +905,19 @@ int msm_pinctrl_probe(struct platform_device *pdev,
 	}
 	msm_register_irqchip(dd);
 	platform_set_drvdata(pdev, dd);
+#if defined(CONFIG_HTC_POWER_DEBUG) && defined(CONFIG_PINCTRL_MSM_TLMM)
+       debugfs_base = debugfs_create_dir("htc_gpio", NULL);
+       if (!debugfs_base)
+               return -ENOMEM;
+
+       if (!debugfs_create_file("list_gpios", S_IRUGO, debugfs_base,
+                       &g_chip, &list_gpios_fops))
+               return -ENOMEM;
+
+        if (!debugfs_create_file("list_sleep_gpios", S_IRUGO, debugfs_base,
+                       &g_chip, &list_sleep_gpios_fops))
+                return -ENOMEM;
+#endif
 	return 0;
 }
 EXPORT_SYMBOL(msm_pinctrl_probe);

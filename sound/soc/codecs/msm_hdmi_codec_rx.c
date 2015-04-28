@@ -17,9 +17,12 @@
 #include <sound/core.h>
 #include <sound/pcm.h>
 #include <sound/soc.h>
+#include <linux/wakelock.h>
 #include <linux/msm_hdmi.h>
 
 #define MSM_HDMI_PCM_RATES	SNDRV_PCM_RATE_48000
+
+static struct wake_lock hdmi_active_wakelock;
 
 static int msm_hdmi_audio_codec_return_value;
 
@@ -90,6 +93,10 @@ static int msm_hdmi_audio_codec_rx_dai_startup(
 	struct msm_hdmi_audio_codec_rx_data *codec_data =
 			dev_get_drvdata(dai->codec->dev);
 
+	
+	wake_lock(&hdmi_active_wakelock);
+	
+
 	msm_hdmi_audio_codec_return_value =
 		codec_data->hdmi_ops.hdmi_cable_status(
 		codec_data->hdmi_core_pdev, 1);
@@ -98,11 +105,17 @@ static int msm_hdmi_audio_codec_rx_dai_startup(
 			"%s() HDMI core is not ready (ret val = %d)\n",
 			__func__, msm_hdmi_audio_codec_return_value);
 		ret = msm_hdmi_audio_codec_return_value;
+		
+		wake_unlock(&hdmi_active_wakelock);
+		
 	} else if (!msm_hdmi_audio_codec_return_value) {
 		dev_err(dai->dev,
 			"%s() HDMI cable is not connected (ret val = %d)\n",
 			__func__, msm_hdmi_audio_codec_return_value);
 		ret = -ENODEV;
+		
+		wake_unlock(&hdmi_active_wakelock);
+		
 	}
 
 	return ret;
@@ -114,7 +127,7 @@ static int msm_hdmi_audio_codec_rx_dai_hw_params(
 		struct snd_soc_dai *dai)
 {
 	u32 channel_allocation = 0;
-	u32 level_shift  = 0; /* 0dB */
+	u32 level_shift  = 0; 
 	bool down_mix = 0;
 	u32 num_channels = params_channels(params);
 	int rc = 0;
@@ -134,25 +147,25 @@ static int msm_hdmi_audio_codec_rx_dai_hw_params(
 		return -ENODEV;
 	}
 
-	/*refer to HDMI spec CEA-861-E: Table 28 Audio InfoFrame Data Byte 4*/
+	
 	switch (num_channels) {
 	case 2:
 		channel_allocation  = 0;
 		break;
 	case 3:
-		channel_allocation  = 0x02;/*default to FL/FR/FC*/
+		channel_allocation  = 0x02;
 		break;
 	case 4:
-		channel_allocation  = 0x06;/*default to FL/FR/FC/RC*/
+		channel_allocation  = 0x06;
 		break;
 	case 5:
-		channel_allocation  = 0x0A;/*default to FL/FR/FC/RR/RL*/
+		channel_allocation  = 0x0A;
 		break;
 	case 6:
 		channel_allocation  = 0x0B;
 		break;
 	case 7:
-		channel_allocation  = 0x12;/*default to FL/FR/FC/RL/RR/RRC/RLC*/
+		channel_allocation  = 0x12;
 		break;
 	case 8:
 		channel_allocation  = 0x13;
@@ -196,6 +209,9 @@ static void msm_hdmi_audio_codec_rx_dai_shutdown(
 			__func__);
 	}
 
+	
+	wake_unlock(&hdmi_active_wakelock);
+	
 	return;
 }
 
@@ -288,6 +304,10 @@ static int msm_hdmi_audio_codec_rx_plat_probe(
 {
 	dev_dbg(&pdev->dev, "%s(): dev name %s\n", __func__,
 		dev_name(&pdev->dev));
+
+	
+	wake_lock_init(&hdmi_active_wakelock, WAKE_LOCK_SUSPEND, "hdmi_active");
+	
 
 	return snd_soc_register_codec(&pdev->dev,
 		&msm_hdmi_audio_codec_rx_soc_driver,

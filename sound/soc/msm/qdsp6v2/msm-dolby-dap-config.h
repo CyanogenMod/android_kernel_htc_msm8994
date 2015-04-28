@@ -16,8 +16,8 @@
 #include "msm-dolby-common.h"
 
 #ifdef CONFIG_DOLBY_DAP
-/* DOLBY DOLBY GUIDS */
-#define DOLBY_ADM_COPP_TOPOLOGY_ID	0x0001033B
+#define DOLBY_ADM_COPP_TOPOLOGY_ID     0x0001033B
+
 #define NUM_DOLBY_ENDP_DEVICE                 23
 
 #define DOLBY_NUM_ENDP_DEPENDENT_PARAMS	  3
@@ -42,7 +42,6 @@
 #define DOLBY_AUTO_ENDP_IDX			(MAX_DOLBY_PARAMS+3)
 #define DOLBY_AUTO_ENDDEP_IDX			(MAX_DOLBY_PARAMS+4)
 
-/* DOLBY device definitions */
 enum {
 	DOLBY_ENDP_INT_SPEAKERS = 0,
 	DOLBY_ENDP_EXT_SPEAKERS,
@@ -53,7 +52,6 @@ enum {
 	DOLBY_ENDP_ANALOG,
 };
 
-/* DOLBY device definitions end */
 
 struct dolby_dap_params {
 	uint32_t value[TOTAL_LENGTH_DOLBY_PARAM + MAX_DOLBY_PARAMS];
@@ -65,7 +63,6 @@ void msm_dolby_dap_deinit(int port_id);
 void msm_dolby_dap_add_controls(struct snd_soc_platform *platform);
 int dolby_dap_set_custom_stereo_onoff(int port_id, int copp_idx,
 				      bool is_custom_stereo_enabled);
-/* Dolby DOLBY end */
 #else
 int msm_dolby_dap_init(int port_id, int copp_idx, int channels,
 		       bool is_custom_stereo_on)

@@ -61,7 +61,6 @@ static struct snd_pcm_hardware msm_pcm_hardware_capture = {
 	.fifo_size =            0,
 };
 
-/* Conventional and unconventional sample rate supported */
 static unsigned int supported_sample_rates[] = {
 	16000,
 };
@@ -200,7 +199,7 @@ static void lsm_event_handler(uint32_t opcode, uint32_t token,
 			atomic_inc(&prtd->buf_count);
 			snd_pcm_period_elapsed(substream);
 			wake_up(&prtd->period_wait);
-			/* queue the next period buffer */
+			
 			buf_index = (buf_index + 1) %
 			prtd->lsm_client->hw_params.period_count;
 			rc = msm_lsm_queue_lab_buffer(prtd, buf_index);
@@ -589,7 +588,7 @@ static int msm_lsm_ioctl_shared(struct snd_pcm_substream *substream,
 			if (prtd->lsm_client->lab_enable &&
 				!prtd->lsm_client->lab_started) {
 				atomic_set(&prtd->read_abort, 0);
-				/* Push the first period buffer */
+				
 				ret = msm_lsm_queue_lab_buffer(prtd, 0);
 				if (ret) {
 					pr_err("%s: failed to queue buffers for LAB read %d\n"
@@ -800,7 +799,7 @@ static int msm_lsm_ioctl_compat(struct snd_pcm_substream *substream,
 			user->payload_size = userarg32.payload_size;
 			err = msm_lsm_ioctl_shared(substream, cmd, user);
 		}
-		/* Update size with actual payload size */
+		
 		size = sizeof(userarg32) + user->payload_size;
 		if (!err && !access_ok(VERIFY_WRITE, arg, size)) {
 			pr_err("%s: write verify failed size %d\n",
@@ -1014,7 +1013,7 @@ static int msm_lsm_ioctl(struct snd_pcm_substream *substream,
 			user->payload_size = userarg.payload_size;
 			err = msm_lsm_ioctl_shared(substream, cmd, user);
 		}
-		/* Update size with actual payload size */
+		
 		size = sizeof(*user) + user->payload_size;
 		if (!err && !access_ok(VERIFY_WRITE, arg, size)) {
 			pr_err("%s: write verify failed size %d\n",
@@ -1064,7 +1063,7 @@ static int msm_lsm_open(struct snd_pcm_substream *substream)
 	if (ret < 0)
 		pr_info("%s: snd_pcm_hw_constraint_list failed ret %d\n",
 			 __func__, ret);
-	/* Ensure that buffer size is a multiple of period size */
+	
 	ret = snd_pcm_hw_constraint_integer(runtime,
 			    SNDRV_PCM_HW_PARAM_PERIODS);
 	if (ret < 0)
@@ -1141,10 +1140,6 @@ static int msm_lsm_close(struct snd_pcm_substream *substream)
 			pr_debug("%s: LSM client session stopped %d\n",
 				 __func__, ret);
 
-		/*
-		 * Go Ahead and try de-register sound model,
-		 * even if stop failed
-		 */
 		prtd->lsm_client->started = false;
 
 		ret = q6lsm_deregister_sound_model(prtd->lsm_client);

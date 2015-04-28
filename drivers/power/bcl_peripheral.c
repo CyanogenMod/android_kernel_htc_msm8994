@@ -607,7 +607,7 @@ static int bcl_get_devicetree_data(struct spmi_device *spmi)
 	char *key = NULL;
 	struct device_node *dev_node = spmi->dev.of_node;
 
-	/* Get SPMI peripheral address */
+	
 	resource = spmi_get_resource(spmi, NULL, IORESOURCE_MEM, 0);
 	if (!resource) {
 		pr_err("No base address defined\n");
@@ -616,7 +616,7 @@ static int bcl_get_devicetree_data(struct spmi_device *spmi)
 	bcl_perph->slave_id = spmi->sid;
 	bcl_perph->base_addr = resource->start;
 
-	/* Register SPMI peripheral interrupt */
+	
 	irq_num = spmi_get_irq_byname(spmi, NULL,
 			BCL_VBAT_INT_NAME);
 	if (irq_num < 0) {
@@ -634,7 +634,7 @@ static int bcl_get_devicetree_data(struct spmi_device *spmi)
 	}
 	bcl_perph->param[BCL_PARAM_CURRENT].irq_num = irq_num;
 
-	/* Get VADC and IADC scaling factor */
+	
 	key = "qcom,vbat-scaling-factor";
 	READ_CONV_FACTOR(dev_node, key, temp_val, ret,
 		bcl_perph->param[BCL_PARAM_VOLTAGE].scaling_factor);
@@ -822,8 +822,6 @@ static int bcl_probe(struct spmi_device *spmi)
 	}
 
 	dev_set_drvdata(&spmi->dev, bcl_perph);
-	/* BCL is enabled by default in hardware
-	** Disable BCL polling till a valid threshold is set by APPS */
 	bcl_perph->enabled = true;
 	ret = bcl_monitor_disable();
 	if (ret) {

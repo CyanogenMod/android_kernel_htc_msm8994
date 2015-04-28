@@ -3,10 +3,8 @@
 
 #include <linux/idr.h>
 
-/* Amount of time in which a process may batch requests */
 #define BLK_BATCH_TIME	(HZ/50UL)
 
-/* Number of requests a "batching" process may submit */
 #define BLK_BATCH_REQ	32
 
 extern struct kmem_cache *blk_requestq_cachep;
@@ -37,17 +35,10 @@ void blk_rq_timed_out_timer(unsigned long data);
 void blk_delete_timer(struct request *);
 void blk_add_timer(struct request *);
 
-/*
- * Internal atomic flags for request handling
- */
 enum rq_atomic_flags {
 	REQ_ATOM_COMPLETE = 0,
 };
 
-/*
- * EH timer and IO completion will both attempt to 'grab' the request, make
- * sure that only one of them succeeds
- */
 static inline int blk_mark_rq_complete(struct request *rq)
 {
 	return test_and_set_bit(REQ_ATOM_COMPLETE, &rq->atomic_flags);
@@ -58,14 +49,6 @@ static inline void blk_clear_rq_complete(struct request *rq)
 	clear_bit(REQ_ATOM_COMPLETE, &rq->atomic_flags);
 }
 
-static inline bool blk_is_req_complete(struct request *rq)
-{
-	return test_bit(REQ_ATOM_COMPLETE, &rq->atomic_flags);
-}
-
-/*
- * Internal elevator interface
- */
 #define ELV_ON_HASH(rq) hash_hashed(&(rq)->hash)
 
 void blk_insert_flush(struct request *rq);
@@ -81,21 +64,6 @@ static inline struct request *__elv_next_request(struct request_queue *q)
 			return rq;
 		}
 
-		/*
-		 * Flush request is running and flush request isn't queueable
-		 * in the drive, we can hold the queue till flush request is
-		 * finished. Even we don't do this, driver can't dispatch next
-		 * requests and will requeue them. And this can improve
-		 * throughput too. For example, we have request flush1, write1,
-		 * flush 2. flush1 is dispatched, then queue is hold, write1
-		 * isn't inserted to queue. After flush1 is finished, flush2
-		 * will be dispatched. Since disk cache is already clean,
-		 * flush2 will be finished very soon, so looks like flush2 is
-		 * folded to flush1.
-		 * Since the queue is hold, a flag is set to indicate the queue
-		 * should be restarted later. Please see flush_end_io() for
-		 * details.
-		 */
 		if (q->flush_pending_idx != q->flush_running_idx &&
 				!queue_flush_queueable(q)) {
 			q->flush_queue_delayed = 1;
@@ -154,31 +122,16 @@ void __blk_run_queue_uncond(struct request_queue *q);
 int blk_dev_init(void);
 
 
-/*
- * Return the threshold (number of used requests) at which the queue is
- * considered to be congested.  It include a little hysteresis to keep the
- * context switch rate down.
- */
 static inline int queue_congestion_on_threshold(struct request_queue *q)
 {
 	return q->nr_congestion_on;
 }
 
-/*
- * The threshold at which a queue is considered to be uncongested
- */
 static inline int queue_congestion_off_threshold(struct request_queue *q)
 {
 	return q->nr_congestion_off;
 }
 
-/*
- * Contribute to IO statistics IFF:
- *
- *	a) it's attached to a gendisk, and
- *	b) the queue had IO stats enabled when this request was started, and
- *	c) it's a file system request
- */
 static inline int blk_do_io_stat(struct request *rq)
 {
 	return rq->rq_disk &&
@@ -186,9 +139,6 @@ static inline int blk_do_io_stat(struct request *rq)
 		(rq->cmd_type == REQ_TYPE_FS);
 }
 
-/*
- * Internal io_context interface
- */
 void get_io_context(struct io_context *ioc);
 struct io_cq *ioc_lookup_icq(struct io_context *ioc, struct request_queue *q);
 struct io_cq *ioc_create_icq(struct io_context *ioc, struct request_queue *q,
@@ -197,18 +147,6 @@ void ioc_clear_queue(struct request_queue *q);
 
 int create_task_io_context(struct task_struct *task, gfp_t gfp_mask, int node);
 
-/**
- * create_io_context - try to create task->io_context
- * @gfp_mask: allocation mask
- * @node: allocation node
- *
- * If %current->io_context is %NULL, allocate a new io_context and install
- * it.  Returns the current %current->io_context which may be %NULL if
- * allocation failed.
- *
- * Note that this function can't be called with IRQ disabled because
- * task_lock which protects %current->io_context is IRQ-unsafe.
- */
 static inline struct io_context *create_io_context(gfp_t gfp_mask, int node)
 {
 	WARN_ON_ONCE(irqs_disabled());
@@ -217,15 +155,12 @@ static inline struct io_context *create_io_context(gfp_t gfp_mask, int node)
 	return current->io_context;
 }
 
-/*
- * Internal throttling interface
- */
 #ifdef CONFIG_BLK_DEV_THROTTLING
 extern bool blk_throtl_bio(struct request_queue *q, struct bio *bio);
 extern void blk_throtl_drain(struct request_queue *q);
 extern int blk_throtl_init(struct request_queue *q);
 extern void blk_throtl_exit(struct request_queue *q);
-#else /* CONFIG_BLK_DEV_THROTTLING */
+#else 
 static inline bool blk_throtl_bio(struct request_queue *q, struct bio *bio)
 {
 	return false;
@@ -233,6 +168,6 @@ static inline bool blk_throtl_bio(struct request_queue *q, struct bio *bio)
 static inline void blk_throtl_drain(struct request_queue *q) { }
 static inline int blk_throtl_init(struct request_queue *q) { return 0; }
 static inline void blk_throtl_exit(struct request_queue *q) { }
-#endif /* CONFIG_BLK_DEV_THROTTLING */
+#endif 
 
-#endif /* BLK_INTERNAL_H */
+#endif 

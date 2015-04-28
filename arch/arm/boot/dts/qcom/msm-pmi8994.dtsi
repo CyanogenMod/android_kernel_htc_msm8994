@@ -27,12 +27,6 @@
 			reg = <0x100 0x100>;
 		};
 
-		qcom,power-on@800 {
-			compatible = "qcom,qpnp-power-on";
-			reg = <0x800 0x100>;
-			qcom,secondary-pon-reset;
-		};
-
 		pmi8994_gpios: gpios {
 			spmi-dev-container;
 			compatible = "qcom,qpnp-pin";
@@ -45,61 +39,61 @@
 			gpio@c000 {
 				reg = <0xc000 0x100>;
 				qcom,pin-num = <1>;
-				status = "disabled";
+				qcom,vin-sel = <2>;
 			};
 
 			gpio@c100 {
 				reg = <0xc100 0x100>;
 				qcom,pin-num = <2>;
-				status = "disabled";
+				qcom,vin-sel = <2>;
 			};
 
 			gpio@c200 {
 				reg = <0xc200 0x100>;
 				qcom,pin-num = <3>;
-				status = "disabled";
+				qcom,vin-sel = <2>;
 			};
 
 			gpio@c300 {
 				reg = <0xc300 0x100>;
 				qcom,pin-num = <4>;
-				status = "disabled";
+				qcom,vin-sel = <2>;
 			};
 
 			gpio@c400 {
 				reg = <0xc400 0x100>;
 				qcom,pin-num = <5>;
-				status = "disabled";
+				qcom,vin-sel = <2>;
 			};
 
 			gpio@c500 {
 				reg = <0xc500 0x100>;
 				qcom,pin-num = <6>;
-				status = "disabled";
+				qcom,vin-sel = <2>;
 			};
 
 			gpio@c600 {
 				reg = <0xc600 0x100>;
 				qcom,pin-num = <7>;
-				status = "disabled";
+				qcom,vin-sel = <2>;
 			};
 
 			gpio@c700 {
 				reg = <0xc700 0x100>;
 				qcom,pin-num = <8>;
-				status = "disabled";
+				qcom,vin-sel = <2>;
 			};
 
 			gpio@c800 {
 				reg = <0xc800 0x100>;
 				qcom,pin-num = <9>;
-				status = "disabled";
+				qcom,vin-sel = <2>;
 			};
 
 			gpio@c900 {
 				reg = <0xc900 0x100>;
 				qcom,pin-num = <10>;
-				status = "disabled";
+				qcom,vin-sel = <2>;
 			};
 		};
 
@@ -115,25 +109,24 @@
 			mpp@a000 {
 				reg = <0xa000 0x100>;
 				qcom,pin-num = <1>;
-				status = "disabled";
+				qcom,vin-sel = <2>;
 			};
 
 			mpp@a100 {
 				reg = <0xa100 0x100>;
 				qcom,pin-num = <2>;
-				status = "disabled";
+				qcom,vin-sel = <2>;
 			};
 
 			mpp@a200 {
 				reg = <0xa200 0x100>;
 				qcom,pin-num = <3>;
-				status = "disabled";
 			};
 
 			mpp@a300 {
 				reg = <0xa300 0x100>;
 				qcom,pin-num = <4>;
-				status = "disabled";
+				qcom,vin-sel = <2>;
 			};
 		};
 
@@ -173,25 +166,37 @@
 			qcom,vadc-meas-int-mode;
 		};
 
-		pmi8994_charger: qcom,qpnp-smbcharger {
+		pmi8994_charger: pmi8994_otg_supply: qcom,qpnp-smbcharger {
 			spmi-dev-container;
 			compatible = "qcom,qpnp-smbcharger";
 			#address-cells = <1>;
 			#size-cells = <1>;
 
-			qcom,iterm-ma = <100>;
-			qcom,fastchg-current-ma = <2000>;
-			qcom,float-voltage-mv = <4350>;
-			qcom,resume-delta-mv = <200>;
+			qcom,iterm-ma = <50>;
+			qcom,eoc-ibat-thre-ma = <280>;
+			qcom,adjust-fastchg-thr-mv = <4260>;
+			qcom,high-fastchg-current-ma = <2500>;
+			qcom,fastchg-current-ma = <1850>;
+			qcom,float-voltage-mv = <4400>;
+			qcom,float-voltage-cmp-mv = <4060>;
+			qcom,iusb-max-ma = <1500>;
+			qcom,charging-timeout-mins = <768>;
+			qcom,precharging-timeout-mins = <24>;
+			qcom,warm-ibatmax = <1200>;
+			qcom,resume-delta-mv = <100>;
 			qcom,chg-inhibit-fg;
 			qcom,dc-psy-type = "Mains";
 			qcom,dc-psy-ma = <1500>;
 			qcom,rparasitic-uohm = <100000>;
+			qcom,resume-soc = <98>;
+			qcom,usbin-chgr-cfg = <5>;
 			qcom,bms-psy-name = "bms";
 			qcom,thermal-mitigation = <1500 700 600 0>;
 			qcom,parallel-usb-min-current-ma = <1400>;
-			qcom,parallel-usb-9v-min-current-ma = <900>;
+			qcom,parallel-9v-usb-min-current-ma = <900>;
 			qcom,parallel-allowed-lowering-ma = <500>;
+			qcom,usbin-vadc = <&pmi8994_vadc>;
+			regulator-name = "pmi8994_otg_vreg";
 
 			qcom,chgr@1000 {
 				reg = <0x1000 0x100>;
@@ -290,10 +295,20 @@
 			compatible = "qcom,qpnp-fg";
 			#address-cells = <1>;
 			#size-cells = <1>;
-			qcom,resume-soc = <95>;
+			qcom,resume-soc = <98>;
 			status = "okay";
+			qcom,warm-bat-decidegc = <480>;
+			qcom,cool-bat-decidegc = <100>;
+			qcom,hot-bat-decidegc = <550>;
+			qcom,cold-bat-decidegc = <0>;
 			qcom,bcl-lm-threshold-ma = <127>;
-			qcom,fg-iterm-ma = <100>;
+			qcom,fg-iterm-ma = <284>;
+			qcom,thermal-coefficients = [97 85 62 49 5A 35];
+			qcom,ext-sense-type = <1>;
+			qcom,store-batt-data-soc-thre = <100>;
+			qcom,stored-batt-magic-num = <(-1)>;
+			qcom,stored-batt-soc = <(-1)>;
+			qcom,stored-batt-update-time = <(-1)>;
 
 			qcom,fg-soc@4000 {
 				status = "okay";
@@ -506,11 +521,12 @@
 			qcom,dim-method = "linear";
 			qcom,hyb-thres = <625>;
 			qcom,sync-dly-us = <800>;
-			qcom,fs-curr-ua = <16000>;
+			qcom,fs-curr-ua = <20000>;	/*Fulfill hTC design 20mA*/
 			qcom,en-phase-stag;
 			qcom,ibb-pwrup-dly = <8>;
-			qcom,led-strings-list = [00 01 02 03];
+			qcom,led-strings-list = [00 01];
 			qcom,en-ext-pfet-sc-pro;
+			qcom,en-cabc;
 		};
 
 		pmi8994_haptics: qcom,haptic@c000 {
@@ -522,7 +538,7 @@
 			interrupt-names = "sc-irq", "play-irq";
 			qcom,play-mode = "direct";
 			qcom,wave-play-rate-us = <5263>;
-			qcom,actuator-type = "lra";
+			qcom,actuator-type = "erm";
 			qcom,wave-shape = "square";
 			qcom,vmax-mv = <2000>;
 			qcom,ilim-ma = <800>;
@@ -535,49 +551,6 @@
 			qcom,wave-samples = [3e 3e 3e 3e 3e 3e 3e 3e];
 			qcom,wave-rep-cnt = <1>;
 			qcom,wave-samp-rep-cnt = <1>;
-		};
-
-		qcom,leds@d000 {
-			compatible = "qcom,leds-qpnp";
-			reg = <0xd000 0x100>;
-			label = "rgb";
-			status = "okay";
-
-			qcom,rgb_0 {
-				label = "rgb";
-				qcom,id = <3>;
-				qcom,mode = "pwm";
-				pwms = <&pmi8994_pwm_3 0 0>;
-				qcom,pwm-us = <1000>;
-				qcom,max-current = <12>;
-				qcom,default-state = "off";
-				linux,name = "red";
-				linux,default-trigger =
-					"battery-charging";
-			};
-
-			qcom,rgb_1 {
-				label = "rgb";
-				qcom,id = <4>;
-				qcom,mode = "pwm";
-				pwms = <&pmi8994_pwm_2 0 0>;
-				qcom,pwm-us = <1000>;
-				qcom,max-current = <12>;
-				qcom,default-state = "off";
-				linux,name = "green";
-				linux,default-trigger = "battery-full";
-			};
-
-			qcom,rgb_2 {
-				label = "rgb";
-				qcom,id = <5>;
-				qcom,mode = "pwm";
-				pwms = <&pmi8994_pwm_1 0 0>;
-				qcom,pwm-us = <1000>;
-				qcom,max-current = <12>;
-				qcom,default-state = "off";
-				linux,name = "blue";
-			};
 		};
 
 		qcom,leds@d300 {
@@ -644,6 +617,18 @@
 						"torch1_trigger";
 				qcom,max-current = <200>;
 				qcom,id = <1>;
+				qcom,current = <120>;
+				boost-supply = <&pmi8994_boostbypass>;
+				boost-voltage-max = <3600000>;
+			};
+
+			pmi8994_flashlight: qcom,flashlight {
+				label = "dual_leds";
+				qcom,led-name = "flashlight";
+				qcom,default-led-trigger =
+						"torch0_trigger";
+				qcom,max-current = <255>;
+				qcom,id = <2>;
 				qcom,current = <120>;
 				boost-supply = <&pmi8994_boostbypass>;
 				boost-voltage-max = <3600000>;

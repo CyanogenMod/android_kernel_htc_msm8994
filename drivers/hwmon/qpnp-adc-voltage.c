@@ -31,7 +31,6 @@
 #include <linux/qpnp/qpnp-adc.h>
 #include <linux/platform_device.h>
 
-/* QPNP VADC register definition */
 #define QPNP_VADC_REVISION1				0x0
 #define QPNP_VADC_REVISION2				0x1
 #define QPNP_VADC_REVISION3				0x2
@@ -334,7 +333,7 @@ static int32_t qpnp_vadc_configure(struct qpnp_vadc_chip *vadc,
 	u8 mode_ctrl = 0, meas_int_op_ctl_data = 0;
 	int rc = 0;
 
-	/* Mode selection */
+	
 	mode_ctrl |= ((chan_prop->mode_sel << QPNP_VADC_OP_MODE_SHIFT) |
 			(QPNP_VADC_TRIM_EN | QPNP_VADC_AMUX_TRIM_EN));
 	rc = qpnp_vadc_write_reg(vadc, QPNP_VADC_MODE_CTL, mode_ctrl);
@@ -343,7 +342,7 @@ static int32_t qpnp_vadc_configure(struct qpnp_vadc_chip *vadc,
 		return rc;
 	}
 
-	/* Channel selection */
+	
 	rc = qpnp_vadc_write_reg(vadc, QPNP_VADC_CH_SEL_CTL,
 						chan_prop->amux_channel);
 	if (rc < 0) {
@@ -351,7 +350,7 @@ static int32_t qpnp_vadc_configure(struct qpnp_vadc_chip *vadc,
 		return rc;
 	}
 
-	/* Digital parameter setup */
+	
 	decimation = chan_prop->decimation <<
 				QPNP_VADC_DIG_DEC_RATIO_SEL_SHIFT;
 	rc = qpnp_vadc_write_reg(vadc, QPNP_VADC_DIG_PARAM, decimation);
@@ -360,7 +359,7 @@ static int32_t qpnp_vadc_configure(struct qpnp_vadc_chip *vadc,
 		return rc;
 	}
 
-	/* HW settling time delay */
+	
 	rc = qpnp_vadc_write_reg(vadc, QPNP_VADC_HW_SETTLE_DELAY,
 						chan_prop->hw_settle_time);
 	if (rc < 0) {
@@ -374,14 +373,14 @@ static int32_t qpnp_vadc_configure(struct qpnp_vadc_chip *vadc,
 
 	if (chan_prop->mode_sel == (ADC_OP_NORMAL_MODE <<
 					QPNP_VADC_OP_MODE_SHIFT)) {
-		/* Normal measurement mode */
+		
 		rc = qpnp_vadc_write_reg(vadc, QPNP_VADC_FAST_AVG_CTL,
 						chan_prop->fast_avg_setup);
 		if (rc < 0) {
 			pr_err("Fast averaging configure error\n");
 			return rc;
 		}
-		/* Ensure MEAS_INTERVAL_OP_CTL is set to 0 */
+		
 		rc = qpnp_vadc_write_reg(vadc, QPNP_VADC_MEAS_INTERVAL_OP_CTL,
 						meas_int_op_ctl_data);
 		if (rc < 0) {
@@ -390,7 +389,7 @@ static int32_t qpnp_vadc_configure(struct qpnp_vadc_chip *vadc,
 		}
 	} else if (chan_prop->mode_sel == (ADC_OP_CONVERSION_SEQUENCER <<
 					QPNP_VADC_OP_MODE_SHIFT)) {
-		/* Conversion sequence mode */
+		
 		conv_sequence = ((ADC_SEQ_HOLD_100US <<
 				QPNP_VADC_CONV_SEQ_HOLDOFF_SHIFT) |
 				ADC_CONV_SEQ_TIMEOUT_5MS);
@@ -427,7 +426,7 @@ static int32_t qpnp_vadc_configure(struct qpnp_vadc_chip *vadc,
 		return rc;
 
 	if (!vadc->vadc_iadc_sync_lock) {
-		/* Request conversion */
+		
 		rc = qpnp_vadc_write_reg(vadc, QPNP_VADC_CONV_REQ,
 					QPNP_VADC_CONV_REQ_SET);
 		if (rc < 0) {
@@ -591,7 +590,7 @@ static irqreturn_t qpnp_vadc_low_thr_isr(int irq, void *data)
 	}
 
 	mode_ctl = ADC_OP_NORMAL_MODE;
-	/* Set measurement in single measurement mode */
+	
 	qpnp_vadc_mode_select(vadc, mode_ctl);
 	qpnp_vadc_enable(vadc, false);
 	schedule_work(&vadc->trigger_low_thr_work);
@@ -617,7 +616,7 @@ static irqreturn_t qpnp_vadc_high_thr_isr(int irq, void *data)
 	}
 
 	mode_ctl = ADC_OP_NORMAL_MODE;
-	/* Set measurement in single measurement mode */
+	
 	qpnp_vadc_mode_select(vadc, mode_ctl);
 	qpnp_vadc_enable(vadc, false);
 	schedule_work(&vadc->trigger_high_thr_work);
@@ -814,7 +813,7 @@ static int32_t qpnp_ocv_comp(int64_t *result,
 		break;
 	case QPNP_REV_ID_8916_1_1:
 		switch (vadc->id) {
-		/* FAB_ID is zero */
+		
 		case COMP_ID_GF:
 			if (die_temp < 25000)
 				temp_var = QPNP_VBAT_COEFF_29;
@@ -822,7 +821,7 @@ static int32_t qpnp_ocv_comp(int64_t *result,
 				temp_var = QPNP_VBAT_COEFF_30;
 			temp_var = (die_temp - 25000) * temp_var;
 			break;
-		/* FAB_ID is non-zero */
+		
 		default:
 			if (die_temp < 25000)
 				temp_var = QPNP_VBAT_COEFF_31;
@@ -893,7 +892,7 @@ static int32_t qpnp_vbat_sns_comp(int64_t *result,
 		return 0;
 
 	if (version != QPNP_REV_ID_8941_3_1) {
-		/* min(die_temp_c, 60_degC) */
+		
 		if (die_temp > 60000)
 			die_temp = 60000;
 	}
@@ -907,7 +906,7 @@ static int32_t qpnp_vbat_sns_comp(int64_t *result,
 			break;
 		default:
 		case COMP_ID_GF:
-			/* min(die_temp_c, 60_degC) */
+			
 			if (die_temp > 60000)
 				die_temp = 60000;
 			temp_var = ((die_temp - 25000) *
@@ -987,12 +986,12 @@ static int32_t qpnp_vbat_sns_comp(int64_t *result,
 		break;
 	case QPNP_REV_ID_8916_1_1:
 		switch (vadc->id) {
-		/* FAB_ID is zero */
+		
 		case COMP_ID_GF:
 			temp_var = ((die_temp - 25000) *
 			(QPNP_VBAT_COEFF_33));
 			break;
-		/* FAB_ID is non-zero */
+		
 		default:
 			offset = QPNP_VBAT_COEFF_35;
 			if (die_temp > 50000) {
@@ -1089,7 +1088,7 @@ static void qpnp_vadc_625mv_channel_sel(struct qpnp_vadc_chip *vadc,
 {
 	uint32_t dt_index = 0;
 
-	/* Check if the buffered 625mV channel exists */
+	
 	while ((vadc->adc->adc_channels[dt_index].channel_num
 		!= SPARE1) && (dt_index < vadc->max_channels_available))
 		dt_index++;
@@ -1313,25 +1312,22 @@ static int32_t qpnp_vadc_wait_for_req_sts_check(struct qpnp_vadc_chip *vadc)
 	u8 status1 = 0;
 	int rc, count = 0;
 
-	/* Re-enable the peripheral */
+	
 	rc = qpnp_vadc_enable(vadc, true);
 	if (rc) {
 		pr_err("vadc re-enable peripheral failed with %d\n", rc);
 		return rc;
 	}
 
-	/* The VADC_TM bank needs to be disabled for new conversion request */
+	
 	rc = qpnp_vadc_read_reg(vadc, QPNP_VADC_STATUS1, &status1);
 	if (rc) {
 		pr_err("vadc read status1 failed with %d\n", rc);
 		return rc;
 	}
 
-	/* Disable the bank if a conversion is occuring */
+	
 	while ((status1 & QPNP_VADC_STATUS1_REQ_STS) && (count < QPNP_RETRY)) {
-		/* Wait time is based on the optimum sampling rate
-		 * and adding enough time buffer to account for ADC conversions
-		 * occuring on different peripheral banks */
 		usleep_range(QPNP_MIN_TIME, QPNP_MAX_TIME);
 		rc = qpnp_vadc_read_reg(vadc, QPNP_VADC_STATUS1, &status1);
 		if (rc < 0) {
@@ -1346,7 +1342,7 @@ static int32_t qpnp_vadc_wait_for_req_sts_check(struct qpnp_vadc_chip *vadc)
 
 	rc = qpnp_vadc_read_reg(vadc, QPNP_VADC_STATUS1, &status1);
 
-	/* Disable the peripheral */
+	
 	rc = qpnp_vadc_enable(vadc, false);
 	if (rc < 0)
 		pr_err("vadc peripheral disable failed with %d\n", rc);
@@ -1365,7 +1361,7 @@ static int32_t qpnp_vadc_manage_meas_int_requests(struct qpnp_vadc_chip *chip)
 
 	if (vadc->state_copy->meas_int_mode) {
 		pr_debug("meas interval in progress. Procced to disable it\n");
-		/* measurement interval in progress. Proceed to disable it */
+		
 		mode_ctl = ADC_OP_NORMAL_MODE;
 		rc = qpnp_vadc_mode_select(vadc, mode_ctl);
 		if (rc < 0) {
@@ -1373,14 +1369,14 @@ static int32_t qpnp_vadc_manage_meas_int_requests(struct qpnp_vadc_chip *chip)
 			return rc;
 		}
 
-		/* Disable bank */
+		
 		rc = qpnp_vadc_enable(vadc, false);
 		if (rc) {
 			pr_err("Disable bank failed with %d\n", rc);
 			return rc;
 		}
 
-		/* Check if a conversion is in progress */
+		
 		rc = qpnp_vadc_wait_for_req_sts_check(vadc);
 		if (rc < 0) {
 			pr_err("req_sts check failed with %d\n", rc);
@@ -1390,7 +1386,7 @@ static int32_t qpnp_vadc_manage_meas_int_requests(struct qpnp_vadc_chip *chip)
 		vadc->state_copy->meas_int_mode = false;
 		vadc->state_copy->meas_int_request_in_queue = true;
 	} else if (vadc->state_copy->meas_int_request_in_queue) {
-		/* put the meas interval back in queue */
+		
 		pr_debug("put meas interval back in queue\n");
 		vadc->adc->amux_prop->amux_channel =
 				vadc->state_copy->vadc_meas_amux.channel_num;
@@ -2016,7 +2012,7 @@ int32_t qpnp_vadc_end_channel_monitor(struct qpnp_vadc_chip *chip)
 	vadc->state_copy->meas_int_request_in_queue = false;
 	dev_set_drvdata(vadc->dev, vadc);
 	mode_ctl = ADC_OP_NORMAL_MODE;
-	/* Set measurement in single measurement mode */
+	
 	qpnp_vadc_mode_select(vadc, mode_ctl);
 	qpnp_vadc_enable(vadc, false);
 
@@ -2077,6 +2073,60 @@ hwmon_err_sens:
 	pr_err("Init HWMON failed for qpnp_adc with %d\n", rc);
 	return rc;
 }
+
+#ifdef CONFIG_HTC_POWER_DEBUG
+int vadc_channel_num = 0;
+
+static int htc_vadc_set(void *data, u64 val)
+{
+
+       if (val < 0) {
+               pr_err("invalid value\n");
+               return -1;
+       }
+       else
+               vadc_channel_num = val;
+
+       return 0;
+
+}
+static int htc_vadc_get(void *data, u64 *val)
+{
+       struct qpnp_vadc_chip *vadc = data;
+       struct qpnp_vadc_result read_result;
+       int rc = 0;
+
+       rc = qpnp_vadc_read(vadc, vadc_channel_num, &read_result);
+
+       if (rc) {
+               pr_err("VADC read error with %d\n", rc);
+               return 0;
+       }
+
+       *val = read_result.physical;
+
+       return 0;
+}
+
+DEFINE_SIMPLE_ATTRIBUTE(qpnp_vadc_ops, htc_vadc_get,
+                       htc_vadc_set, "%lld\n");
+
+int htc_read_vadc_debugfs_init(struct qpnp_vadc_chip *vadc)
+{
+       int err = 0;
+       static struct dentry *debugfs_vadc_base;
+
+       debugfs_vadc_base = debugfs_create_dir("htc_read_vadc", NULL);
+       if (!debugfs_vadc_base)
+               return -ENOMEM;
+
+       if (!debugfs_create_file("read_vadc", S_IRUGO, debugfs_vadc_base,
+                                vadc, &qpnp_vadc_ops))
+               return -ENOMEM;
+
+       return err;
+}
+#endif
 
 static int qpnp_vadc_probe(struct spmi_device *spmi)
 {
@@ -2229,6 +2279,9 @@ static int qpnp_vadc_probe(struct spmi_device *spmi)
 	vadc->vadc_iadc_sync_lock = false;
 	dev_set_drvdata(&spmi->dev, vadc);
 	list_add(&vadc->list, &qpnp_vadc_device_list);
+#ifdef CONFIG_HTC_POWER_DEBUG
+        htc_read_vadc_debugfs_init(vadc);
+#endif
 
 	return 0;
 

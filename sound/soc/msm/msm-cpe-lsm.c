@@ -50,7 +50,6 @@
 	mutex_unlock(lock);			\
 }
 
-/* Conventional and unconventional sample rate supported */
 static unsigned int supported_sample_rates[] = {
 	8000, 16000
 };
@@ -112,10 +111,6 @@ struct cpe_lsm_data {
 	u8 *ev_det_payload;
 };
 
-/*
- * cpe_get_private_data: obtain ASoC platform driver private data
- * @substream: ASoC substream for which private data to be obtained
- */
 static struct cpe_priv *cpe_get_private_data(
 	struct snd_pcm_substream *substream)
 {
@@ -143,10 +138,6 @@ err_ret:
 	return NULL;
 }
 
-/*
- * cpe_get_lsm_data: obtain the lsm session data given the substream
- * @substream: ASoC substream for which lsm session data to be obtained
- */
 static struct cpe_lsm_data *cpe_get_lsm_data(
 	struct snd_pcm_substream *substream)
 {
@@ -183,15 +174,6 @@ static void msm_cpe_process_event_status_done(struct cpe_lsm_data *lsm_data)
 	lsm_data->ev_det_pld_size = 0;
 }
 
-/*
- * msm_cpe_afe_port_cntl: Perform the afe port control
- * @substream: substream for which afe port command to be performed
- * @core_handle: handle to core
- * @afe_ops: handle to the afe operations
- * @afe_cfg: afe port configuration data
- * @cmd: command to be sent to AFE
- *
- */
 static int msm_cpe_afe_port_cntl(
 		struct snd_pcm_substream *substream,
 		void *core_handle,
@@ -276,7 +258,7 @@ static int msm_cpe_lsm_lab_stop(struct snd_pcm_substream *substream)
 			__func__);
 		rc = kthread_stop(session->lsm_lab_thread);
 
-		/* Wait for the lab thread to exit */
+		
 		rc = wait_for_completion_timeout(
 				&lab_sess->thread_complete,
 				MSM_CPE_LAB_THREAD_TIMEOUT);
@@ -301,13 +283,6 @@ static int msm_cpe_lsm_lab_stop(struct snd_pcm_substream *substream)
 	return 0;
 }
 
-/*
- * msm_cpe_lab_thread: Initiated on KW detection
- * @data: lab data
- *
- * Start lab thread and call CPE core API for SLIM
- * read operations.
- */
 static int msm_cpe_lab_thread(void *data)
 {
 	struct wcd_cpe_lsm_lab *lab = (struct wcd_cpe_lsm_lab *)data;
@@ -419,13 +394,6 @@ done:
 	return 0;
 }
 
-/*
- * msm_cpe_lsm_open: ASoC call to open the stream
- * @substream: substream that is to be opened
- *
- * Create session data for lsm session and open the lsm session
- * on CPE.
- */
 static int msm_cpe_lsm_open(struct snd_pcm_substream *substream)
 {
 	struct cpe_lsm_data *lsm_d;
@@ -452,7 +420,7 @@ static int msm_cpe_lsm_open(struct snd_pcm_substream *substream)
 		return -EINVAL;
 	}
 
-	/* Ensure that buffer size is a multiple of period size */
+	
 	rc = snd_pcm_hw_constraint_integer(runtime,
 					   SNDRV_PCM_HW_PARAM_PERIODS);
 	if (rc < 0) {
@@ -501,7 +469,7 @@ static int msm_cpe_lsm_open(struct snd_pcm_substream *substream)
 		rc = -EINVAL;
 		goto fail_session_alloc;
 	}
-	/* Explicitly Assign the LAB thread to STOP state */
+	
 	lsm_d->lsm_session->lab.thread_status = MSM_LSM_LAB_THREAD_STOP;
 	lsm_d->lsm_session->started = false;
 
@@ -535,14 +503,6 @@ fail_return:
 	return rc;
 }
 
-/*
- * msm_cpe_lsm_close: ASoC call to close/cleanup the stream
- * @substream: substream that is to be closed
- *
- * Deallocate the session and release the AFE port. It is not
- * required to deregister the sound model as long as we close
- * the lsm session on CPE.
- */
 static int msm_cpe_lsm_close(struct snd_pcm_substream *substream)
 {
 	struct snd_pcm_runtime *runtime = substream->runtime;
@@ -576,11 +536,6 @@ static int msm_cpe_lsm_close(struct snd_pcm_substream *substream)
 	afe_ops = &cpe->afe_ops;
 	afe_cfg = &(lsm_d->lsm_session->afe_port_cfg);
 
-	/*
-	 * If driver is closed without stopping LAB,
-	 * explicitly stop LAB before cleaning up the
-	 * driver resources.
-	 */
 	rc = msm_cpe_lsm_lab_stop(substream);
 	if (rc) {
 		dev_err(rtd->dev,
@@ -646,16 +601,6 @@ done:
 	return rc;
 }
 
-/*
- * msm_cpe_lsm_ioctl_shared: Shared IOCTL for this platform driver
- * @substream: ASoC substream for which the operation is invoked
- * @cmd: command for the ioctl
- * @arg: argument for the ioctl
- *
- * Perform dedicated listen functions like register sound model,
- * deregister sound model, etc
- * Called with lsm_api_lock acquired.
- */
 static int msm_cpe_lsm_ioctl_shared(struct snd_pcm_substream *substream,
 			 unsigned int cmd, void *arg)
 {
@@ -760,12 +705,6 @@ static int msm_cpe_lsm_ioctl_shared(struct snd_pcm_substream *substream,
 			snd_pcm_set_runtime_buffer(substream,
 						   &substream->dma_buffer);
 		} else {
-			/*
-			 * It is possible that lab is still enabled
-			 * when trying to de-allocate the lab buffer.
-			 * Make sure to disable lab before de-allocating
-			 * the lab buffer.
-			 */
 			rc = msm_cpe_lsm_lab_stop(substream);
 			if (rc) {
 				dev_err(rtd->dev,
@@ -863,12 +802,6 @@ static int msm_cpe_lsm_ioctl_shared(struct snd_pcm_substream *substream,
 			"%s: %s\n",
 			__func__, "SNDRV_LSM_DEREG_SND_MODEL");
 		if (lab_sess->lab_enable) {
-			/*
-			 * It is possible that lab is still enabled
-			 * when trying to deregister sound model.
-			 * Make sure to disable lab before de-allocating
-			 * the lab buffer.
-			 */
 			rc = msm_cpe_lsm_lab_stop(substream);
 			if (rc) {
 				dev_err(rtd->dev,
@@ -925,11 +858,6 @@ static int msm_cpe_lsm_ioctl_shared(struct snd_pcm_substream *substream,
 
 		user = arg;
 
-		/*
-		 * Release the api lock before wait to allow
-		 * other IOCTLs to be invoked while waiting
-		 * for event
-		 */
 		MSM_CPE_LSM_REL_LOCK(&lsm_d->lsm_api_lock,
 				     "lsm_api_lock");
 
@@ -1002,7 +930,7 @@ static int msm_cpe_lsm_ioctl_shared(struct snd_pcm_substream *substream,
 		if ((lab_sess->lab_enable &&
 		     lab_sess->thread_status ==
 		     MSM_LSM_LAB_THREAD_RUNNING)) {
-			/* Explicitly stop LAB */
+			
 			rc = msm_cpe_lsm_lab_stop(substream);
 			if (rc) {
 				dev_err(rtd->dev,
@@ -1134,12 +1062,6 @@ static int msm_cpe_lsm_lab_start(struct snd_pcm_substream *substream,
 		lsm_ops->lsm_lab_data_channel_open(
 			cpe->core_handle, session);
 
-		/*
-		 * Even though thread might be only scheduled and
-		 * not currently running, mark the internal driver
-		 * status to running so driver can cancel this thread
-		 * if it needs to before the thread gets chance to run.
-		 */
 		lab_sess->thread_status = MSM_LSM_LAB_THREAD_RUNNING;
 		session->lsm_lab_thread = kthread_run(
 				msm_cpe_lab_thread,
@@ -1516,12 +1438,6 @@ done:
 #define msm_cpe_lsm_ioctl_compat NULL
 #endif
 
-/*
- * msm_cpe_lsm_prepare: prepare call from ASoC core for this platform
- * @substream: ASoC substream for which the operation is invoked
- *
- * start the AFE port on CPE associated for this listen session
- */
 static int msm_cpe_lsm_prepare(struct snd_pcm_substream *substream)
 {
 	int rc = 0;
@@ -1581,13 +1497,6 @@ static int msm_cpe_lsm_prepare(struct snd_pcm_substream *substream)
 	return rc;
 }
 
-/*
- * msm_cpe_lsm_trigger: trigger call from ASoC core for this platform
- * @substream: ASoC substream for which the operation is invoked
- * @cmd: the trigger command from framework
- *
- * suspend/resume the AFE port on CPE associated with listen session
- */
 static int msm_cpe_lsm_trigger(struct snd_pcm_substream *substream,
 			       int cmd)
 {
@@ -1724,14 +1633,10 @@ static int msm_cpe_lsm_copy(struct snd_pcm_substream *substream, int a,
 	session = lsm_d->lsm_session;
 	lab_s = &session->lab;
 
-	/* Check if buffer reading is already in error state */
+	
 	if (lab_s->thread_status != MSM_LSM_LAB_THREAD_RUNNING) {
 		pr_err("%s: Buffers not available\n",
 			__func__);
-		/*
-		 * Advance the period so there is no wait in case
-		 * read is invoked even after error is propogated
-		 */
 		atomic_inc(&lab_s->in_count);
 		lab_s->dma_write += snd_pcm_lib_period_bytes(substream);
 		snd_pcm_period_elapsed(substream);
@@ -1776,14 +1681,6 @@ fail:
 	return rc;
 }
 
-/*
- * msm_asoc_cpe_lsm_probe: ASoC framework for lsm platform driver
- * @platform: platform registered with ASoC core
- *
- * Allocate the private data for this platform and obtain the ops for
- * lsm and afe modules from underlying driver. Also find the codec
- * for this platform as specified by machine driver for ASoC framework.
- */
 static int msm_asoc_cpe_lsm_probe(struct snd_soc_platform *platform)
 {
 	struct snd_soc_card *card;
@@ -1801,7 +1698,7 @@ static int msm_asoc_cpe_lsm_probe(struct snd_soc_platform *platform)
 
 	card = platform->card;
 
-	/* Match platform to codec */
+	
 	for (i = 0; i < card->num_links; i++) {
 		rtd = &card->rtd[i];
 		if (!rtd->platform)
@@ -1855,12 +1752,6 @@ static struct snd_soc_platform_driver msm_soc_cpe_platform = {
 	.probe = msm_asoc_cpe_lsm_probe,
 };
 
-/*
- * msm_cpe_lsm_probe: platform driver probe
- * @pdev: platform device
- *
- * Register the ASoC platform driver with ASoC core
- */
 static int msm_cpe_lsm_probe(struct platform_device *pdev)
 {
 
@@ -1868,12 +1759,6 @@ static int msm_cpe_lsm_probe(struct platform_device *pdev)
 					 &msm_soc_cpe_platform);
 }
 
-/*
- * msm_cpe_lsm_remove: platform driver remove
- * @pdev: platform device
- *
- * Deregister the ASoC platform driver
- */
 static int msm_cpe_lsm_remove(struct platform_device *pdev)
 {
 	snd_soc_unregister_platform(&pdev->dev);

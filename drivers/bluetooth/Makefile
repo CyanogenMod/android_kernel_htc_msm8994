@@ -21,6 +21,10 @@ obj-$(CONFIG_BT_MRVL_SDIO)	+= btmrvl_sdio.o
 obj-$(CONFIG_BT_WILINK)		+= btwilink.o
 obj-$(CONFIG_MSM_BT_POWER)	+= bluetooth-power.o
 
+obj-$(CONFIG_ARCH_MSM8994)	+= board-8994-rfkill.o
+obj-$(CONFIG_ARCH_MSM8994)	+= htc_bdaddress.o
+obj-$(CONFIG_ARCH_MSM8994)	+= bluesleep.o
+
 btmrvl-y			:= btmrvl_main.o
 btmrvl-$(CONFIG_DEBUG_FS)	+= btmrvl_debugfs.o
 

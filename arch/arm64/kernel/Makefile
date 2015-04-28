@@ -36,6 +36,8 @@ arm64-obj-$(CONFIG_EFI)			+= efi.o efi-stub.o efi-entry.o
 
 obj-$(CONFIG_SWP_EMULATE)	+= swp_emulate.o
 
+obj-$(CONFIG_MSM_SCM) += htc_debug.o
+
 obj-$(CONFIG_PCI)                      += pcibios.o
 obj-y					+= $(arm64-obj-y) vdso/
 obj-m					+= $(arm64-obj-m)

@@ -67,11 +67,6 @@ static void copy_remaining_nodes(struct list_head *edge_list, struct list_head
 	list_add_tail(&search_node->link, route_list);
 }
 
-/*
- * Duplicate instantiaion from msm_bus_arb.c. Todo there needs to be a
- * "util" file for these common func/macros.
- *
- * */
 uint64_t msm_bus_div64(unsigned int w, uint64_t bw)
 {
 	uint64_t *b = &bw;
@@ -329,7 +324,7 @@ static int getpath(int src, int dest)
 
 	while ((!found && !list_empty(&traverse_list))) {
 		struct msm_bus_node_device_type *bus_node = NULL;
-		/* Locate dest_id in the traverse list */
+		
 		list_for_each_entry(bus_node, &traverse_list, link) {
 			if (bus_node->node_info->id == dest) {
 				found = 1;
@@ -339,9 +334,9 @@ static int getpath(int src, int dest)
 
 		if (!found) {
 			unsigned int i;
-			/* Setup the new edge list */
+			
 			list_for_each_entry(bus_node, &traverse_list, link) {
-				/* Setup list of black-listed nodes */
+				
 				setup_bl_list(bus_node, &black_list);
 
 				for (i = 0; i < bus_node->node_info->
@@ -370,15 +365,15 @@ static int getpath(int src, int dest)
 				}
 			}
 
-			/* Keep tabs of the previous search list */
+			
 			search_node = kzalloc(sizeof(struct bus_search_type),
 					 GFP_KERNEL);
 			INIT_LIST_HEAD(&search_node->node_list);
 			list_splice_init(&traverse_list,
 					 &search_node->node_list);
-			/* Add the previous search list to a route list */
+			
 			list_add_tail(&search_node->link, &route_list);
-			/* Advancing the list depth */
+			
 			depth_index++;
 			list_splice_init(&edge_list, &traverse_list);
 		}
@@ -400,22 +395,14 @@ static uint64_t arbitrate_bus_req(struct msm_bus_node_device_type *bus_dev,
 	uint64_t bw_max_hz;
 	struct msm_bus_node_device_type *fab_dev = NULL;
 
-	/* Find max ib */
+	
 	for (i = 0; i < bus_dev->num_lnodes; i++) {
 		max_ib = max(max_ib, bus_dev->lnode_list[i].lnode_ib[ctx]);
 		sum_ab += bus_dev->lnode_list[i].lnode_ab[ctx];
 	}
-	/*
-	 *  Account for Util factor and vrail comp. The new aggregation
-	 *  formula is:
-	 *  Freq_hz = max((sum(ab) * util_fact)/num_chan, max(ib)/vrail_comp)
-	 *				/ bus-width
-	 *  util_fact and vrail comp are obtained from fabric's dts properties.
-	 *  They default to 100 if absent.
-	 */
 	fab_dev = bus_dev->node_info->bus_device->platform_data;
 
-	/* Don't do this for virtual fabrics */
+	
 	if (fab_dev && fab_dev->fabdev) {
 		sum_ab *= fab_dev->fabdev->util_fact;
 		sum_ab = msm_bus_div64(100, sum_ab);
@@ -423,7 +410,7 @@ static uint64_t arbitrate_bus_req(struct msm_bus_node_device_type *bus_dev,
 		max_ib = msm_bus_div64(fab_dev->fabdev->vrail_comp, max_ib);
 	}
 
-	/* Account for multiple channels if any */
+	
 	if (bus_dev->node_info->num_qports > 1)
 		sum_ab = msm_bus_div64(bus_dev->node_info->num_qports,
 					sum_ab);
@@ -529,8 +516,13 @@ static uint64_t get_node_ib(struct msm_bus_node_device_type *bus_dev)
 	return max_ib;
 }
 
+#ifdef CONFIG_HTC_DEBUG_MSMBUS
+static int update_path(int src, int dest, uint64_t req_ib, uint64_t req_bw,
+			uint64_t cur_ib, uint64_t cur_bw, int src_idx, int ctx, int cl)
+#else
 static int update_path(int src, int dest, uint64_t req_ib, uint64_t req_bw,
 			uint64_t cur_ib, uint64_t cur_bw, int src_idx, int ctx)
+#endif
 {
 	struct device *src_dev = NULL;
 	struct device *next_dev = NULL;
@@ -581,10 +573,6 @@ static int update_path(int src, int dest, uint64_t req_ib, uint64_t req_bw,
 
 		dev_info->cur_clk_hz[ctx] = arbitrate_bus_req(dev_info, ctx);
 
-		/* Start updating the clocks at the first hop.
-		 * Its ok to figure out the aggregated
-		 * request at this node.
-		 */
 		if (src_dev != next_dev) {
 			ret = msm_bus_update_clks(dev_info, ctx, &dirty_nodes,
 								&num_dirty);
@@ -622,13 +610,18 @@ static int update_path(int src, int dest, uint64_t req_ib, uint64_t req_bw,
 		msm_bus_apply_rules(&apply_list, false);
 	}
 
+#ifdef CONFIG_HTC_DEBUG_MSMBUS
+	msm_bus_commit_data(dirty_nodes, ctx, num_dirty, cl);
+#else
 	msm_bus_commit_data(dirty_nodes, ctx, num_dirty);
+#endif
 
 	if (rules_registered) {
 		msm_bus_apply_rules(&apply_list, true);
 		del_inp_list(&input_list);
 		del_op_list(&apply_list);
 	}
+
 exit_update_path:
 	return ret;
 }
@@ -644,12 +637,15 @@ static int remove_path(int src, int dst, uint64_t cur_ib, uint64_t cur_ab,
 	int cur_idx = src_idx;
 	int next_idx;
 
-	/* Update the current path to zero out all request from
-	 * this cient on all paths
-	 */
 
+#ifdef CONFIG_HTC_DEBUG_MSMBUS
+	ret = update_path(src, dst, 0, 0, cur_ib, cur_ab, src_idx,
+							active_only, 0);
+#else
 	ret = update_path(src, dst, 0, 0, cur_ib, cur_ab, src_idx,
 							active_only);
+#endif
+
 	if (ret) {
 		MSM_BUS_ERR("%s: Error zeroing out path ctx %d",
 					__func__, ACTIVE_CTX);
@@ -891,6 +887,14 @@ static uint32_t register_client_adhoc(struct msm_bus_scale_pdata *pdata)
 					handle);
 	MSM_BUS_DBG("%s:Client handle %d %s", __func__, handle,
 						client->pdata->name);
+
+#ifdef CONFIG_HTC_DEBUG_MSMBUS
+	if(handle >= HTC_MAX_NOC_CLIENT) {
+		pr_err("[MSMBUS] too many client handles. Out of range.\n");
+		goto exit_register_client;
+	}
+	strncpy(htc_noc_client_name[handle], client->pdata->name, HTC_MAX_NOC_NAME);
+#endif
 exit_register_client:
 	mutex_unlock(&msm_bus_adhoc_lock);
 	return handle;
@@ -963,8 +967,13 @@ static int update_request_adhoc(uint32_t cl, unsigned int index)
 					curr_bw, curr_clk);
 		}
 
+#ifdef CONFIG_HTC_DEBUG_MSMBUS
+		ret = update_path(src, dest, req_clk, req_bw,
+				curr_clk, curr_bw, lnode, pdata->active_only, cl);
+#else
 		ret = update_path(src, dest, req_clk, req_bw,
 				curr_clk, curr_bw, lnode, pdata->active_only);
+#endif
 
 		if (ret) {
 			MSM_BUS_ERR("%s: Update path failed! %d ctx %d\n",
@@ -1104,10 +1113,6 @@ exit_register:
 	mutex_unlock(&msm_bus_adhoc_lock);
 	return client;
 }
-/**
- *  msm_bus_arb_setops_adhoc() : Setup the bus arbitration ops
- *  @ arb_ops: pointer to the arb ops.
- */
 void msm_bus_arb_setops_adhoc(struct msm_bus_arb_ops *arb_ops)
 {
 	arb_ops->register_client = register_client_adhoc;

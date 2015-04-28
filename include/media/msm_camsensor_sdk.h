@@ -20,7 +20,7 @@
 #define CSI_DECODE_DPCM_10_8_10 5
 #define MAX_CID                 16
 #define I2C_SEQ_REG_DATA_MAX    256
-#define MSM_V4L2_PIX_FMT_META v4l2_fourcc('M', 'E', 'T', 'A') /* META */
+#define MSM_V4L2_PIX_FMT_META v4l2_fourcc('M', 'E', 'T', 'A') 
 
 #define MAX_ACTUATOR_REG_TBL_SIZE 8
 #define MAX_ACTUATOR_REGION       5
@@ -52,6 +52,9 @@ enum i2c_freq_mode_t {
 enum camb_position_t {
 	BACK_CAMERA_B,
 	FRONT_CAMERA_B,
+	 
+	SUB_CAMERA_B,
+	 
 	INVALID_CAMERA_B,
 };
 
@@ -184,11 +187,11 @@ struct msm_sensor_power_setting_array {
 };
 
 struct msm_sensor_init_params {
-	/* mask of modes supported: 2D, 3D */
+	
 	int                 modes_supported;
-	/* sensor position: front, back */
+	
 	enum camb_position_t position;
-	/* sensor mount angle */
+	
 	uint32_t            sensor_mount_angle;
 };
 
@@ -285,9 +288,6 @@ struct damping_params_t {
 };
 
 struct region_params_t {
-	/* [0] = ForwardDirection Macro boundary
-	   [1] = ReverseDirection Inf boundary
-	*/
 	uint16_t step_bound[2];
 	uint16_t code_per_step;
 };
@@ -308,4 +308,4 @@ struct msm_camera_i2c_reg_setting_array {
 	enum msm_camera_i2c_data_type data_type;
 	uint16_t delay;
 };
-#endif /* __LINUX_MSM_CAM_SENSOR_H */
+#endif 

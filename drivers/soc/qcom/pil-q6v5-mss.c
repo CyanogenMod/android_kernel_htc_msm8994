@@ -27,6 +27,9 @@
 #include <linux/dma-mapping.h>
 #include <linux/of_gpio.h>
 #include <linux/clk/msm-clk.h>
+#if defined(CONFIG_HTC_FEATURES_SSR)
+#include <linux/htc_flags.h>
+#endif
 #include <soc/qcom/subsystem_restart.h>
 #include <soc/qcom/ramdump.h>
 #include <soc/qcom/smem.h>
@@ -43,7 +46,15 @@
 
 #define subsys_to_drv(d) container_of(d, struct modem_data, subsys_desc)
 
+#if defined(CONFIG_HTC_DEBUG_SSR)
+int skip_ssr_on_fatal = 0;
+#endif
+
+#if defined(CONFIG_HTC_DEBUG_SSR)
+static void log_modem_sfr(struct subsys_device *dev)
+#else
 static void log_modem_sfr(void)
+#endif
 {
 	u32 size;
 	char *smem_reason, reason[MAX_SSR_REASON_LEN];
@@ -61,6 +72,12 @@ static void log_modem_sfr(void)
 
 	strlcpy(reason, smem_reason, min(size, MAX_SSR_REASON_LEN));
 	pr_err("modem subsystem failure reason: %s.\n", reason);
+#if defined(CONFIG_HTC_DEBUG_SSR)
+       if (strstr(reason, "oem-98") || strstr(reason, "oem-96") || strstr(reason, "oem-95")) {
+           skip_ssr_on_fatal = 1;
+       }
+	subsys_set_restart_reason(dev, reason);
+#endif
 
 	smem_reason[0] = '\0';
 	wmb();
@@ -68,16 +85,26 @@ static void log_modem_sfr(void)
 
 static void restart_modem(struct modem_data *drv)
 {
+#if defined(CONFIG_HTC_DEBUG_SSR)
+	log_modem_sfr(drv->subsys);
+#else
 	log_modem_sfr();
+#endif
 	drv->ignore_errors = true;
+#if defined(CONFIG_HTC_DEBUG_SSR)
+       if (skip_ssr_on_fatal == 0) {
+           subsystem_restart_dev(drv->subsys);
+       }
+#else
 	subsystem_restart_dev(drv->subsys);
+#endif
 }
 
 static irqreturn_t modem_err_fatal_intr_handler(int irq, void *dev_id)
 {
 	struct modem_data *drv = subsys_to_drv(dev_id);
 
-	/* Ignore if we're the one that set the force stop GPIO */
+	
 	if (drv->crash_shutdown)
 		return IRQ_HANDLED;
 
@@ -131,11 +158,6 @@ static int modem_powerup(const struct subsys_desc *subsys)
 
 	if (subsys->is_not_loadable)
 		return 0;
-	/*
-	 * At this time, the modem is shutdown. Therefore this function cannot
-	 * run concurrently with the watchdog bite error handler, making it safe
-	 * to unset the flag below.
-	 */
 	INIT_COMPLETION(drv->stop_ack);
 	drv->subsys_desc.ramdump_disable = 0;
 	drv->ignore_errors = false;
@@ -187,6 +209,9 @@ static irqreturn_t modem_wdog_bite_intr_handler(int irq, void *dev_id)
 	if (drv->ignore_errors)
 		return IRQ_HANDLED;
 	pr_err("Watchdog bite received from modem software!\n");
+#if defined(CONFIG_HTC_DEBUG_SSR)
+	subsys_set_restart_reason(drv->subsys, "Watchdog bite received from modem software!");
+#endif
 	subsys_set_crash_status(drv->subsys, true);
 	restart_modem(drv);
 	return IRQ_HANDLED;
@@ -213,6 +238,41 @@ static int pil_subsys_init(struct modem_data *drv,
 		ret = PTR_ERR(drv->subsys);
 		goto err_subsys;
 	}
+
+#if defined(CONFIG_HTC_FEATURES_SSR)
+#if defined(CONFIG_HTC_FEATURES_SSR_MODEM_ENABLE)
+	if (get_kernel_flag() & (KERNEL_FLAG_ENABLE_SSR_MODEM)) {
+		pr_info("%s: CONFIG_HTC_FEATURES_SSR_MODEM_ENABLE, KERNEL_FLAG_ENABLE_SSR_MODEM, RESET_SOC.\n", __func__);
+		subsys_set_restart_level(drv->subsys, RESET_SOC);
+		subsys_set_enable_ramdump(drv->subsys, DISABLE_RAMDUMP);
+	} else {
+		pr_info("%s: CONFIG_HTC_FEATURES_SSR_MODEM_ENABLE, RESET_SUBSYS_COUPLED.\n", __func__);
+		subsys_set_restart_level(drv->subsys, RESET_SUBSYS_COUPLED);
+		if (get_radio_flag() & BIT(3))
+			subsys_set_enable_ramdump(drv->subsys, ENABLE_RAMDUMP);
+		else
+			subsys_set_enable_ramdump(drv->subsys, DISABLE_RAMDUMP);
+	}
+#else
+	if (get_kernel_flag() & (KERNEL_FLAG_ENABLE_SSR_MODEM)) {
+		pr_info("%s: KERNEL_FLAG_ENABLE_SSR_MODEM, RESET_SUBSYS_COUPLED.\n", __func__);
+		subsys_set_restart_level(drv->subsys, RESET_SUBSYS_COUPLED);
+		if (get_radio_flag() & BIT(3))
+			subsys_set_enable_ramdump(drv->subsys, ENABLE_RAMDUMP);
+		else
+			subsys_set_enable_ramdump(drv->subsys, DISABLE_RAMDUMP);
+	} else {
+		pr_info("%s: RESET_SOC.\n", __func__);
+		subsys_set_restart_level(drv->subsys, RESET_SOC);
+		subsys_set_enable_ramdump(drv->subsys, DISABLE_RAMDUMP);
+	}
+#endif
+	pr_info("%s: htc_get_bootmode()=%s, RESET_SOC.\n", __func__, htc_get_bootmode());
+	if(!strcmp(htc_get_bootmode(),"ftm")) {
+		subsys_set_restart_level(drv->subsys, RESET_SOC);
+		subsys_set_enable_ramdump(drv->subsys, DISABLE_RAMDUMP);
+	}
+#endif
 
 	drv->ramdump_dev = create_ramdump_device("modem", &pdev->dev);
 	if (!drv->ramdump_dev) {
@@ -321,7 +381,7 @@ static int pil_mss_loadable_init(struct modem_data *drv,
 	if (IS_ERR(q6->rom_clk))
 		return PTR_ERR(q6->rom_clk);
 
-	/* Optional. */
+	
 	if (of_property_match_string(pdev->dev.of_node,
 			"qcom,active-clock-names", "gpll0_mss_clk") >= 0)
 		q6->gpll0_mss_clk = devm_clk_get(&pdev->dev, "gpll0_mss_clk");

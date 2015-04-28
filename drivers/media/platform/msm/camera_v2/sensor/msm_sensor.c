@@ -149,7 +149,7 @@ static int32_t msm_sensor_get_dt_data(struct device_node *of_node,
 	CDBG("%s qcom,cci-master %d, rc %d\n", __func__, s_ctrl->cci_i2c_master,
 		rc);
 	if (rc < 0) {
-		/* Set default master 0 */
+		
 		s_ctrl->cci_i2c_master = MASTER_0;
 		rc = 0;
 	}
@@ -160,10 +160,10 @@ static int32_t msm_sensor_get_dt_data(struct device_node *of_node,
 		goto FREE_SENSORDATA;
 	}
 
-	/* Get sensor mount angle */
+	
 	if (0 > of_property_read_u32(of_node, "qcom,mount-angle",
 		&sensordata->sensor_info->sensor_mount_angle)) {
-		/* Invalidate mount angle flag */
+		
 		CDBG("%s:%d Default sensor mount angle\n",
 			__func__, __LINE__);
 		sensordata->sensor_info->is_mount_angle_valid = 0;
@@ -303,7 +303,7 @@ static int32_t msm_sensor_get_dt_data(struct device_node *of_node,
 		sensordata->slave_info->sensor_id_reg_addr,
 		sensordata->slave_info->sensor_id);
 
-	/*Optional property, don't return error if absent */
+	
 	ret = of_property_read_string(of_node, "qcom,vdd-cx-name",
 		&sensordata->misc_regulator);
 	CDBG("%s qcom,misc_regulator %s, rc %d\n", __func__,
@@ -548,9 +548,6 @@ static void msm_sensor_stop_stream(struct msm_sensor_ctrl_t *s_ctrl)
 static int msm_sensor_get_af_status(struct msm_sensor_ctrl_t *s_ctrl,
 			void __user *argp)
 {
-	/* TO-DO: Need to set AF status register address and expected value
-	We need to check the AF status in the sensor register and
-	set the status in the *status variable accordingly*/
 	return 0;
 }
 
@@ -568,7 +565,16 @@ static long msm_sensor_subdev_ioctl(struct v4l2_subdev *sd,
 	case VIDIOC_MSM_SENSOR_CFG:
 #ifdef CONFIG_COMPAT
 		if (is_compat_task())
-			rc = s_ctrl->func_tbl->sensor_config32(s_ctrl, argp);
+		
+		#if 0
+				rc = s_ctrl->func_tbl->sensor_config32(s_ctrl, argp);
+		#else
+		{
+			if(s_ctrl->func_tbl->sensor_config32)
+				rc = s_ctrl->func_tbl->sensor_config32(s_ctrl, argp);
+        }
+        #endif
+		
 		else
 #endif
 			rc = s_ctrl->func_tbl->sensor_config(s_ctrl, argp);
@@ -604,8 +610,13 @@ long msm_sensor_subdev_fops_ioctl(struct file *file,
 	return video_usercopy(file, cmd, arg, msm_sensor_subdev_do_ioctl);
 }
 
+#if 0
 static int msm_sensor_config32(struct msm_sensor_ctrl_t *s_ctrl,
 	void __user *argp)
+#else
+int msm_sensor_config32(struct msm_sensor_ctrl_t *s_ctrl,
+	void __user *argp)
+#endif
 {
 	struct sensorb_cfg_data32 *cdata = (struct sensorb_cfg_data32 *)argp;
 	int32_t rc = 0;
@@ -919,6 +930,13 @@ static int msm_sensor_config32(struct msm_sensor_ctrl_t *s_ctrl,
 		}
 		break;
 	}
+	case CFG_I2C_IOCTL_R_OTP:
+		if (s_ctrl->func_tbl->sensor_i2c_read_fuseid32 == NULL) {
+			rc = -EFAULT;
+			break;
+		}
+		rc = s_ctrl->func_tbl->sensor_i2c_read_fuseid32(cdata, s_ctrl);
+	break;
 
 	default:
 		rc = -EFAULT;
@@ -1302,6 +1320,13 @@ int msm_sensor_config(struct msm_sensor_ctrl_t *s_ctrl, void __user *argp)
 		}
 		break;
 	}
+	case CFG_I2C_IOCTL_R_OTP:
+		if (s_ctrl->func_tbl->sensor_i2c_read_fuseid == NULL) {
+			rc = -EFAULT;
+			break;
+		}
+		rc = s_ctrl->func_tbl->sensor_i2c_read_fuseid(cdata, s_ctrl);
+	break;
 	default:
 		rc = -EFAULT;
 		break;
@@ -1424,7 +1449,7 @@ int32_t msm_sensor_platform_probe(struct platform_device *pdev,
 		pr_err("%s failed line %d\n", __func__, __LINE__);
 		return rc;
 	}
-	/* TODO: get CCI subdev */
+	
 	cci_client = s_ctrl->sensor_i2c_client->cci_client;
 	cci_client->cci_subdev = msm_cci_get_subdev();
 	cci_client->cci_i2c_master = s_ctrl->cci_i2c_master;
@@ -1432,6 +1457,9 @@ int32_t msm_sensor_platform_probe(struct platform_device *pdev,
 		s_ctrl->sensordata->slave_info->sensor_slave_addr >> 1;
 	cci_client->retries = 3;
 	cci_client->id_map = 0;
+	
+	cci_client->i2c_freq_mode = I2C_FAST_MODE;
+	
 	if (!s_ctrl->func_tbl)
 		s_ctrl->func_tbl = &msm_sensor_func_tbl;
 	if (!s_ctrl->sensor_i2c_client->i2c_func_tbl)
@@ -1480,10 +1508,24 @@ int32_t msm_sensor_platform_probe(struct platform_device *pdev,
 	s_ctrl->msm_sd.sd.entity.flags = mount_pos | MEDIA_ENT_FL_DEFAULT;
 
 	rc = camera_init_v4l2(&s_ctrl->pdev->dev, &session_id);
+	if (rc < 0) {
+		pr_err("%s: camera_init_v4l2 failed rc = %d\n", __func__, rc);
+		kfree(s_ctrl->sensordata->power_info.clk_info);
+		kfree(cci_client);
+		return rc;
+	}
+
 	CDBG("%s rc %d session_id %d\n", __func__, rc, session_id);
 	s_ctrl->sensordata->sensor_info->session_id = session_id;
 	s_ctrl->msm_sd.close_seq = MSM_SD_CLOSE_2ND_CATEGORY | 0x3;
-	msm_sd_register(&s_ctrl->msm_sd);
+	rc = msm_sd_register(&s_ctrl->msm_sd);
+	if (rc < 0) {
+		pr_err("%s: msm_sd_register failed rc = %d\n", __func__, rc);
+		kfree(s_ctrl->sensordata->power_info.clk_info);
+		kfree(cci_client);
+		return rc;
+	}
+
 	msm_sensor_v4l2_subdev_fops = v4l2_subdev_fops;
 #ifdef CONFIG_COMPAT
 	msm_sensor_v4l2_subdev_fops.compat_ioctl32 =
@@ -1626,7 +1668,7 @@ int32_t msm_sensor_init_default_params(struct msm_sensor_ctrl_t *s_ctrl)
 	struct msm_cam_clk_info      *clk_info = NULL;
 	unsigned long mount_pos = 0;
 
-	/* Validate input parameters */
+	
 	if (!s_ctrl) {
 		pr_err("%s:%d failed: invalid params s_ctrl %p\n", __func__,
 			__LINE__, s_ctrl);
@@ -1639,7 +1681,7 @@ int32_t msm_sensor_init_default_params(struct msm_sensor_ctrl_t *s_ctrl)
 		return -EINVAL;
 	}
 
-	/* Initialize cci_client */
+	
 	s_ctrl->sensor_i2c_client->cci_client = kzalloc(sizeof(
 		struct msm_camera_cci_client), GFP_KERNEL);
 	if (!s_ctrl->sensor_i2c_client->cci_client) {
@@ -1651,10 +1693,10 @@ int32_t msm_sensor_init_default_params(struct msm_sensor_ctrl_t *s_ctrl)
 	if (s_ctrl->sensor_device_type == MSM_CAMERA_PLATFORM_DEVICE) {
 		cci_client = s_ctrl->sensor_i2c_client->cci_client;
 
-		/* Get CCI subdev */
+		
 		cci_client->cci_subdev = msm_cci_get_subdev();
 
-		/* Update CCI / I2C function table */
+		
 		if (!s_ctrl->sensor_i2c_client->i2c_func_tbl)
 			s_ctrl->sensor_i2c_client->i2c_func_tbl =
 				&msm_sensor_cci_func_tbl;
@@ -1666,15 +1708,15 @@ int32_t msm_sensor_init_default_params(struct msm_sensor_ctrl_t *s_ctrl)
 		}
 	}
 
-	/* Update function table driven by ioctl */
+	
 	if (!s_ctrl->func_tbl)
 		s_ctrl->func_tbl = &msm_sensor_func_tbl;
 
-	/* Update v4l2 subdev ops table */
+	
 	if (!s_ctrl->sensor_v4l2_subdev_ops)
 		s_ctrl->sensor_v4l2_subdev_ops = &msm_sensor_subdev_ops;
 
-	/* Initialize clock info */
+	
 	clk_info = kzalloc(sizeof(cam_8974_clk_info), GFP_KERNEL);
 	if (!clk_info) {
 		pr_err("%s:%d failed no memory clk_info %p\n", __func__,
@@ -1687,7 +1729,7 @@ int32_t msm_sensor_init_default_params(struct msm_sensor_ctrl_t *s_ctrl)
 	s_ctrl->sensordata->power_info.clk_info_size =
 		ARRAY_SIZE(cam_8974_clk_info);
 
-	/* Update sensor mount angle and position in media entity flag */
+	
 	mount_pos = s_ctrl->sensordata->sensor_info->position << 16;
 	mount_pos = mount_pos | ((s_ctrl->sensordata->sensor_info->
 					sensor_mount_angle / 90) << 8);
@@ -1698,4 +1740,50 @@ int32_t msm_sensor_init_default_params(struct msm_sensor_ctrl_t *s_ctrl)
 FREE_CCI_CLIENT:
 	kfree(cci_client);
 	return rc;
+}
+
+#include <linux/fs.h>
+#include <linux/file.h>
+#include <linux/vmalloc.h>
+#include <asm/segment.h>
+#include <asm/uaccess.h>
+#include <linux/buffer_head.h>
+
+void msm_fclose(struct file* file) {
+    filp_close(file, NULL);
+}
+
+int msm_fwrite(struct file* file, unsigned long long offset, unsigned char* data, unsigned int size) {
+    mm_segment_t oldfs;
+    int ret;
+
+    oldfs = get_fs();
+    set_fs(get_ds());
+
+    ret = vfs_write(file, data, size, &offset);
+
+    set_fs(oldfs);
+    return ret;
+}
+
+struct file* msm_fopen(const char* path, int flags, int rights) {
+    struct file* filp = NULL;
+    mm_segment_t oldfs;
+    int err = 0;
+
+    oldfs = get_fs();
+    set_fs(get_ds());
+    filp = filp_open(path, flags, rights);
+    set_fs(oldfs);
+    if(IS_ERR(filp)) {
+        err = PTR_ERR(filp);
+    pr_err("[CAM]File Open Error:%s",path);
+        return NULL;
+    }
+    if(!filp->f_op){
+    pr_err("[CAM]File Operation Method Error!!");
+    return NULL;
+    }
+
+    return filp;
 }

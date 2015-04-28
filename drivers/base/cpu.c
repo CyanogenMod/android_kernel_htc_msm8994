@@ -1,6 +1,3 @@
-/*
- * CPU subsystem support
- */
 
 #include <linux/kernel.h>
 #include <linux/module.h>
@@ -65,10 +62,6 @@ static ssize_t __ref store_online(struct device *dev,
 		from_nid = cpu_to_node(cpuid);
 		ret = cpu_up(cpuid);
 
-		/*
-		 * When hot adding memory to memoryless node and enabling a cpu
-		 * on the node, node number of the cpu may internally change.
-		 */
 		to_nid = cpu_to_node(cpuid);
 		if (from_nid != to_nid)
 			change_cpu_under_node(cpu, from_nid, to_nid);
@@ -123,13 +116,13 @@ static ssize_t cpu_release_store(struct device *dev,
 
 static DEVICE_ATTR(probe, S_IWUSR, NULL, cpu_probe_store);
 static DEVICE_ATTR(release, S_IWUSR, NULL, cpu_release_store);
-#endif /* CONFIG_ARCH_CPU_PROBE_RELEASE */
+#endif 
 
-#else /* ... !CONFIG_HOTPLUG_CPU */
+#else 
 static inline void register_cpu_control(struct cpu *cpu)
 {
 }
-#endif /* CONFIG_HOTPLUG_CPU */
+#endif 
 
 #ifdef CONFIG_KEXEC
 #include <linux/kexec.h>
@@ -144,12 +137,6 @@ static ssize_t show_crash_notes(struct device *dev, struct device_attribute *att
 
 	cpunum = cpu->dev.id;
 
-	/*
-	 * Might be reading other cpu's data based on which cpu read thread
-	 * has been scheduled. But cpu data (memory) is allocated once during
-	 * boot up and this data does not change there after. Hence this
-	 * operation should be safe. No locking required.
-	 */
 	addr = per_cpu_ptr_to_phys(per_cpu_ptr(crash_notes, cpunum));
 	rc = sprintf(buf, "%Lx\n", addr);
 	return rc;
@@ -277,17 +264,93 @@ static ssize_t __ref store_sched_mostly_idle_nr_run(struct device *dev,
 	return err;
 }
 
+static ssize_t show_sched_budget(struct device *dev,
+		 struct device_attribute *attr, char *buf)
+{
+	struct cpu *cpu = container_of(dev, struct cpu, dev);
+	ssize_t rc;
+	int cpunum;
+	int budget;
+
+	cpunum = cpu->dev.id;
+
+	budget = sched_get_cpu_budget(cpunum);
+
+	rc = snprintf(buf, PAGE_SIZE-2, "%d\n", budget);
+
+	return rc;
+}
+
+static ssize_t __ref store_sched_budget(struct device *dev,
+				  struct device_attribute *attr,
+				  const char *buf, size_t count)
+{
+	struct cpu *cpu = container_of(dev, struct cpu, dev);
+	int cpuid = cpu->dev.id;
+	int budget, err;
+
+	err = kstrtoint(strstrip((char *)buf), 0, &budget);
+	if (err)
+		return err;
+
+	err = sched_set_cpu_budget(cpuid, budget);
+	if (err >= 0)
+		err = count;
+
+	return err;
+}
+
+
+static ssize_t show_sched_prefer_idle(struct device *dev,
+		 struct device_attribute *attr, char *buf)
+{
+	struct cpu *cpu = container_of(dev, struct cpu, dev);
+	ssize_t rc;
+	int cpunum;
+	int prefer_idle;
+
+	cpunum = cpu->dev.id;
+
+	prefer_idle = sched_get_cpu_prefer_idle(cpunum);
+
+	rc = snprintf(buf, PAGE_SIZE-2, "%d\n", prefer_idle);
+
+	return rc;
+}
+
+
+static ssize_t __ref store_sched_prefer_idle(struct device *dev,
+				  struct device_attribute *attr,
+				  const char *buf, size_t count)
+{
+	struct cpu *cpu = container_of(dev, struct cpu, dev);
+	int cpuid = cpu->dev.id;
+	int prefer_idle, err;
+
+	err = kstrtoint(strstrip((char *)buf), 0, &prefer_idle);
+	if (err)
+		return err;
+
+	err = sched_set_cpu_prefer_idle(cpuid, prefer_idle);
+
+	if (err >= 0)
+		err = count;
+
+	return err;
+}
+
 static DEVICE_ATTR(sched_mostly_idle_freq, 0664, show_sched_mostly_idle_freq,
 						store_sched_mostly_idle_freq);
 static DEVICE_ATTR(sched_mostly_idle_load, 0664, show_sched_mostly_idle_load,
 						store_sched_mostly_idle_load);
 static DEVICE_ATTR(sched_mostly_idle_nr_run, 0664,
 		show_sched_mostly_idle_nr_run, store_sched_mostly_idle_nr_run);
-#endif
+static DEVICE_ATTR(sched_budget, 0664,
+		show_sched_budget, store_sched_budget);
+static DEVICE_ATTR(sched_prefer_idle, 0664,
+		show_sched_prefer_idle, store_sched_prefer_idle);
+#endif	
 
-/*
- * Print cpu online, possible, present, and system maps
- */
 
 struct cpu_attr {
 	struct device_attribute attr;
@@ -309,16 +372,12 @@ static ssize_t show_cpus_attr(struct device *dev,
 #define _CPU_ATTR(name, map) \
 	{ __ATTR(name, 0444, show_cpus_attr, NULL), map }
 
-/* Keep in sync with cpu_subsys_attrs */
 static struct cpu_attr cpu_attrs[] = {
 	_CPU_ATTR(online, &cpu_online_mask),
 	_CPU_ATTR(possible, &cpu_possible_mask),
 	_CPU_ATTR(present, &cpu_present_mask),
 };
 
-/*
- * Print values for NR_CPUS and offlined cpus
- */
 static ssize_t print_cpus_kernel_max(struct device *dev,
 				     struct device_attribute *attr, char *buf)
 {
@@ -327,7 +386,6 @@ static ssize_t print_cpus_kernel_max(struct device *dev,
 }
 static DEVICE_ATTR(kernel_max, 0444, print_cpus_kernel_max, NULL);
 
-/* arch-optional setting to enable display of offline cpus >= nr_cpu_ids */
 unsigned int total_cpus;
 
 static ssize_t print_cpus_offline(struct device *dev,
@@ -336,14 +394,14 @@ static ssize_t print_cpus_offline(struct device *dev,
 	int n = 0, len = PAGE_SIZE-2;
 	cpumask_var_t offline;
 
-	/* display offline cpus < nr_cpu_ids */
+	
 	if (!alloc_cpumask_var(&offline, GFP_KERNEL))
 		return -ENOMEM;
 	cpumask_andnot(offline, cpu_possible_mask, cpu_online_mask);
 	n = cpulist_scnprintf(buf, len, offline);
 	free_cpumask_var(offline);
 
-	/* display offline cpus >= nr_cpu_ids */
+	
 	if (total_cpus && nr_cpu_ids < total_cpus) {
 		if (n && n < len)
 			buf[n++] = ',';
@@ -362,21 +420,6 @@ static DEVICE_ATTR(offline, 0444, print_cpus_offline, NULL);
 
 static void cpu_device_release(struct device *dev)
 {
-	/*
-	 * This is an empty function to prevent the driver core from spitting a
-	 * warning at us.  Yes, I know this is directly opposite of what the
-	 * documentation for the driver core and kobjects say, and the author
-	 * of this code has already been publically ridiculed for doing
-	 * something as foolish as this.  However, at this point in time, it is
-	 * the only way to handle the issue of statically allocated cpu
-	 * devices.  The different architectures will have their cpu device
-	 * code reworked to properly handle this in the near future, so this
-	 * function will then be changed to correctly free up the memory held
-	 * by the cpu device.
-	 *
-	 * Never copy this way of doing things, or you too will be made fun of
-	 * on the linux-kernel list, you have been warned.
-	 */
 }
 
 #ifdef CONFIG_HAVE_CPU_AUTOPROBE
@@ -418,14 +461,6 @@ static int cpu_uevent(struct device *dev, struct kobj_uevent_env *env)
 }
 #endif
 
-/*
- * register_cpu - Setup a sysfs device for a CPU.
- * @cpu - cpu->hotpluggable field set to 1 will generate a control file in
- *	  sysfs for this CPU.
- * @num - CPU number to use when creating the device.
- *
- * Initialize and register the CPU device.
- */
 int __cpuinit register_cpu(struct cpu *cpu, int num)
 {
 	int error;
@@ -465,6 +500,12 @@ int __cpuinit register_cpu(struct cpu *cpu, int num)
 	if (!error)
 		error = device_create_file(&cpu->dev,
 					 &dev_attr_sched_mostly_idle_freq);
+	if (!error)
+		error = device_create_file(&cpu->dev,
+					 &dev_attr_sched_budget);
+	if (!error)
+		error = device_create_file(&cpu->dev,
+					 &dev_attr_sched_prefer_idle);
 #endif
 
 	return error;

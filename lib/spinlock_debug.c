@@ -18,9 +18,6 @@ void __raw_spin_lock_init(raw_spinlock_t *lock, const char *name,
 			  struct lock_class_key *key)
 {
 #ifdef CONFIG_DEBUG_LOCK_ALLOC
-	/*
-	 * Make sure we are not reinitializing a held lock:
-	 */
 	debug_check_no_locks_freed((void *)lock, sizeof(*lock));
 	lockdep_init_map(&lock->dep_map, name, key, 0);
 #endif
@@ -36,9 +33,6 @@ void __rwlock_init(rwlock_t *lock, const char *name,
 		   struct lock_class_key *key)
 {
 #ifdef CONFIG_DEBUG_LOCK_ALLOC
-	/*
-	 * Make sure we are not reinitializing a held lock:
-	 */
 	debug_check_no_locks_freed((void *)lock, sizeof(*lock));
 	lockdep_init_map(&lock->dep_map, name, key, 0);
 #endif
@@ -49,6 +43,30 @@ void __rwlock_init(rwlock_t *lock, const char *name,
 }
 
 EXPORT_SYMBOL(__rwlock_init);
+
+static int spin_dump_panic_call(struct notifier_block *this,
+		unsigned long event, void *ptr)
+{
+#if defined(CONFIG_HTC_DEBUG_WATCHDOG)
+	void msm_watchdog_bark(void);
+	static int barked = 0;
+	if (!barked) {
+		barked = 1;
+
+		pr_info("%s: Force Watchdog bark ...\r\n", __func__);
+		msm_watchdog_bark();
+
+		mdelay(10000);
+		pr_info("%s: Force Watchdog bark does not work, "
+				"falling back to normal process.\r\n", __func__);
+	}
+#endif
+	return NOTIFY_DONE;
+}
+
+static struct notifier_block panic_block = {
+	.notifier_call	= spin_dump_panic_call,
+};
 
 static void spin_dump(raw_spinlock_t *lock, const char *msg)
 {
@@ -70,6 +88,12 @@ static void spin_dump(raw_spinlock_t *lock, const char *msg)
 #elif defined(CONFIG_DEBUG_SPINLOCK_PANIC_ON_BUG)
 	BUG();
 #endif
+
+if (PANIC_CORRUPTION) {
+	atomic_notifier_chain_register(&panic_notifier_list, &panic_block);
+	BUG();
+}
+
 	dump_stack();
 }
 
@@ -119,20 +143,12 @@ static void __spin_lock_debug(raw_spinlock_t *lock)
 			return;
 		__delay(1);
 	}
-	/* lockup suspected: */
+	
 	spin_bug(lock, "lockup suspected");
 #ifdef CONFIG_SMP
 	trigger_all_cpu_backtrace();
 #endif
 
-	/*
-	 * The trylock above was causing a livelock.  Give the lower level arch
-	 * specific lock code a chance to acquire the lock. We have already
-	 * printed a warning/backtrace at this point. The non-debug arch
-	 * specific code might actually succeed in acquiring the lock.  If it is
-	 * not successful, the end-result is the same - there is no forward
-	 * progress.
-	 */
 	arch_spin_lock(&lock->raw_lock);
 }
 
@@ -151,9 +167,6 @@ int do_raw_spin_trylock(raw_spinlock_t *lock)
 	if (ret)
 		debug_spin_lock_after(lock);
 #ifndef CONFIG_SMP
-	/*
-	 * Must not happen on UP:
-	 */
 	SPIN_BUG_ON(!ret, lock, "trylock failure on UP");
 #endif
 	return ret;
@@ -178,7 +191,7 @@ static void rwlock_bug(rwlock_t *lock, const char *msg)
 
 #define RWLOCK_BUG_ON(cond, lock, msg) if (unlikely(cond)) rwlock_bug(lock, msg)
 
-#if 0		/* __write_lock_debug() can lock up - maybe this can too? */
+#if 0		
 static void __read_lock_debug(rwlock_t *lock)
 {
 	u64 i;
@@ -191,7 +204,7 @@ static void __read_lock_debug(rwlock_t *lock)
 				return;
 			__delay(1);
 		}
-		/* lockup suspected: */
+		
 		if (print_once) {
 			print_once = 0;
 			printk(KERN_EMERG "BUG: read-lock lockup on CPU#%d, "
@@ -215,9 +228,6 @@ int do_raw_read_trylock(rwlock_t *lock)
 	int ret = arch_read_trylock(&lock->raw_lock);
 
 #ifndef CONFIG_SMP
-	/*
-	 * Must not happen on UP:
-	 */
 	RWLOCK_BUG_ON(!ret, lock, "trylock failure on UP");
 #endif
 	return ret;
@@ -253,7 +263,7 @@ static inline void debug_write_unlock(rwlock_t *lock)
 	lock->owner_cpu = -1;
 }
 
-#if 0		/* This can cause lockups */
+#if 0		
 static void __write_lock_debug(rwlock_t *lock)
 {
 	u64 i;
@@ -266,7 +276,7 @@ static void __write_lock_debug(rwlock_t *lock)
 				return;
 			__delay(1);
 		}
-		/* lockup suspected: */
+		
 		if (print_once) {
 			print_once = 0;
 			printk(KERN_EMERG "BUG: write-lock lockup on CPU#%d, "
@@ -293,9 +303,6 @@ int do_raw_write_trylock(rwlock_t *lock)
 	if (ret)
 		debug_write_lock_after(lock);
 #ifndef CONFIG_SMP
-	/*
-	 * Must not happen on UP:
-	 */
 	RWLOCK_BUG_ON(!ret, lock, "trylock failure on UP");
 #endif
 	return ret;

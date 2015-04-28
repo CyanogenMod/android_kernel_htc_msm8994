@@ -57,7 +57,7 @@
 	qcom,mdss-dsi-bl-pmic-control-type = "bl_ctrl_pwm";
 	qcom,mdss-dsi-bl-pmic-pwm-frequency = <50>;
 	qcom,mdss-dsi-bl-pmic-bank-select = <3>;
-	qcom,mdss-dsi-pwm-gpio = <&pmi8994_mpps 1 0>;
+//	qcom,mdss-dsi-pwm-gpio = <&pmi8994_mpps 1 0>;
 	qcom,cont-splash-enabled;
 };
 

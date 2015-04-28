@@ -173,6 +173,17 @@ config INPUT_APMPOWER
 
 	  To compile this driver as a module, choose M here: the
 	  module will be called apm-power.
+config POWER_KEY_CLR_RESET
+	tristate "Power key clear reset"
+	depends on INPUT_KEYCOMBO
+	help
+	  Say Y here if you do not want to reset when power key is pressed.
+
+config KPDPWR_S2_DVDD_RESET
+	tristate "Power key stage 2 reset while SW gets stuck"
+	depends on POWER_KEY_CLR_RESET
+	help
+	  Say Y here if you would like to support power key stage 2 dVdd reset when SW gets stuck.
 
 config INPUT_KEYRESET
 	tristate "Reset key"

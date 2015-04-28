@@ -76,6 +76,9 @@ EXPORT_SYMBOL(cold_boot);
 char* (*arch_read_hardware_id)(void);
 EXPORT_SYMBOL(arch_read_hardware_id);
 
+int htc_print_cpu_version(void);
+EXPORT_SYMBOL_GPL(htc_print_cpu_version);
+
 #ifdef CONFIG_COMPAT
 #define COMPAT_ELF_HWCAP_DEFAULT	\
 				(COMPAT_HWCAP_HALF|COMPAT_HWCAP_THUMB|\
@@ -91,9 +94,6 @@ static const char *cpu_name;
 static const char *machine_name;
 phys_addr_t __fdt_pointer __initdata;
 
-/*
- * Standard memory resources
- */
 static struct resource mem_res[] = {
 	{
 		.name = "Kernel code",
@@ -126,11 +126,6 @@ void __init early_print(const char *str, ...)
 
 void __init smp_setup_processor_id(void)
 {
-	/*
-	 * clear __my_cpu_offset on boot CPU to avoid hang caused by
-	 * using percpu variable early, for example, lockdep will
-	 * access percpu variable inside lock_release
-	 */
 	set_my_cpu_offset(0);
 }
 
@@ -141,48 +136,19 @@ bool arch_match_cpu_phys_id(int cpu, u64 phys_id)
 
 struct mpidr_hash mpidr_hash;
 #ifdef CONFIG_SMP
-/**
- * smp_build_mpidr_hash - Pre-compute shifts required at each affinity
- *			  level in order to build a linear index from an
- *			  MPIDR value. Resulting algorithm is a collision
- *			  free hash carried out through shifting and ORing
- */
 static void __init smp_build_mpidr_hash(void)
 {
 	u32 i, affinity, fs[4], bits[4], ls;
 	u64 mask = 0;
-	/*
-	 * Pre-scan the list of MPIDRS and filter out bits that do
-	 * not contribute to affinity levels, ie they never toggle.
-	 */
 	for_each_possible_cpu(i)
 		mask |= (cpu_logical_map(i) ^ cpu_logical_map(0));
 	pr_debug("mask of set bits %#llx\n", mask);
-	/*
-	 * Find and stash the last and first bit set at all affinity levels to
-	 * check how many bits are required to represent them.
-	 */
 	for (i = 0; i < 4; i++) {
 		affinity = MPIDR_AFFINITY_LEVEL(mask, i);
-		/*
-		 * Find the MSB bit and LSB bits position
-		 * to determine how many bits are required
-		 * to express the affinity level.
-		 */
 		ls = fls(affinity);
 		fs[i] = affinity ? ffs(affinity) - 1 : 0;
 		bits[i] = ls - fs[i];
 	}
-	/*
-	 * An index can be created from the MPIDR_EL1 by isolating the
-	 * significant bits at each affinity level and by shifting
-	 * them in order to compress the 32 bits values space to a
-	 * compressed set of values. This is equivalent to hashing
-	 * the MPIDR_EL1 through shifting and ORing. It is a collision free
-	 * hash though not minimal since some levels might contain a number
-	 * of CPUs that is not an exact power of 2 and their bit
-	 * representation might contain holes, eg MPIDR_EL1[7:0] = {0x2, 0x80}.
-	 */
 	mpidr_hash.shift_aff[0] = MPIDR_LEVEL_SHIFT(0) + fs[0];
 	mpidr_hash.shift_aff[1] = MPIDR_LEVEL_SHIFT(1) + fs[1] - bits[0];
 	mpidr_hash.shift_aff[2] = MPIDR_LEVEL_SHIFT(2) + fs[2] -
@@ -198,15 +164,17 @@ static void __init smp_build_mpidr_hash(void)
 		mpidr_hash.shift_aff[3],
 		mpidr_hash.mask,
 		mpidr_hash.bits);
-	/*
-	 * 4x is an arbitrary value used to warn on a hash table much bigger
-	 * than expected on most systems.
-	 */
 	if (mpidr_hash_size() > 4 * num_possible_cpus())
 		pr_warn("Large number of MPIDR hash buckets detected\n");
 	__flush_dcache_area(&mpidr_hash, sizeof(struct mpidr_hash));
 }
 #endif
+
+int htc_print_cpu_version(){
+	printk("CPU: %s [%08x] revision %d\n",
+		cpu_name, read_cpuid_id(), read_cpuid_id() & 15);
+	return read_cpuid_id() & 15;
+}
 
 static void __init setup_processor(void)
 {
@@ -230,9 +198,6 @@ static void __init setup_processor(void)
 	sprintf(init_utsname()->machine, ELF_PLATFORM);
 	elf_hwcap = 0;
 
-	/*
-	 * Check for sane CTR_EL0.CWG value.
-	 */
 	cwg = cache_type_cwg();
 	cls = cache_line_size();
 	if (!cwg)
@@ -242,11 +207,6 @@ static void __init setup_processor(void)
 		pr_warn("L1_CACHE_BYTES smaller than the Cache Writeback Granule (%d < %d)\n",
 			L1_CACHE_BYTES, cls);
 
-	/*
-	 * ID_AA64ISAR0_EL1 contains 4-bit wide signed feature blocks.
-	 * The blocks we test below represent incremental functionality
-	 * for non-negative values. Negative values are reserved.
-	 */
 	features = read_cpuid(ID_AA64ISAR0_EL1);
 	block = (features >> 4) & 0xf;
 	if (!(block & 0x8)) {
@@ -274,10 +234,6 @@ static void __init setup_processor(void)
 		elf_hwcap |= HWCAP_CRC32;
 
 #ifdef CONFIG_COMPAT
-	/*
-	 * ID_ISAR5_EL1 carries similar information as above, but pertaining to
-	 * the Aarch32 32-bit execution state.
-	 */
 	features = read_cpuid(ID_ISAR5_EL1);
 	block = (features >> 4) & 0xf;
 	if (!(block & 0x8)) {
@@ -324,9 +280,6 @@ static void __init setup_machine_fdt(phys_addr_t dt_phys)
 		pr_info("Machine: %s\n", machine_name);
 }
 
-/*
- * Limit the memory size that was specified via FDT.
- */
 static int __init early_mem(char *p)
 {
 	phys_addr_t limit;
@@ -377,9 +330,6 @@ void __init __weak init_random_pool(void) { }
 
 void __init setup_arch(char **cmdline_p)
 {
-	/*
-	 * Unmask asynchronous aborts early to catch possible system errors.
-	 */
 	local_async_enable();
 
 	setup_processor();
@@ -462,6 +412,87 @@ static const char *hwcap_str[] = {
 	NULL
 };
 
+static int msm8994_read_fuse(void);
+u32 fuse_data;
+
+static const u32 vddcx_pvs_retention_data_v1[4] = {
+	 650000,
+	 400000,
+	 500000,
+	 550000
+};
+
+static const u32 vddcx_pvs_retention_data_v2[8] = {
+	 650000,
+	 400000,
+	 500000,
+	 450000,
+	 550000,
+	 600000,
+	 650000,
+	 700000
+};
+
+static const u32 vddmx_pvs_retention_data_v2[4] = {
+	 675000,
+	 625000,
+	 575000,
+	 725000
+};
+
+static int read_cx_fuse_setting_v1(void){
+	if(msm8994_read_fuse() == 0)
+		return ((fuse_data & (0x3 << 22)) >> 22);
+	else
+		return -ENOMEM;
+}
+
+static int read_cx_fuse_setting_v2(void){
+	if(msm8994_read_fuse() == 0)
+		return ((fuse_data & (0x1 << 26)) >> 24) | ((fuse_data & (0x3 << 22)) >> 22);
+	else
+		return -ENOMEM;
+}
+
+static int read_mx_fuse_setting_v2(void){
+	if(msm8994_read_fuse() == 0)
+		return ((fuse_data & (0x3 << 27)) >> 27);
+	else
+		return -ENOMEM;
+}
+
+static u32 Get_min_cx(void) {
+	int cpu_version = htc_print_cpu_version();
+	u32 lookup_val = 0;
+	int mapping_data;
+	if(cpu_version < 2) {
+		mapping_data = read_cx_fuse_setting_v1();
+		if(mapping_data >= 0)
+			lookup_val = vddcx_pvs_retention_data_v1[mapping_data];
+	}
+	else {
+		mapping_data = read_cx_fuse_setting_v2();
+		if(mapping_data >= 0)
+			lookup_val = vddcx_pvs_retention_data_v2[mapping_data];
+	}
+	return lookup_val;
+}
+
+static u32 Get_min_mx(void) {
+	int cpu_version = htc_print_cpu_version();
+	u32 lookup_val = 0;
+	int mapping_data;
+	if(cpu_version < 2) {
+		lookup_val = 0;
+	}
+	else {
+		mapping_data = read_mx_fuse_setting_v2();
+		if(mapping_data >= 0)
+			lookup_val = vddmx_pvs_retention_data_v2[mapping_data];
+	}
+	return lookup_val;
+}
+
 static int c_show(struct seq_file *m, void *v)
 {
 	int i;
@@ -470,17 +501,14 @@ static int c_show(struct seq_file *m, void *v)
 		   cpu_name, read_cpuid_id() & 15, ELF_PLATFORM);
 
 	for_each_present_cpu(i) {
-		/*
-		 * glibc reads /proc/cpuinfo to determine the number of
-		 * online processors, looking for lines beginning with
-		 * "processor".  Give glibc what it expects.
-		 */
 #ifdef CONFIG_SMP
 		seq_printf(m, "processor\t: %d\n", i);
 #endif
 	}
+	seq_printf(m, "min_vddcx\t: %d\n", Get_min_cx());
+	seq_printf(m, "min_vddmx\t: %d\n", Get_min_mx());
 
-	/* dump out the processor features */
+	
 	seq_puts(m, "Features\t: ");
 
 	for (i = 0; hwcap_str[i]; i++)
@@ -488,7 +516,7 @@ static int c_show(struct seq_file *m, void *v)
 			seq_printf(m, "%s ", hwcap_str[i]);
 #ifdef CONFIG_ARMV7_COMPAT_CPUINFO
 	if (is_compat_task()) {
-		/* Print out the non-optional ARMv8 HW capabilities */
+		
 		seq_printf(m, "wp half thumb fastmult vfp edsp neon vfpv3 tlsi ");
 		seq_printf(m, "vfpv4 idiva idivt ");
 	}
@@ -538,7 +566,6 @@ void arch_setup_pdev_archdata(struct platform_device *pdev)
 	pdev->dev.dma_mask = &pdev->archdata.dma_mask;
 }
 
-/* Used for 8994 Only */
 int msm8994_req_tlbi_wa = 1;
 #define SOC_MAJOR_REV(val) (((val) & 0xF00) >> 8)
 
@@ -555,10 +582,26 @@ static int __init msm8994_check_tlbi_workaround(void)
 		major_rev  = SOC_MAJOR_REV((__raw_readl(addr)));
 		msm8994_req_tlbi_wa = (major_rev >= 2) ? 0 : 1;
 	} else {
-		/* If the node does not exist disable the workaround */
+		
 		msm8994_req_tlbi_wa = 0;
 	}
 
 	return 0;
 }
 arch_initcall_sync(msm8994_check_tlbi_workaround);
+
+static int msm8994_read_fuse(void){
+	void __iomem *addr;
+	struct device_node *dn = of_find_compatible_node(NULL,
+						NULL, "qcom,cpufuse-8994");
+	if (dn) {
+		addr = of_iomap(dn, 0);
+		if (!addr)
+			return -ENOMEM;
+		fuse_data = readl_relaxed(addr);
+	}
+	else {
+		return -ENOMEM;
+	}
+	return 0;
+}

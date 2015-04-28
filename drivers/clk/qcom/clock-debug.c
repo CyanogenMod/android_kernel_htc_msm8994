@@ -25,7 +25,6 @@
 #include <linux/mutex.h>
 #include <linux/io.h>
 #include <linux/clk/msm-clk-provider.h>
-#include <trace/events/power.h>
 
 
 #include "clock.h"
@@ -41,8 +40,6 @@ static int clock_debug_rate_set(void *data, u64 val)
 	struct clk *clock = data;
 	int ret;
 
-	/* Only increases to max rate will succeed, but that's actually good
-	 * for debugging purposes so we don't check for error. */
 	if (clock->flags & CLKFLAG_MAX)
 		clk_set_max_rate(clock, val);
 	ret = clk_set_rate(clock, val);
@@ -71,7 +68,7 @@ static int clock_debug_measure_get(void *data, u64 *val)
 	int ret, is_hw_gated;
 	unsigned long meas_rate, sw_rate;
 
-	/* Check to see if the clock is in hardware gating mode */
+	
 	if (clock->ops->in_hwcg_mode)
 		is_hw_gated = clock->ops->in_hwcg_mode(clock);
 	else
@@ -79,13 +76,6 @@ static int clock_debug_measure_get(void *data, u64 *val)
 
 	ret = clk_set_parent(measure, clock);
 	if (!ret) {
-		/*
-		 * Disable hw gating to get accurate rate measurements. Only do
-		 * this if the clock is explictly enabled by software. This
-		 * allows us to detect errors where clocks are on even though
-		 * software is not requesting them to be on due to broken
-		 * hardware gating signals.
-		 */
 		if (is_hw_gated && clock->count)
 			clock->ops->disable_hwcg(clock);
 		par = measure;
@@ -95,16 +85,11 @@ static int clock_debug_measure_get(void *data, u64 *val)
 			par = par->parent;
 		}
 		*val = clk_get_rate(measure);
-		/* Reenable hwgating if it was disabled */
+		
 		if (is_hw_gated && clock->count)
 			clock->ops->enable_hwcg(clock);
 	}
 
-	/*
-	 * If there's a divider on the path from the clock output to the
-	 * measurement circuitry, account for it by dividing the original clock
-	 * rate with the rate set on the parent of the measure clock.
-	 */
 	meas_rate = clk_get_rate(clock);
 	sw_rate = clk_get_rate(measure->parent);
 	if (sw_rate && meas_rate >= (sw_rate * 2))
@@ -242,7 +227,7 @@ static const struct file_operations fmax_rates_fops = {
 	.open		= fmax_rates_open,
 	.read		= seq_read,
 	.llseek		= seq_lseek,
-	.release	= seq_release,
+	.release	= single_release,
 };
 
 static int orphan_list_show(struct seq_file *m, void *unused)
@@ -264,7 +249,7 @@ static const struct file_operations orphan_list_fops = {
 	.open		= orphan_list_open,
 	.read		= seq_read,
 	.llseek		= seq_lseek,
-	.release	= seq_release,
+	.release	= single_release,
 };
 
 #define clock_debug_output(m, c, fmt, ...)		\
@@ -302,10 +287,50 @@ static int clock_debug_print_clock(struct clk *c, struct seq_file *m)
 	return 1;
 }
 
-/**
- * clock_debug_print_enabled_clocks() - Print names of enabled clocks
- *
- */
+int htc_clock_debug_print_clock(struct clk *c)
+{
+	char buff[64];
+	if (!c || !c->prepare_count)
+		return 0;
+
+	if (c->vdd_class)
+		snprintf(buff, sizeof(buff), "%s:%u:%u [%ld, %d]",
+			c->dbg_name, c->prepare_count, c->count,
+			c->rate, find_vdd_level(c, c->rate));
+	else
+		snprintf(buff, sizeof(buff), "%s:%u:%u [%ld]",
+			c->dbg_name, c->prepare_count, c->count,
+			c->rate);
+
+	while ((c = clk_get_parent(c))) {
+		if(!strcmp(c->dbg_name, "cxo_clk_src")) {
+			printk("\t%s\n", buff);
+		}
+	}
+
+	return 1;
+}
+
+void htc_clock_debug_print_blocked_clocks(void)
+{
+	struct clk *c;
+	int cnt = 0;
+
+	if (!mutex_trylock(&clk_list_lock)) {
+		pr_err("clock-debug: Clocks are being registered. Cannot print clock state now.\n");
+		return;
+	}
+	printk("Blocked cxo clocks:\n");
+	list_for_each_entry(c, &clk_list, list) {
+		cnt += htc_clock_debug_print_clock(c);
+	}
+	mutex_unlock(&clk_list_lock);
+
+	if (!cnt)
+		printk("No clocks enabled.\n");
+}
+EXPORT_SYMBOL_GPL(htc_clock_debug_print_blocked_clocks);
+
 static void clock_debug_print_enabled_clocks(struct seq_file *m)
 {
 	struct clk *c;
@@ -342,38 +367,7 @@ static const struct file_operations enabled_clocks_fops = {
 	.open		= enabled_clocks_open,
 	.read		= seq_read,
 	.llseek		= seq_lseek,
-	.release	= seq_release,
-};
-
-static int trace_clocks_show(struct seq_file *m, void *unused)
-{
-	struct clk *c;
-	int total_cnt = 0;
-
-	if (!mutex_trylock(&clk_list_lock)) {
-		pr_err("trace_clocks: Clocks are being registered. Cannot trace clock state now.\n");
-		return 1;
-	}
-	list_for_each_entry(c, &clk_list, list) {
-		trace_clock_state(c->dbg_name, c->prepare_count, c->count,
-					c->rate);
-		total_cnt++;
-	}
-	mutex_unlock(&clk_list_lock);
-	clock_debug_output(m, 0, "Total clock count: %d\n", total_cnt);
-
-	return 0;
-}
-
-static int trace_clocks_open(struct inode *inode, struct file *file)
-{
-	return single_open(file, trace_clocks_show, inode->i_private);
-}
-static const struct file_operations trace_clocks_fops = {
-	.open		= trace_clocks_open,
-	.read		= seq_read,
-	.llseek		= seq_lseek,
-	.release	= seq_release,
+	.release	= single_release,
 };
 
 static int list_rates_show(struct seq_file *m, void *unused)
@@ -382,7 +376,7 @@ static int list_rates_show(struct seq_file *m, void *unused)
 	int level, i = 0;
 	unsigned long rate, fmax = 0;
 
-	/* Find max frequency supported within voltage constraints. */
+	
 	if (!clock->vdd_class) {
 		fmax = ULONG_MAX;
 	} else {
@@ -391,10 +385,6 @@ static int list_rates_show(struct seq_file *m, void *unused)
 				fmax = clock->fmax[level];
 	}
 
-	/*
-	 * List supported frequencies <= fmax. Higher frequencies may appear in
-	 * the frequency table, but are not valid and should not be listed.
-	 */
 	while (!IS_ERR_VALUE(rate = clock->ops->list_rate(clock, i++))) {
 		if (rate <= fmax)
 			seq_printf(m, "%lu\n", rate);
@@ -412,7 +402,7 @@ static const struct file_operations list_rates_fops = {
 	.open		= list_rates_open,
 	.read		= seq_read,
 	.llseek		= seq_lseek,
-	.release	= seq_release,
+	.release	= single_release,
 };
 
 static ssize_t clock_parent_read(struct file *filp, char __user *ubuf,
@@ -518,9 +508,8 @@ static const struct file_operations clock_print_hw_fops = {
 	.open		= print_hw_open,
 	.read		= seq_read,
 	.llseek		= seq_lseek,
-	.release	= seq_release,
+	.release	= single_release,
 };
-
 
 static void clock_measure_add(struct clk *clock)
 {
@@ -595,10 +584,128 @@ error:
 static DEFINE_MUTEX(clk_debug_lock);
 static int clk_debug_init_once;
 
-/**
- * clock_debug_init() - Initialize clock debugfs
- * Lock clk_debug_lock before invoking this function.
- */
+#ifdef CONFIG_HTC_POWER_DEBUG
+static struct dentry *debugfs_base;
+static u32 debug_suspend;
+static struct clk_lookup *msm_clocks;
+static size_t num_msm_clocks;
+static struct dentry *debugfs_clock_base;
+
+struct clk *clock_debug_parent_get(void *data)
+{
+        struct clk *clock = data;
+
+        if (clock->ops->get_parent)
+                return clock->ops->get_parent(clock);
+
+        return 0;
+}
+
+
+int htc_clock_dump(struct clk *clock, struct seq_file *m)
+{
+        int len = 0;
+        u64 value = 0;
+        struct clk *parent;
+        char nam_buf[20];
+        char en_buf[20];
+        char hz_buf[20];
+        char loc_buf[20];
+        char par_buf[20];
+
+        if (!clock)
+                return 0;
+
+        memset(nam_buf,  ' ', sizeof(nam_buf));
+        nam_buf[19] = 0;
+        memset(en_buf, 0, sizeof(en_buf));
+        memset(hz_buf, 0, sizeof(hz_buf));
+        memset(loc_buf, 0, sizeof(loc_buf));
+        memset(par_buf,  ' ', sizeof(par_buf));
+        par_buf[19] = 0;
+
+        len = strlen(clock->dbg_name);
+        if (len > 19)
+                len = 19;
+        memcpy(nam_buf, clock->dbg_name, len);
+
+        clock_debug_enable_get(clock, &value);
+        if (value)
+                sprintf(en_buf, "Y");
+        else
+                sprintf(en_buf, "N");
+
+        clock_debug_rate_get(clock, &value);
+        sprintf(hz_buf, "%llu", value);
+
+        clock_debug_local_get(clock, &value);
+        if (value)
+                sprintf(loc_buf, "Y");
+        else
+                sprintf(loc_buf, "N");
+
+        parent = clock_debug_parent_get(clock);
+        if (parent) {
+                len = strlen(parent->dbg_name);
+                if (len > 19)
+                        len = 19;
+                memcpy(par_buf, parent->dbg_name, len);
+        } else
+                memcpy(par_buf, "NULL", 4);
+
+        if (m)
+                seq_printf(m, "%s: [EN]%s, [LOC]%s, [SRC]%s, [FREQ]%s\n", nam_buf, en_buf, loc_buf, par_buf, hz_buf);
+        else
+                pr_info("%s: [EN]%s, [LOC]%s, [SRC]%s, [FREQ]%s\n", nam_buf, en_buf, loc_buf, par_buf, hz_buf);
+
+        return 0;
+}
+
+int list_clocks_show(struct seq_file *m, void *unused)
+{
+        int index;
+        char *title_msg = "------------ HTC Clock -------------\n";
+        if (m)
+                seq_printf(m, title_msg);
+        else
+                pr_info("%s", title_msg);
+
+        for (index = 0; index < num_msm_clocks; index++)
+                htc_clock_dump(msm_clocks[index].clk, m);
+        return 0;
+}
+
+static int list_clocks_open(struct inode *inode, struct file *file)
+{
+        return single_open(file, list_clocks_show, inode->i_private);
+}
+
+static const struct file_operations list_clocks_fops = {
+        .open = list_clocks_open,
+        .read = seq_read,
+        .llseek = seq_lseek,
+        .release = single_release,
+};
+
+
+int htc_clock_status_debug_init(struct clk_lookup *table, size_t size)
+{
+        int err = 0;
+
+        debugfs_clock_base = debugfs_create_dir("htc_clock", NULL);
+        if (!debugfs_clock_base)
+                return -ENOMEM;
+
+        if (!debugfs_create_file("list_clocks", S_IRUGO, debugfs_clock_base,
+                                &msm_clocks, &list_clocks_fops))
+                return -ENOMEM;
+	msm_clocks = table;
+        num_msm_clocks = size;
+
+        return err;
+}
+#endif
+
 static int clock_debug_init(void)
 {
 	if (clk_debug_init_once)
@@ -624,17 +731,9 @@ static int clock_debug_init(void)
 				&orphan_list_fops))
 		return -ENOMEM;
 
-	if (!debugfs_create_file("trace_clocks", S_IRUGO, debugfs_base, NULL,
-				&trace_clocks_fops))
-		return -ENOMEM;
-
 	return 0;
 }
 
-/**
- * clock_debug_register() - Add additional clocks to clock debugfs hierarchy
- * @list: List of clocks to create debugfs nodes for
- */
 int clock_debug_register(struct clk *clk)
 {
 	int ret = 0;
@@ -664,9 +763,6 @@ out:
 	return ret;
 }
 
-/*
- * Print the names of enabled clocks and their parents if debug_suspend is set
- */
 void clock_debug_print_enabled(void)
 {
 	if (likely(!debug_suspend))

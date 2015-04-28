@@ -713,7 +713,7 @@ static struct rcg_clk mdp_clk_src = {
 	.c = {
 		.dbg_name = "mdp_clk_src",
 		.ops = &clk_ops_rcg,
-		VDD_DIG_FMAX_MAP4(LOWER, 85710000, LOW, 171430000,
+		VDD_DIG_FMAX_MAP4(LOWER, 85710000, LOW, 120000000,
 				  NOMINAL, 320000000, HIGH, 400000000),
 		CLK_INIT(mdp_clk_src.c),
 	},
@@ -2221,7 +2221,7 @@ static int mmss_dbg_set_mux_sel(struct mux_clk *clk, int sel)
 
 	spin_lock_irqsave(&local_clock_reg_lock, flags);
 
-	/* Set debug mux clock index */
+	
 	regval = BVAL(11, 0, sel);
 	writel_relaxed(regval, MMSS_REG_BASE(MMSS_DEBUG_CLK_CTL));
 
@@ -2623,7 +2623,7 @@ int msm_mmsscc_8994_probe(struct platform_device *pdev)
 	ext_extpclk_clk_src.dev = &pdev->dev;
 	ext_extpclk_clk_src.clk_id = "extpclk_src";
 
-	/* Perform revision specific fixes */
+	
 	compat = of_get_property(pdev->dev.of_node, "compatible", &compatlen);
 	if (!compat || (compatlen <= 0))
 		return -EINVAL;

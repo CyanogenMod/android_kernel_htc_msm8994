@@ -37,6 +37,13 @@
 #define MAX_AF_ITERATIONS 3
 #define MAX_NUMBER_OF_STEPS 47
 
+#define MAX_LED_TRIGGERS 3
+
+#define MAX_ACT_NAME_SIZE 32
+#define LC898212_HEX_MAX 0x7FFF 
+#define LC898212_HEX_MIN 0x8001 
+#define LC898212_DEC_MAX 1023
+
 enum flash_type {
 	LED_FLASH = 1,
 	STROBE_FLASH,
@@ -148,6 +155,9 @@ enum csiphy_cfg_type_t {
 enum camera_vreg_type {
 	VREG_TYPE_DEFAULT,
 	VREG_TYPE_CUSTOM,
+	
+	VREG_TYPE_GPIO,
+	
 };
 
 enum sensor_af_t {
@@ -211,14 +221,52 @@ struct camera_vreg_t {
 	uint32_t delay;
 	const char *custom_vreg_name;
 	enum camera_vreg_type type;
+	
+	int32_t gpios_index;
+	
 };
+
+struct fuse_id{
+	uint32_t fuse_id_word1;
+	uint32_t fuse_id_word2;
+	uint32_t fuse_id_word3;
+	uint32_t fuse_id_word4;
+};
+
+typedef struct{
+	char    ACT_NAME[MAX_ACT_NAME_SIZE]; 
+	uint8_t VCM_START_MSB;
+	uint8_t VCM_START_LSB;
+	uint8_t AF_INF_MSB;
+	uint8_t AF_INF_LSB;
+	uint8_t AF_MACRO_MSB;
+	uint8_t AF_MACRO_LSB;
+	uint8_t VCM_BIAS;
+	uint8_t VCM_OFFSET;
+	uint8_t VCM_BOTTOM_MECH_MSB;
+	uint8_t VCM_BOTTOM_MECH_LSB;
+	uint8_t VCM_TOP_MECH_MSB;
+	uint8_t VCM_TOP_MECH_LSB;
+	uint8_t VCM_VENDOR_ID_VERSION;
+	uint8_t VCM_VENDOR;
+	uint8_t ACT_ID;
+	uint32_t MODULE_ID_AB;
+}af_value_t;
 
 struct sensorb_cfg_data {
 	int cfgtype;
+	
+	int8_t sensor_ver;
+	int8_t lens_id;
+	af_value_t af_value;
+	
 	union {
 		struct msm_sensor_info_t      sensor_info;
 		struct msm_sensor_init_params sensor_init_params;
 		void                         *setting;
+		
+		struct fuse_id fuse;
+		
 	} cfg;
 };
 
@@ -398,9 +446,11 @@ enum msm_sensor_cfg_type_t {
 	CFG_SET_AUTOFOCUS,
 	CFG_CANCEL_AUTOFOCUS,
 	CFG_SET_STREAM_TYPE,
+	CFG_I2C_IOCTL_R_OTP,
 };
 
 enum msm_actuator_cfg_type_t {
+	CFG_SET_ACTUATOR_AF_VALUE,
 	CFG_GET_ACTUATOR_INFO,
 	CFG_SET_ACTUATOR_INFO,
 	CFG_SET_DEFAULT_FOCUS,
@@ -483,9 +533,18 @@ struct msm_actuator_params_t {
 	struct park_lens_data_t park_lens;
 };
 
+enum actuator_I2C_func_select {
+	WRITE_SEQ_TABLE,
+	WRITE_TABLE_W_MICRODELAY,
+	WRITE_MULTI_TABLE
+};
+
 struct msm_actuator_set_info_t {
 	struct msm_actuator_params_t actuator_params;
 	struct msm_actuator_tuning_params_t af_tuning_params;
+	uint8_t enable_focus_step_log;
+	uint16_t *step_position_table;                
+	enum actuator_I2C_func_select act_i2c_select; 
 };
 
 struct msm_actuator_get_info_t {
@@ -515,6 +574,23 @@ enum af_camera_name {
 	ACTUATOR_WEB_CAM_2,
 };
 
+struct msm_actuator_af_OTP_info_t {
+	uint8_t VCM_OTP_Read;
+	uint16_t VCM_Start;
+	uint16_t VCM_Infinity;
+	uint16_t VCM_Macro;
+	
+	uint8_t VCM_Bias;
+	uint8_t VCM_Offset;
+	uint16_t VCM_Bottom_Mech;
+	uint16_t VCM_Top_Mech;
+	uint8_t VCM_Vendor_Id_Version;
+	
+	uint8_t VCM_Vendor;
+	uint8_t act_id;
+	char act_name[MAX_SENSOR_NAME];
+};
+
 struct msm_ois_cfg_data {
 	int cfgtype;
 	union {
@@ -538,6 +614,9 @@ struct msm_actuator_cfg_data {
 		struct msm_actuator_get_info_t get_info;
 		struct msm_actuator_set_position_t setpos;
 		enum af_camera_name cam_name;
+		
+		af_value_t af_value;
+		
 	} cfg;
 };
 
@@ -572,7 +651,6 @@ struct msm_flash_cfg_data_t {
 	} cfg;
 };
 
-/* sensor init structures and enums */
 enum msm_sensor_init_cfg_type_t {
 	CFG_SINIT_PROBE,
 	CFG_SINIT_PROBE_DONE,
@@ -657,6 +735,9 @@ struct msm_actuator_params_t32 {
 struct msm_actuator_set_info_t32 {
 	struct msm_actuator_params_t32 actuator_params;
 	struct msm_actuator_tuning_params_t32 af_tuning_params;
+	uint8_t enable_focus_step_log;
+	uint16_t *step_position_table;                
+	enum actuator_I2C_func_select act_i2c_select; 
 };
 
 struct sensor_init_cfg_data32 {
@@ -686,6 +767,9 @@ struct msm_actuator_cfg_data32 {
 		struct msm_actuator_get_info_t get_info;
 		struct msm_actuator_set_position_t setpos;
 		enum af_camera_name cam_name;
+		
+		af_value_t af_value;
+		
 	} cfg;
 };
 
@@ -699,10 +783,18 @@ struct csiphy_cfg_data32 {
 
 struct sensorb_cfg_data32 {
 	int cfgtype;
+	
+	int8_t sensor_ver;
+	int8_t lens_id;
+	af_value_t af_value;
+	
 	union {
 		struct msm_sensor_info_t      sensor_info;
 		struct msm_sensor_init_params sensor_init_params;
 		compat_uptr_t                 setting;
+		
+		struct fuse_id fuse;
+		
 	} cfg;
 };
 
@@ -768,4 +860,4 @@ struct msm_flash_cfg_data_t32 {
 	_IOWR('V', BASE_VIDIOC_PRIVATE + 13, struct msm_flash_cfg_data_t32)
 #endif
 
-#endif /* __LINUX_MSM_CAM_SENSOR_H */
+#endif 

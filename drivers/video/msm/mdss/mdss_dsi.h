@@ -23,7 +23,7 @@
 #include "mdss_panel.h"
 #include "mdss_dsi_cmd.h"
 
-#define MMSS_SERDES_BASE_PHY 0x04f01000 /* mmss (De)Serializer CFG */
+#define MMSS_SERDES_BASE_PHY 0x04f01000 
 
 #define MIPI_OUTP(addr, data) writel_relaxed((data), (addr))
 #define MIPI_INP(addr) readl_relaxed(addr)
@@ -45,18 +45,18 @@
 #define MIPI_DSI_PANEL_720P_PT	8
 #define DSI_PANEL_MAX	8
 
-#define MDSS_DSI_HW_REV_100		0x10000000	/* 8974    */
-#define MDSS_DSI_HW_REV_100_1		0x10000001	/* 8x26    */
-#define MDSS_DSI_HW_REV_100_2		0x10000002	/* 8x26v2  */
-#define MDSS_DSI_HW_REV_101		0x10010000	/* 8974v2  */
-#define MDSS_DSI_HW_REV_101_1		0x10010001	/* 8974Pro */
-#define MDSS_DSI_HW_REV_102		0x10020000	/* 8084    */
-#define MDSS_DSI_HW_REV_103		0x10030000	/* 8994    */
-#define MDSS_DSI_HW_REV_103_1		0x10030001	/* 8916/8936 */
+#define MDSS_DSI_HW_REV_100		0x10000000	
+#define MDSS_DSI_HW_REV_100_1		0x10000001	
+#define MDSS_DSI_HW_REV_100_2		0x10000002	
+#define MDSS_DSI_HW_REV_101		0x10010000	
+#define MDSS_DSI_HW_REV_101_1		0x10010001	
+#define MDSS_DSI_HW_REV_102		0x10020000	
+#define MDSS_DSI_HW_REV_103		0x10030000	
+#define MDSS_DSI_HW_REV_103_1		0x10030001	
 
 #define NONE_PANEL "none"
 
-enum {		/* mipi dsi panel */
+enum {		
 	DSI_VIDEO_MODE,
 	DSI_CMD_MODE,
 };
@@ -164,10 +164,10 @@ enum dsi_pm_type {
 #define DSI_INTR_CMD_DMA_DONE_MASK	BIT(1)
 #define DSI_INTR_CMD_DMA_DONE		BIT(0)
 
-#define DSI_CMD_TRIGGER_NONE		0x0	/* mdp trigger */
+#define DSI_CMD_TRIGGER_NONE		0x0	
 #define DSI_CMD_TRIGGER_TE		0x02
 #define DSI_CMD_TRIGGER_SW		0x04
-#define DSI_CMD_TRIGGER_SW_SEOF		0x05	/* cmd dma only */
+#define DSI_CMD_TRIGGER_SW_SEOF		0x05	
 #define DSI_CMD_TRIGGER_SW_TE		0x06
 
 #define DSI_VIDEO_TERM  BIT(16)
@@ -179,7 +179,6 @@ enum dsi_pm_type {
 #define DSI_DATA_LANES_STOP_STATE	0xF
 #define DSI_CLK_LANE_STOP_STATE		BIT(4)
 
-/* offsets for dynamic refresh */
 #define DSI_DYNAMIC_REFRESH_CTRL		0x200
 #define DSI_DYNAMIC_REFRESH_PIPE_DELAY		0x204
 #define DSI_DYNAMIC_REFRESH_PIPE_DELAY2		0x208
@@ -193,8 +192,8 @@ struct dsiphy_pll_divider_config {
 	u32 clk_rate;
 	u32 fb_divider;
 	u32 ref_divider_ratio;
-	u32 bit_clk_divider;	/* oCLK1 */
-	u32 byte_clk_divider;	/* oCLK2 */
+	u32 bit_clk_divider;	
+	u32 byte_clk_divider;	
 	u32 analog_posDiv;
 	u32 digital_posDiv;
 };
@@ -262,10 +261,29 @@ struct panel_horizontal_idle {
 	int idle;
 };
 
+struct mdss_dsi_pwrctrl {
+	int (*dsi_regulator_init) (struct platform_device *pdev);
+	int (*dsi_regulator_deinit) (struct platform_device *pdev);
+	int (*dsi_power_on) (struct mdss_panel_data *pdata);
+	int (*dsi_power_off) (struct mdss_panel_data *pdata);
+	void (*dsi_panel_reset) (struct mdss_panel_data *pdata);
+	void (*bkl_config) (struct mdss_panel_data *pdata, int enable);
+	void (*incell_touch_on) (int on);
+	void (*notify_touch_cont_splash) (int enable);
+};
+
 enum {
 	DSI_CTRL_0,
 	DSI_CTRL_1,
 	DSI_CTRL_MAX,
+};
+
+enum BACKLIGHT_TO_BRIGHTNESS_HTC_V1 {
+	BRI_SETTING_MIN   = 30,
+	BRI_SETTING_DEF   = 142,
+	BRI_SETTING_HIGH  = 200,
+	BRI_SETTING_EXTRA = 230,
+	BRI_SETTING_MAX   = 255,
 };
 
 #define DSI_CTRL_LEFT		DSI_CTRL_0
@@ -285,7 +303,7 @@ enum {
 #define DSI_EV_MDP_BUSY_RELEASE		0x80000000
 
 struct mdss_dsi_ctrl_pdata {
-	int ndx;	/* panel_num */
+	int ndx;	
 	int (*on) (struct mdss_panel_data *pdata);
 	int (*off) (struct mdss_panel_data *pdata);
 	int (*low_power_config) (struct mdss_panel_data *pdata, int enable);
@@ -326,7 +344,7 @@ struct mdss_dsi_ctrl_pdata {
 	int disp_en_gpio;
 	int bklt_en_gpio;
 	int mode_gpio;
-	int bklt_ctrl;	/* backlight ctrl */
+	int bklt_ctrl;	
 	bool pwm_pmi;
 	int pwm_period;
 	int pwm_pmic_gpio;
@@ -348,7 +366,7 @@ struct mdss_dsi_ctrl_pdata {
 	struct dsi_drv_cm_data *shared_ctrl_data;
 	u32 pclk_rate;
 	u32 byte_clk_rate;
-	bool refresh_clk_rate; /* flag to recalculate clk_rate */
+	bool refresh_clk_rate; 
 	struct dss_module_power power_data[DSI_MAX_PM];
 	u32 dsi_irq_mask;
 	struct mdss_hw *dsi_hw;
@@ -376,8 +394,8 @@ struct mdss_dsi_ctrl_pdata {
 	int mdp_busy;
 	struct mutex mutex;
 	struct mutex cmd_mutex;
-	struct regulator *lab; /* vreg handle */
-	struct regulator *ibb; /* vreg handle */
+	struct regulator *lab; 
+	struct regulator *ibb; 
 	struct mutex clk_lane_mutex;
 
 	u32 ulps_clamp_ctrl_off;
@@ -402,6 +420,20 @@ struct mdss_dsi_ctrl_pdata {
 	int horizontal_idle_cnt;
 	struct panel_horizontal_idle *line_idle;
 	struct mdss_util_intf *mdss_util;
+
+	
+	void *dsi_pwrctrl_data;			
+	struct dsi_panel_cmds cabc_off_cmds;
+	struct dsi_panel_cmds cabc_ui_cmds;
+	struct dsi_panel_cmds cabc_video_cmds;
+	struct dsi_panel_cmds dimming_on_cmds;
+
+	int brt_dim;	
+	int brt_min;
+	int brt_def;
+	int brt_high;
+	int brt_extra;
+	int brt_max;
 };
 
 struct dsi_status_data {
@@ -507,11 +539,6 @@ static inline const char *__mdss_dsi_pm_supply_node_name(
 
 static inline bool mdss_dsi_split_display_enabled(void)
 {
-	/*
-	 * currently the only supported mode is split display.
-	 * So, if both controllers are initialized, then assume that
-	 * split display mode is enabled.
-	 */
 	return ctrl_list[DSI_CTRL_LEFT] && ctrl_list[DSI_CTRL_RIGHT];
 }
 
@@ -610,4 +637,4 @@ static inline bool mdss_dsi_cmp_panel_reg(struct dsi_buf status_buf,
 	return status_buf.data[i] == status_val[i];
 }
 
-#endif /* MDSS_DSI_H */
+#endif 

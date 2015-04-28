@@ -39,10 +39,8 @@
 #include "msm_iommu_pagetable.h"
 
 #ifdef CONFIG_IOMMU_LPAE
-/* bitmap of the page sizes currently supported */
 #define MSM_IOMMU_PGSIZES	(SZ_4K | SZ_64K | SZ_2M | SZ_32M | SZ_1G)
 #else
-/* bitmap of the page sizes currently supported */
 #define MSM_IOMMU_PGSIZES	(SZ_4K | SZ_64K | SZ_1M | SZ_16M)
 #endif
 
@@ -130,7 +128,7 @@ static int __enable_clocks(struct msm_iommu_drvdata *drvdata)
 		value = readl_relaxed(drvdata->clk_reg_virt);
 		value &= ~0x1;
 		writel_relaxed(value, drvdata->clk_reg_virt);
-		/* Ensure clock is on before continuing */
+		
 		mb();
 	}
 	return 0;
@@ -257,7 +255,7 @@ static void check_tlb_sync_state(struct msm_iommu_drvdata const *drvdata,
 {
 	int res;
 	unsigned int val;
-	void __iomem *base = drvdata->cb_base;
+	void __iomem *base = drvdata->base;
 	char const *name = drvdata->name;
 
 	pr_err("Timed out waiting for TLB SYNC to complete for %s\n", name);
@@ -280,10 +278,6 @@ static void check_tlb_sync_state(struct msm_iommu_drvdata const *drvdata,
 
 #else
 
-/*
- * For targets without VBIF or for targets with the VBIF check disabled
- * we directly just crash to capture the issue
- */
 static void check_halt_state(struct msm_iommu_drvdata const *drvdata)
 {
 	BUG();
@@ -311,7 +305,7 @@ void iommu_halt(struct msm_iommu_drvdata const *iommu_drvdata)
 
 		if (res)
 			check_halt_state(iommu_drvdata);
-		/* Ensure device is idle before continuing */
+		
 		mb();
 	}
 }
@@ -319,17 +313,8 @@ void iommu_halt(struct msm_iommu_drvdata const *iommu_drvdata)
 void iommu_resume(const struct msm_iommu_drvdata *iommu_drvdata)
 {
 	if (iommu_drvdata->halt_enabled) {
-		/*
-		 * Ensure transactions have completed before releasing
-		 * the halt
-		 */
 		mb();
 		SET_MICRO_MMU_CTRL_HALT_REQ(iommu_drvdata->base, 0);
-		/*
-		 * Ensure write is complete before continuing to ensure
-		 * we don't turn off clocks while transaction is still
-		 * pending.
-		 */
 		mb();
 	}
 }
@@ -341,7 +326,7 @@ static void __sync_tlb(struct msm_iommu_drvdata *iommu_drvdata, int ctx)
 	void __iomem *base = iommu_drvdata->cb_base;
 
 	SET_TLBSYNC(base, ctx, 0);
-	/* No barrier needed due to read dependency */
+	
 
 	res = readl_tight_poll_timeout(CTX_REG(CB_TLBSTATUS, base, ctx), val,
 				(val & CB_TLBSTATUS_SACTIVE) == 0, 5000000);
@@ -404,25 +389,19 @@ fail:
 	return ret;
 }
 
-/*
- * May only be called for non-secure iommus
- */
 static void __reset_iommu(struct msm_iommu_drvdata *iommu_drvdata)
 {
 	int i, smt_size, res;
 	unsigned long val;
 	void __iomem *base = iommu_drvdata->base;
 
-	/* SMMU_ACR is an implementation defined register.
-	 * Resetting is not required for some implementation.
-	 */
 	if (iommu_drvdata->model != MMU_500)
 		SET_ACR(base, 0);
 	SET_CR2(base, 0);
 	SET_GFAR(base, 0);
 	SET_GFSRRESTORE(base, 0);
 
-	/* Invalidate the entire non-secure TLB */
+	
 	SET_TLBIALLNSNH(base, 0);
 	SET_TLBGSYNC(base, 0);
 	res = readl_tight_poll_timeout(GLB_REG(TLBGSTATUS, base), val,
@@ -469,9 +448,6 @@ static void __program_iommu_secure(struct msm_iommu_drvdata *iommu_drvdata)
 	SET_NSCR0_CLIENTPD(base, 0);
 }
 
-/*
- * May only be called for non-secure iommus
- */
 static void __program_iommu(struct msm_iommu_drvdata *drvdata)
 {
 	__reset_iommu(drvdata);
@@ -500,7 +476,7 @@ static void __program_iommu(struct msm_iommu_drvdata *drvdata)
 		writel_relaxed(0xFFFFFFFF, drvdata->smmu_local_base +
 							SMMU_INTR_SEL_NS);
 
-	mb(); /* Make sure writes complete before returning */
+	mb(); 
 }
 
 void program_iommu_bfb_settings(void __iomem *base,
@@ -512,17 +488,13 @@ void program_iommu_bfb_settings(void __iomem *base,
 			SET_GLOBAL_REG(base, bfb_settings->regs[i],
 					     bfb_settings->data[i]);
 
-	mb(); /* Make sure writes complete before returning */
+	mb(); 
 }
 
 static void __reset_context(struct msm_iommu_drvdata *iommu_drvdata, int ctx)
 {
 	void __iomem *base = iommu_drvdata->cb_base;
 
-	/* Don't set ACTLR to zero because if context bank is in
-	 * bypass mode (say after iommu_detach), still this ACTLR
-	 * value matters for micro-TLB caching.
-	 */
 	if (iommu_drvdata->model != MMU_500)
 		SET_ACTLR(base, ctx, 0);
 	SET_FAR(base, ctx, 0);
@@ -542,7 +514,7 @@ static void __release_smg(void __iomem *base)
 	int i, smt_size;
 	smt_size = GET_IDR0_NUMSMRG(base);
 
-	/* Invalidate all SMGs */
+	
 	for (i = 0; i < smt_size; i++)
 		if (GET_SMR_VALID(base, i))
 			SET_SMR_VALID(base, i, 0);
@@ -575,7 +547,7 @@ static void msm_iommu_assign_ASID(const struct msm_iommu_drvdata *iommu_drvdata,
 #ifdef CONFIG_IOMMU_LPAE
 static void msm_iommu_setup_ctx(void __iomem *base, unsigned int ctx)
 {
-	SET_CB_TTBCR_EAE(base, ctx, 1); /* Extended Address Enable (EAE) */
+	SET_CB_TTBCR_EAE(base, ctx, 1); 
 }
 
 static void msm_iommu_setup_memory_remap(void __iomem *base, unsigned int ctx)
@@ -586,27 +558,23 @@ static void msm_iommu_setup_memory_remap(void __iomem *base, unsigned int ctx)
 
 static void msm_iommu_setup_pg_l2_redirect(void __iomem *base, unsigned int ctx)
 {
-	/*
-	 * Configure page tables as inner-cacheable and shareable to reduce
-	 * the TLB miss penalty.
-	 */
-	SET_CB_TTBCR_SH0(base, ctx, 3); /* Inner shareable */
-	SET_CB_TTBCR_ORGN0(base, ctx, 1); /* outer cachable*/
-	SET_CB_TTBCR_IRGN0(base, ctx, 1); /* inner cachable*/
-	SET_CB_TTBCR_T0SZ(base, ctx, 0); /* 0GB-4GB */
+	SET_CB_TTBCR_SH0(base, ctx, 3); 
+	SET_CB_TTBCR_ORGN0(base, ctx, 1); 
+	SET_CB_TTBCR_IRGN0(base, ctx, 1); 
+	SET_CB_TTBCR_T0SZ(base, ctx, 0); 
 
 
-	SET_CB_TTBCR_SH1(base, ctx, 3); /* Inner shareable */
-	SET_CB_TTBCR_ORGN1(base, ctx, 1); /* outer cachable*/
-	SET_CB_TTBCR_IRGN1(base, ctx, 1); /* inner cachable*/
-	SET_CB_TTBCR_T1SZ(base, ctx, 0); /* TTBR1 not used */
+	SET_CB_TTBCR_SH1(base, ctx, 3); 
+	SET_CB_TTBCR_ORGN1(base, ctx, 1); 
+	SET_CB_TTBCR_IRGN1(base, ctx, 1); 
+	SET_CB_TTBCR_T1SZ(base, ctx, 0); 
 }
 
 #else
 
 static void msm_iommu_setup_ctx(void __iomem *base, unsigned int ctx)
 {
-	/* Turn on TEX Remap */
+	
 	SET_CB_SCTLR_TRE(base, ctx, 1);
 }
 
@@ -618,14 +586,11 @@ static void msm_iommu_setup_memory_remap(void __iomem *base, unsigned int ctx)
 
 static void msm_iommu_setup_pg_l2_redirect(void __iomem *base, unsigned int ctx)
 {
-	/* Configure page tables as inner-cacheable and shareable to reduce
-	 * the TLB miss penalty.
-	 */
 	SET_CB_TTBR0_S(base, ctx, 1);
 	SET_CB_TTBR0_NOS(base, ctx, 1);
-	SET_CB_TTBR0_IRGN1(base, ctx, 0); /* WB, WA */
+	SET_CB_TTBR0_IRGN1(base, ctx, 0); 
 	SET_CB_TTBR0_IRGN0(base, ctx, 1);
-	SET_CB_TTBR0_RGN(base, ctx, 1);   /* WB, WA */
+	SET_CB_TTBR0_RGN(base, ctx, 1);   
 }
 
 #endif
@@ -640,7 +605,7 @@ static int program_m2v_table(struct device *dev, void __iomem *base)
 	int len = ctx_drvdata->nsid;
 
 	smt_size = GET_IDR0_NUMSMRG(base);
-	/* Program the M2V tables for this context */
+	
 	for (i = 0; i < len / sizeof(*sids); i++) {
 		for (; num < smt_size; num++)
 			if (GET_SMR_VALID(base, num) == 0)
@@ -654,7 +619,7 @@ static int program_m2v_table(struct device *dev, void __iomem *base)
 		SET_S2CR_N(base, num, 0);
 		SET_S2CR_CBNDX(base, num, ctx);
 		SET_S2CR_MEMATTR(base, num, 0x0A);
-		/* Set security bit override to be Non-secure */
+		
 		SET_S2CR_NSCFG(base, num, 3);
 	}
 
@@ -689,17 +654,17 @@ static void __program_context(struct msm_iommu_drvdata *iommu_drvdata,
 	pn = pgtable >> CB_TTBR0_ADDR_SHIFT;
 	SET_CB_TTBR0_ADDR(cb_base, ctx, pn);
 
-	/* Enable context fault interrupt */
+	
 	SET_CB_SCTLR_CFIE(cb_base, ctx, 1);
 
 	if (iommu_drvdata->model != MMU_500) {
-		/* Redirect all cacheable requests to L2 slave port. */
+		
 		SET_CB_ACTLR_BPRCISH(cb_base, ctx, 1);
 		SET_CB_ACTLR_BPRCOSH(cb_base, ctx, 1);
 		SET_CB_ACTLR_BPRCNSH(cb_base, ctx, 1);
 	}
 
-	/* Enable private ASID namespace */
+	
 	SET_CB_SCTLR_ASIDPNE(cb_base, ctx, 1);
 
 	if (!is_secure) {
@@ -708,34 +673,31 @@ static void __program_context(struct msm_iommu_drvdata *iommu_drvdata,
 
 		SET_CBAR_N(base, ctx, 0);
 
-		/* Stage 1 Context with Stage 2 bypass */
+		
 		SET_CBAR_TYPE(base, ctx, 1);
 
-		/* Route page faults to the non-secure interrupt */
+		
 		SET_CBAR_IRPTNDX(base, ctx, 1);
 
-		/* Set VMID to non-secure HLOS */
+		
 		SET_CBAR_VMID(base, ctx, 3);
 
-		/* Bypass is treated as inner-shareable */
+		
 		SET_CBAR_BPSHCFG(base, ctx, 2);
 
-		/* Do not downgrade memory attributes */
+		
 		SET_CBAR_MEMATTR(base, ctx, 0x0A);
 
 	}
 
 	msm_iommu_assign_ASID(iommu_drvdata, ctx_drvdata, priv);
 
-	/* Ensure that ASID assignment has completed before we use
-	 * ASID for TLB invalidation. Here, mb() is required because
-	 * both these registers are separated by more than 1KB. */
 	mb();
 	SET_TLBIASID(iommu_drvdata->cb_base, ctx_drvdata->num,
 					ctx_drvdata->asid);
 	__sync_tlb(iommu_drvdata, ctx_drvdata->num);
 
-	/* Enable the MMU */
+	
 	SET_CB_SCTLR_M(cb_base, ctx, 1);
 	mb();
 }
@@ -836,7 +798,7 @@ static int msm_iommu_attach_dev(struct iommu_domain *domain, struct device *dev)
 		goto unlock;
 	}
 
-	/* We can only do this once */
+	
 	if (!iommu_drvdata->ctx_attach_count) {
 		if (!is_secure) {
 			iommu_halt(iommu_drvdata);
@@ -861,6 +823,12 @@ static int msm_iommu_attach_dev(struct iommu_domain *domain, struct device *dev)
 	__program_context(iommu_drvdata, ctx_drvdata, priv, is_secure, set_m2v);
 
 	iommu_resume(iommu_drvdata);
+	
+	if (iommu_drvdata->model != MMU_500) {
+		SET_TLBIASID(iommu_drvdata->cb_base, ctx_drvdata->num,
+				ctx_drvdata->asid);
+		__sync_tlb(iommu_drvdata, ctx_drvdata->num);
+	}
 
 	__disable_clocks(iommu_drvdata);
 
@@ -914,16 +882,16 @@ static void msm_iommu_detach_dev(struct iommu_domain *domain,
 
 	is_secure = iommu_drvdata->sec_id != -1;
 
-	SET_TLBIASID(iommu_drvdata->cb_base, ctx_drvdata->num,
+	if (iommu_drvdata->model == MMU_500) {
+		SET_TLBIASID(iommu_drvdata->cb_base, ctx_drvdata->num,
 					ctx_drvdata->asid);
-	__sync_tlb(iommu_drvdata, ctx_drvdata->num);
+		__sync_tlb(iommu_drvdata, ctx_drvdata->num);
+	}
 
 	ctx_drvdata->asid = -1;
 
 	__reset_context(iommu_drvdata, ctx_drvdata->num);
 
-	/*
-	 * Only reset the M2V tables on the very last detach */
 	if (!is_secure && iommu_drvdata->ctx_attach_count == 1) {
 		iommu_halt(iommu_drvdata);
 		__release_smg(iommu_drvdata->base);
@@ -993,7 +961,7 @@ static size_t msm_iommu_unmap(struct iommu_domain *domain, unsigned long va,
 fail:
 	mutex_unlock(&msm_iommu_lock);
 
-	/* the IOMMU API requires us to return how many bytes were unmapped */
+	
 	len = ret ? 0 : len;
 	return len;
 }
@@ -1048,7 +1016,7 @@ static int msm_iommu_unmap_range(struct iommu_domain *domain, unsigned int va,
 static phys_addr_t msm_iommu_get_phy_from_PAR(unsigned long va, u64 par)
 {
 	phys_addr_t phy;
-	/* Upper 28 bits from PAR, lower 12 from VA */
+	
 	phy = (par & 0xFFFFFFF000ULL) | (va & 0x00000FFF);
 	return phy;
 }
@@ -1057,10 +1025,10 @@ static phys_addr_t msm_iommu_get_phy_from_PAR(unsigned long va, u64 par)
 {
 	phys_addr_t phy;
 
-	/* We are dealing with a supersection */
+	
 	if (par & CB_PAR_SS)
 		phy = (par & 0xFF000000) | (va & 0x00FFFFFF);
-	else /* Upper 20 bits from PAR, lower 12 from VA */
+	else 
 		phy = (par & 0xFFFFF000) | (va & 0x00000FFF);
 
 	return phy;
@@ -1100,7 +1068,7 @@ static phys_addr_t msm_iommu_iova_to_phys(struct iommu_domain *domain,
 
 	ret = __enable_clocks(iommu_drvdata);
 	if (ret) {
-		ret = 0;	/* 0 indicates translation failed */
+		ret = 0;	
 		goto fail;
 	}
 
@@ -1358,11 +1326,6 @@ irqreturn_t msm_iommu_fault_handler_v2(int irq, void *dev_id)
 		pr_err("Unexpected IOMMU page fault!\n");
 		pr_err("name = %s\n", drvdata->name);
 		pr_err("Power is OFF. Unable to read page fault information\n");
-		/*
-		 * We cannot determine which context bank caused the issue so
-		 * we just return handled here to ensure IRQ handler code is
-		 * happy
-		 */
 		ret = IRQ_HANDLED;
 		goto fail;
 	}

@@ -24,6 +24,7 @@
 #include <soc/qcom/hvc.h>
 #include "governor.h"
 #include "devfreq_spdm.h"
+#include <linux/delay.h>
 
 enum msm_spdm_rt_res {
 	SPDM_RES_ID = 1,
@@ -34,6 +35,8 @@ enum msm_spdm_rt_res {
 
 static LIST_HEAD(devfreqs);
 static DEFINE_MUTEX(devfreqs_lock);
+
+static unsigned long spdm_hyp_timeout;
 
 static int enable_clocks(void)
 {
@@ -77,7 +80,10 @@ static irqreturn_t threaded_isr(int irq, void *dev_id)
 	struct hvc_desc desc = { { 0 } };
 	int hvc_status = 0;
 
-	/* call hyp to get bw_vote */
+	while (time_before_eq(jiffies, spdm_hyp_timeout))
+		msleep(10);
+
+	
 	desc.arg[0] = SPDM_CMD_GET_BW_ALL;
 	hvc_status = hvc(HVC_FN_SIP(SPDM_HYP_FNID), &desc);
 	if (hvc_status)
@@ -98,6 +104,8 @@ static irqreturn_t threaded_isr(int irq, void *dev_id)
 		}
 	}
 	mutex_unlock(&devfreqs_lock);
+
+	spdm_hyp_timeout = jiffies + msecs_to_jiffies(10);
 	return IRQ_HANDLED;
 }
 
@@ -125,8 +133,6 @@ static int gov_spdm_hyp_target_bw(struct devfreq *devfreq, unsigned long *freq,
 	usage = (status.busy_time * 100) / status.total_time;
 
 	if (usage > 0) {
-		/* up was already called as part of hyp, so just use the
-		 * already stored values */
 		*freq = ((struct spdm_data *)devfreq->data)->new_bw;
 	} else {
 		desc.arg[0] = SPDM_CMD_GET_BW_SPECIFIC;
@@ -154,7 +160,7 @@ static int gov_spdm_hyp_eh(struct devfreq *devfreq, unsigned int event,
 		mutex_lock(&devfreqs_lock);
 		list_add(&spdm_data->list, &devfreqs);
 		mutex_unlock(&devfreqs_lock);
-		/* call hyp with config data */
+		
 		desc.arg[0] = SPDM_CMD_CFG_PORTS;
 		desc.arg[1] = spdm_data->spdm_client;
 		desc.arg[2] = spdm_data->config_data.num_ports;
@@ -278,7 +284,7 @@ static int gov_spdm_hyp_eh(struct devfreq *devfreq, unsigned int event,
 			pr_err("HVC command %u failed with error %u",
 				(int)desc.arg[0], hvc_status);
 
-		/* call hyp enable/commit */
+		
 		desc.arg[0] = SPDM_CMD_ENABLE;
 		desc.arg[1] = spdm_data->spdm_client;
 		desc.arg[2] = 0;
@@ -287,11 +293,6 @@ static int gov_spdm_hyp_eh(struct devfreq *devfreq, unsigned int event,
 			pr_err("HVC command %u failed with error %u",
 				(int)desc.arg[0], hvc_status);
 			mutex_lock(&devfreqs_lock);
-			/*
-			 * the spdm device probe will fail so remove it from
-			 * the list  to prevent accessing a deleted pointer in
-			 * the future
-			 * */
 			list_del(&spdm_data->list);
 			mutex_unlock(&devfreqs_lock);
 			return -EINVAL;
@@ -301,12 +302,12 @@ static int gov_spdm_hyp_eh(struct devfreq *devfreq, unsigned int event,
 
 	case DEVFREQ_GOV_STOP:
 		devfreq_monitor_stop(devfreq);
-		/* find devfreq in list and remove it */
+		
 		mutex_lock(&devfreqs_lock);
 		list_del(&spdm_data->list);
 		mutex_unlock(&devfreqs_lock);
 
-		/* call hypvervisor to disable */
+		
 		desc.arg[0] = SPDM_CMD_DISABLE;
 		desc.arg[1] = spdm_data->spdm_client;
 		hvc_status = hvc(HVC_FN_SIP(SPDM_HYP_FNID), &desc);

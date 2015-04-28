@@ -60,11 +60,6 @@
 #define LPASS_BE_SLIMBUS_6_RX "SLIMBUS_6_RX"
 #define LPASS_BE_SLIMBUS_6_TX "SLIMBUS_6_TX"
 
-/* For multimedia front-ends, asm session is allocated dynamically.
- * Hence, asm session/multimedia front-end mapping has to be maintained.
- * Due to this reason, additional multimedia front-end must be placed before
- * non-multimedia front-ends.
- */
 
 enum {
 	MSM_FRONTEND_DAI_MULTIMEDIA1 = 0,
@@ -186,13 +181,10 @@ struct msm_pcm_routing_evt {
 };
 
 struct msm_pcm_routing_bdai_data {
-	u16 port_id; /* AFE port ID */
-	u8 active; /* track if this backend is enabled */
-	unsigned long fe_sessions; /* Front-end sessions */
-	u64 port_sessions; /* track Tx BE ports -> Rx BE
-			    * number of BE should not exceed
-			    * the size of this field
-			    */
+	u16 port_id; 
+	u8 active; 
+	unsigned long fe_sessions; 
+	u64 port_sessions; 
 	unsigned int  sample_rate;
 	unsigned int  channel;
 	unsigned int  format;
@@ -201,8 +193,8 @@ struct msm_pcm_routing_bdai_data {
 };
 
 struct msm_pcm_routing_fdai_data {
-	u16 be_srate; /* track prior backend sample rate for flushing purpose */
-	int strm_id; /* ASM stream ID */
+	u16 be_srate; 
+	int strm_id; 
 	int perf_mode;
 	struct msm_pcm_routing_evt event_info;
 };
@@ -219,11 +211,22 @@ struct msm_pcm_stream_app_type_cfg {
 	int acdb_dev_id;
 	int sample_rate;
 };
+struct htc_adm_effect_s {
+	u16 used;
+	u16 port_id;
+	uint32_t copp_id;
+	uint32_t param_id;
+	uint32_t payload_size;
+	void *payload;
+};
 
-/* dai_id: front-end ID,
- * dspst_id:  DSP audio stream ID
- * stream_type: playback or capture
- */
+enum HTC_ADM_EFFECT_ID {
+	HTC_ADM_EFFECT_AUDIOSPHERE = 0,
+	HTC_ADM_EFFECT_LIMITER,
+	HTC_ADM_EFFECT_SPEAKER_REVERSE,
+	HTC_ADM_EFFECT_AUDIOSPHERE_ST,
+	HTC_ADM_EFFECT_MAX,
+};
 int msm_pcm_routing_reg_phy_stream(int fedai_id, int perf_mode, int dspst_id,
 				   int stream_type);
 void msm_pcm_routing_reg_psthr_stream(int fedai_id, int dspst_id,
@@ -250,4 +253,7 @@ void msm_pcm_routing_release_lock(void);
 
 void msm_pcm_routing_reg_stream_app_type_cfg(int fedai_id, int app_type,
 					int acdb_dev_id, int sample_rate);
-#endif /*_MSM_PCM_H*/
+int msm_pcm_routing_get_port(struct snd_pcm_substream *substream, u16 *port_id);
+int htc_adm_effect_control(enum HTC_ADM_EFFECT_ID effect_id, u16 port_id, uint32_t copp_id, uint32_t param_id,
+		uint32_t payload_size, void *payload );
+#endif 

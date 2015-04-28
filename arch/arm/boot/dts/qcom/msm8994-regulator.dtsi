@@ -1,4 +1,4 @@
-/* Copyright (c) 2014, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2014-2015, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -82,6 +82,7 @@
 			regulator-max-microvolt = <1800000>;
 			qcom,init-voltage = <1800000>;
 			status = "okay";
+			regulator-always-on;
 		};
 	};
 
@@ -231,6 +232,7 @@
 			qcom,proxy-consumer-enable;
 			qcom,proxy-consumer-current = <10000>;
 			status = "okay";
+			regulator-always-on;
 		};
 	};
 
@@ -257,9 +259,14 @@
 	rpm-regulator-ldoa17 {
 		status = "okay";
 		pm8994_l17: regulator-l17 {
+			/* HTC_CAM_START, change from 2700000 to 2800000
 			regulator-min-microvolt = <2700000>;
 			regulator-max-microvolt = <2700000>;
 			qcom,init-voltage = <2700000>;
+			HTC_CAM_END */
+			regulator-min-microvolt = <2800000>;
+			regulator-max-microvolt = <2800000>;
+			qcom,init-voltage = <2800000>;
 			status = "okay";
 		};
 	};
@@ -267,20 +274,23 @@
 	rpm-regulator-ldoa18 {
 		status = "okay";
 		pm8994_l18: regulator-l18 {
-			regulator-min-microvolt = <2850000>;
-			regulator-max-microvolt = <2850000>;
-			qcom,init-voltage = <2850000>;
+			regulator-min-microvolt = <1800000>;
+			regulator-max-microvolt = <1800000>;
+			qcom,init-voltage = <1800000>;
 			status = "okay";
+			regulator-boot-on;
+			regulator-always-on;
 		};
 	};
 
 	rpm-regulator-ldoa19 {
 		status = "okay";
 		pm8994_l19: regulator-l19 {
-			regulator-min-microvolt = <2800000>;
-			regulator-max-microvolt = <2800000>;
-			qcom,init-voltage = <2800000>;
+			regulator-min-microvolt = <2850000>;
+			regulator-max-microvolt = <2850000>;
+			qcom,init-voltage = <2850000>;
 			status = "okay";
+			regulator-always-on;
 		};
 	};
 
@@ -309,20 +319,23 @@
 	rpm-regulator-ldoa22 {
 		status = "okay";
 		pm8994_l22: regulator-l22 {
-			regulator-min-microvolt = <3000000>;
-			regulator-max-microvolt = <3000000>;
-			qcom,init-voltage = <3000000>;
+			regulator-min-microvolt = <3300000>;
+			regulator-max-microvolt = <3300000>;
+			qcom,init-voltage = <3300000>;
 			status = "okay";
+			regulator-boot-on;
+			regulator-always-on;
 		};
 	};
 
 	rpm-regulator-ldoa23 {
 		status = "okay";
 		pm8994_l23: regulator-l23 {
-			regulator-min-microvolt = <2800000>;
-			regulator-max-microvolt = <2800000>;
-			qcom,init-voltage = <2800000>;
+			regulator-min-microvolt = <3300000>;
+			regulator-max-microvolt = <3300000>;
+			qcom,init-voltage = <3300000>;
 			status = "okay";
+			regulator-boot-on;
 		};
 	};
 
@@ -342,6 +355,7 @@
 			regulator-min-microvolt = <1000000>;
 			regulator-max-microvolt = <1000000>;
 			qcom,init-voltage = <1000000>;
+			qcom,init-ldo-mode = <1>;
 			status = "okay";
 		};
 	};
@@ -384,10 +398,12 @@
 	rpm-regulator-ldoa29 {
 		status = "okay";
 		pm8994_l29: regulator-l29 {
-			regulator-min-microvolt = <2800000>;
-			regulator-max-microvolt = <2800000>;
-			qcom,init-voltage = <2800000>;
+			regulator-min-microvolt = <3300000>;
+			regulator-max-microvolt = <3300000>;
+			qcom,init-voltage = <3300000>;
 			status = "okay";
+			regulator-boot-on;
+			regulator-always-on;
 		};
 	};
 
@@ -397,6 +413,8 @@
 			regulator-min-microvolt = <1800000>;
 			regulator-max-microvolt = <1800000>;
 			qcom,init-voltage = <1800000>;
+			regulator-boot-on;
+			regulator-always-on;
 			status = "okay";
 		};
 	};
@@ -569,7 +587,7 @@
 		regulator-name = "mem_acc0_corner";
 		regulator-min-microvolt = <1>;
 		regulator-max-microvolt = <4>;
-		qcom,corner-acc-map = <1 1 0 0>;
+		qcom,corner-acc-map = <0 0 0 0>;
 		qcom,acc-sel-l1-bit-pos = <0>;
 		qcom,acc-sel-l1-bit-size = <1>;
 	};
@@ -596,8 +614,8 @@
 		regulator-min-microvolt = <1>;
 		regulator-max-microvolt = <13>;
 
-		qcom,cpr-voltage-ceiling = <800000 900000 1000000 1180000>;
-		qcom,cpr-voltage-floor =   <700000 725000  840000 1000000>;
+		qcom,cpr-voltage-ceiling = <900000 900000 1000000 1180000>;
+		qcom,cpr-voltage-floor =   <700000 700000  790000 900000>;
 		vdd-apc-supply = <&pm8994_s8>;
 
 		qcom,vdd-mx-corner-map = <3 4 5 7>;
@@ -656,28 +674,31 @@
 
 		qcom,cpr-corner-map = <1 2 2 2 3 3 3 4 4 4 4 4 4>;
 		qcom,cpr-voltage-ceiling-override =
-				<0xFFFFFFFF 0  800000  900000  900000  900000
+				<0xFFFFFFFF 0  900000  900000  900000  900000
 					      1000000 1000000 1000000 1115000
 					      1115000 1180000 1180000 1180000
 					      1180000>;
 		qcom,cpr-voltage-floor-override =
 				<0xFFFFFFFF 0 700000 700000 715000 725000
 					      790000 815000 835000 900000
-					      935000 940000 965000 990000
+					      935000 940000 990000 990000
 					      1010000>;
 
 		qcom,cpr-fuse-version-map =
 				<0xffffffff 0xffffffff 1 0 0 0 0>,
 				<0xffffffff 0xffffffff 2 0 0 0 0>,
-				<0xffffffff 0xffffffff 3 0 0 0 0>;
+				<0xffffffff 0xffffffff 3 0 0 0 0>,
+				<0xffffffff 0xffffffff 4 0 0 0 0>;
 		qcom,cpr-quotient-adjustment =
 				<0 0 0 (-50)>,
 				<0 0 0 (-50)>,
-				<0 0 0 40>;
+				<0 (-50) (-50) 40>,
+				<0 (-50) (-50) 0>;
 		qcom,cpr-init-voltage-adjustment =
 				<0 0 0 (-25000)>,
 				<0 0 0 (-25000)>,
-				<0 0 0 20000>;
+				<0 (-25000) (-25000) 20000>,
+				<0 (-25000) (-25000) 0>;
 
 		qcom,cpr-scaled-init-voltage-as-ceiling;
 		qcom,cpr-voltage-scaling-factor-max = <0 0 2000 2000>;
@@ -712,7 +733,7 @@
 		regulator-max-microvolt = <17>;
 
 		qcom,cpr-voltage-ceiling = <900000 900000 1000000 1225000>;
-		qcom,cpr-voltage-floor =   <725000 725000  840000 1000000>;
+		qcom,cpr-voltage-floor =   <700000 700000  795000 865000>;
 		vdd-apc-supply = <&pm8994_s11>;
 
 		qcom,vdd-mx-corner-map = <3 4 5 7>;
@@ -849,24 +870,5 @@
 		startup-delay-us = <4000>;
 		enable-active-high;
 		gpio = <&pm8994_gpios 9 0>;
-	};
-
-	usb_otg_switch: usb-otg-switch {
-		compatible = "regulator-fixed";
-		regulator-name = "usb_otg_vreg";
-		vin-supply = <&smbcharger_external_otg>;
-		enable-active-high;
-		gpio = <&pmi8994_gpios 5 0>;
-	};
-};
-
-&pmi8994_charger {
-	otg-parent-supply = <&pmi8994_boost_5v>;
-	smbcharger_charger_otg: qcom,smbcharger-boost-otg {
-		regulator-name = "smbcharger_charger_otg";
-	};
-
-	smbcharger_external_otg: qcom,smbcharger-external-otg {
-		regulator-name = "smbcharger_external_otg";
 	};
 };

@@ -17,12 +17,16 @@
 #include <linux/msm_iommu_domains.h>
 #include "msm_vidc_resources.h"
 #include "msm_vidc_debug.h"
+#include "htc_msm_smem.h"
 
+
+#if 0
 struct smem_client {
 	int mem_type;
 	void *clnt;
 	struct msm_vidc_platform_resources *res;
 };
+#endif
 
 static int get_device_address(struct smem_client *smem_client,
 		struct ion_handle *hndl, unsigned long align,
@@ -156,6 +160,25 @@ static int ion_user_to_kernel(struct smem_client *client, int fd, u32 offset,
 		"%s: ion_handle = 0x%p, fd = %d, device_addr = 0x%pa, size = %zx, kvaddr = 0x%p, buffer_type = %d, flags = 0x%lx\n",
 		__func__, mem->smem_priv, fd, &mem->device_addr, mem->size,
 		mem->kvaddr, mem->buffer_type, mem->flags);
+        switch (mem->buffer_type) {
+        case HAL_BUFFER_INPUT:
+                dprintk(VIDC_WARN,
+                        "[Vidc_Mem][%p] Import_I: Addr(%p) SZ(%zx) FD(%d)\n",
+                        client->inst, hndl->buffer, mem->size, fd);
+                break;
+        case HAL_BUFFER_OUTPUT:
+        case HAL_BUFFER_OUTPUT2:
+                dprintk(VIDC_DBG,
+                        "[Vidc_Mem][%p] Import_O: Addr(%p) SZ(%zx) FD(%d)\n",
+                        client->inst, hndl->buffer, mem->size, fd);
+                break;
+        default:
+                dprintk(VIDC_WARN,
+                        "[Vidc_Mem][%p] Import_U: Addr(%p) SZ(%zx) FD(%d)\n",
+                        client->inst, hndl->buffer, mem->size, fd);
+                break;
+        }
+        
 	return rc;
 fail_device_address:
 	ion_free(client->clnt, hndl);
@@ -241,6 +264,32 @@ static int alloc_ion_mem(struct smem_client *client, size_t size, u32 align,
 		__func__, mem->smem_priv, &mem->device_addr,
 		mem->size, mem->kvaddr,
 		mem->buffer_type, mem->flags);
+        switch (mem->buffer_type) {
+        case HAL_BUFFER_INTERNAL_SCRATCH:
+        case HAL_BUFFER_INTERNAL_SCRATCH_1:
+        case HAL_BUFFER_INTERNAL_SCRATCH_2:
+                dprintk(VIDC_WARN,
+                        "[Vidc_Mem][%p] Alloc_S: Addr(%p) SZ(%zx)\n",
+                        client->inst, hndl->buffer, size);
+                break;
+        case HAL_BUFFER_INTERNAL_CMD_QUEUE:
+                dprintk(VIDC_WARN,
+                        "[Vidc_Mem][%p] Alloc_V: Addr(%p) SZ(%zx)\n",
+                        client->inst, hndl->buffer, size);
+                break;
+        case HAL_BUFFER_INTERNAL_PERSIST:
+        case HAL_BUFFER_INTERNAL_PERSIST_1:
+                dprintk(VIDC_WARN,
+                        "[Vidc_Mem][%p] Alloc_P: Addr(%p) SZ(%zx)\n",
+                        client->inst, hndl->buffer, size);
+                break;
+        default:
+                dprintk(VIDC_WARN,
+                        "[Vidc_Mem][%p] Alloc_U: Addr(%p) SZ(%zx)\n",
+                        client->inst, hndl->buffer, size);
+                break;
+        }
+        
 	return rc;
 fail_device_address:
 	ion_unmap_kernel(client->clnt, hndl);
@@ -253,6 +302,45 @@ fail_shared_mem_alloc:
 static void free_ion_mem(struct smem_client *client, struct msm_smem *mem)
 {
 	int domain, partition, rc;
+        struct ion_handle *hndl = mem->smem_priv;
+
+        switch (mem->buffer_type) {
+        case HAL_BUFFER_INPUT:
+                dprintk(VIDC_WARN,
+                        "[Vidc_Mem][%p] Free_I: Addr(%p) SZ(%zx)\n",
+                        client->inst, hndl->buffer, mem->size);
+                break;
+        case HAL_BUFFER_OUTPUT:
+        case HAL_BUFFER_OUTPUT2:
+                dprintk(VIDC_DBG,
+                        "[Vidc_Mem][%p] Free_O: Addr(%p) SZ(%zx)\n",
+                        client->inst, hndl->buffer, mem->size);
+                break;
+        case HAL_BUFFER_INTERNAL_SCRATCH:
+        case HAL_BUFFER_INTERNAL_SCRATCH_1:
+        case HAL_BUFFER_INTERNAL_SCRATCH_2:
+                dprintk(VIDC_WARN,
+                        "[Vidc_Mem][%p] Free_S: Addr(%p) SZ(%zx)\n",
+                        client->inst, hndl->buffer, mem->size);
+                break;
+        case HAL_BUFFER_INTERNAL_CMD_QUEUE:
+                dprintk(VIDC_WARN,
+                        "[Vidc_Mem][%p] Free_V: Addr(%p) SZ(%zx)\n",
+                        client->inst, hndl->buffer, mem->size);
+                break;
+        case HAL_BUFFER_INTERNAL_PERSIST:
+        case HAL_BUFFER_INTERNAL_PERSIST_1:
+                dprintk(VIDC_WARN,
+                        "[Vidc_Mem][%p] Free_P: Addr(%p) SZ(%zx)\n",
+                        client->inst, hndl->buffer, mem->size);
+                break;
+        default:
+                dprintk(VIDC_WARN,
+                        "[Vidc_Mem][%p] Free_U: Addr(%p) SZ(%zx)\n",
+                        client->inst, hndl->buffer, mem->size);
+                break;
+        }
+        
 
 	dprintk(VIDC_DBG,
 		"%s: ion_handle = 0x%p, device_addr = 0x%pa, size = 0x%zx, kvaddr = 0x%p, buffer_type = 0x%x\n",
@@ -283,7 +371,7 @@ static void free_ion_mem(struct smem_client *client, struct msm_smem *mem)
 static void *ion_new_client(void)
 {
 	struct ion_client *client = NULL;
-	client = msm_ion_client_create("video_client");
+	client = msm_ion_client_create("vcodec_venus");
 	if (!client)
 		dprintk(VIDC_ERR, "Failed to create smem client\n");
 	return client;
@@ -291,7 +379,12 @@ static void *ion_new_client(void)
 
 static void ion_delete_client(struct smem_client *client)
 {
-	ion_client_destroy(client->clnt);
+        if ((client->clnt_alloc != NULL) && (client->clnt_import != NULL)) {
+                ion_client_destroy(client->clnt_alloc);
+                ion_client_destroy(client->clnt_import);
+        } else {
+                ion_client_destroy(client->clnt);
+        }
 }
 
 struct msm_smem *msm_smem_user_to_kernel(void *clt, int fd, u32 offset,
@@ -342,6 +435,7 @@ static int ion_cache_operations(struct smem_client *client,
 	if (rc) {
 		dprintk(VIDC_ERR,
 			"ion_handle_get_flags failed: %d\n", rc);
+                dump_stack();
 		goto cache_op_failed;
 	}
 	if (ION_IS_CACHED(ionflag)) {
@@ -417,7 +511,10 @@ void *msm_smem_new_client(enum smem_type mtype,
 		if (client) {
 			client->mem_type = mtype;
 			client->clnt = clnt;
+                        client->clnt_alloc = NULL;
+                        client->clnt_import = NULL;
 			client->res = res;
+                        client->inst = NULL;
 		}
 	} else {
 		dprintk(VIDC_ERR, "Failed to create new client: mtype = %d\n",
@@ -474,7 +571,22 @@ void msm_smem_free(void *clt, struct msm_smem *mem)
 	}
 	switch (client->mem_type) {
 	case SMEM_ION:
+                if ((mem->buffer_type == HAL_BUFFER_INTERNAL_SCRATCH) ||
+                        (mem->buffer_type == HAL_BUFFER_INTERNAL_SCRATCH_1) ||
+                        (mem->buffer_type == HAL_BUFFER_INTERNAL_SCRATCH_2) ||
+                        (mem->buffer_type == HAL_BUFFER_INTERNAL_PERSIST) ||
+                        (mem->buffer_type == HAL_BUFFER_INTERNAL_PERSIST_1)) {
+                        client->clnt = client->clnt_alloc;
+                }
 		free_ion_mem(client, mem);
+                if ((mem->buffer_type == HAL_BUFFER_INTERNAL_SCRATCH) ||
+                        (mem->buffer_type == HAL_BUFFER_INTERNAL_SCRATCH_1) ||
+                        (mem->buffer_type == HAL_BUFFER_INTERNAL_SCRATCH_2) ||
+                        (mem->buffer_type == HAL_BUFFER_INTERNAL_PERSIST) ||
+                        (mem->buffer_type == HAL_BUFFER_INTERNAL_PERSIST_1)) {
+                        client->clnt = client->clnt_import;
+                }
+                
 		break;
 	default:
 		dprintk(VIDC_ERR, "Mem type not supported\n");

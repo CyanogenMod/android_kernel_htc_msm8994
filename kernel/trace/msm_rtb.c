@@ -34,16 +34,6 @@
 
 #define RTB_COMPAT_STR	"qcom,msm-rtb"
 
-/* Write
- * 1) 3 bytes sentinel
- * 2) 1 bytes of log type
- * 3) 8 bytes of where the caller came from
- * 4) 4 bytes index
- * 4) 8 bytes extra data from the caller
- * 5) 8 bytes of timestamp
- *
- * Total = 32 bytes.
- */
 struct msm_rtb_layout {
 	unsigned char sentinel[3];
 	unsigned char log_type;
@@ -72,12 +62,26 @@ static atomic_t msm_rtb_idx;
 #endif
 
 static struct msm_rtb_state msm_rtb = {
+#if defined(CONFIG_HTC_DEBUG_RTB)
+	
+	.filter = (1 << LOGK_READL)|(1 << LOGK_WRITEL)|(1 << LOGK_LOGBUF)|(1 << LOGK_HOTPLUG)|(1 << LOGK_CTXID)|(1 << LOGK_IRQ)|(1 << LOGK_DIE),
+#else
 	.filter = 1 << LOGK_LOGBUF,
+#endif
 	.enabled = 1,
 };
 
 module_param_named(filter, msm_rtb.filter, uint, 0644);
 module_param_named(enable, msm_rtb.enabled, int, 0644);
+
+#if defined(CONFIG_HTC_DEBUG_RTB)
+void msm_rtb_disable(void)
+{
+	msm_rtb.enabled = 0;
+	return;
+}
+EXPORT_SYMBOL(msm_rtb_disable);
+#endif 
 
 static int msm_rtb_panic_notifier(struct notifier_block *this,
 					unsigned long event, void *ptr)
@@ -165,10 +169,6 @@ static int msm_rtb_get_idx(void)
 	int cpu, i, offset;
 	atomic_t *index;
 
-	/*
-	 * ideally we would use get_cpu but this is a close enough
-	 * approximation for our purposes.
-	 */
 	cpu = raw_smp_processor_id();
 
 	index = &per_cpu(msm_rtb_idx_cpu, cpu);
@@ -176,7 +176,7 @@ static int msm_rtb_get_idx(void)
 	i = atomic_add_return(msm_rtb.step_size, index);
 	i -= msm_rtb.step_size;
 
-	/* Check if index has wrapped around */
+	
 	offset = (i & (msm_rtb.nentries - 1)) -
 		 ((i - msm_rtb.step_size) & (msm_rtb.nentries - 1));
 	if (offset < 0) {
@@ -195,7 +195,7 @@ static int msm_rtb_get_idx(void)
 	i = atomic_inc_return(&msm_rtb_idx);
 	i--;
 
-	/* Check if index has wrapped around */
+	
 	offset = (i & (msm_rtb.nentries - 1)) -
 		 ((i - 1) & (msm_rtb.nentries - 1));
 	if (offset < 0) {
@@ -233,56 +233,69 @@ EXPORT_SYMBOL(uncached_logk);
 static int msm_rtb_probe(struct platform_device *pdev)
 {
 	struct msm_rtb_platform_data *d = pdev->dev.platform_data;
+	struct resource *res = NULL;
 #if defined(CONFIG_MSM_RTB_SEPARATE_CPUS)
 	unsigned int cpu;
 #endif
 	int ret;
 
 	if (!pdev->dev.of_node) {
+		if (!d) {
+			return -EINVAL;
+		}
 		msm_rtb.size = d->size;
 	} else {
-		u64 size;
-		struct device_node *pnode;
-
-		pnode = of_parse_phandle(pdev->dev.of_node,
-						"linux,contiguous-region", 0);
-		if (pnode != NULL) {
-			const u32 *addr;
-
-			addr = of_get_address(pnode, 0, &size, NULL);
-			if (!addr) {
-				of_node_put(pnode);
-				return -EINVAL;
-			}
-			of_node_put(pnode);
+		res = platform_get_resource_byname(pdev, IORESOURCE_MEM, "msm_rtb_res");
+		if (res) {
+			msm_rtb.size = resource_size(res);
 		} else {
-			ret = of_property_read_u32(pdev->dev.of_node,
-					"qcom,rtb-size",
-					(u32 *)&size);
-			if (ret < 0)
-				return ret;
+			u64 size;
+			struct device_node *pnode;
 
+			pnode = of_parse_phandle(pdev->dev.of_node,
+							"linux,contiguous-region", 0);
+			if (pnode != NULL) {
+				const u32 *addr;
+
+				addr = of_get_address(pnode, 0, &size, NULL);
+				if (!addr) {
+					of_node_put(pnode);
+					return -EINVAL;
+				}
+				of_node_put(pnode);
+			} else {
+				ret = of_property_read_u32(pdev->dev.of_node,
+						"qcom,rtb-size",
+						(u32 *)&size);
+				if (ret < 0)
+					return ret;
+			}
+			msm_rtb.size = size;
 		}
-
-		msm_rtb.size = size;
 	}
+	pr_info("msm_rtb.size: 0x%x\n", msm_rtb.size);
 
 	if (msm_rtb.size <= 0 || msm_rtb.size > SZ_1M)
 		return -EINVAL;
 
-	msm_rtb.rtb = dma_alloc_coherent(&pdev->dev, msm_rtb.size,
-						&msm_rtb.phys,
-						GFP_KERNEL);
+	if (res) {
+		msm_rtb.phys = res->start;
+		msm_rtb.rtb = ioremap(msm_rtb.phys, msm_rtb.size);
+	} else {
+		msm_rtb.rtb = dma_alloc_coherent(&pdev->dev, msm_rtb.size, &msm_rtb.phys, GFP_KERNEL);
+	}
+
+	pr_info("msm_rtb set ok: phys: 0x%llx, size: 0x%x\n", msm_rtb.phys, msm_rtb.size);
 
 	if (!msm_rtb.rtb)
 		return -ENOMEM;
 
 	msm_rtb.nentries = msm_rtb.size / sizeof(struct msm_rtb_layout);
 
-	/* Round this down to a power of 2 */
+	
 	msm_rtb.nentries = __rounddown_pow_of_two(msm_rtb.nentries);
 
-	memset(msm_rtb.rtb, 0, msm_rtb.size);
+	memset_io(msm_rtb.rtb, 0, msm_rtb.size);
 
 
 #if defined(CONFIG_MSM_RTB_SEPARATE_CPUS)

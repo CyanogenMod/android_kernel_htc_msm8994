@@ -11,15 +11,10 @@
 #include <linux/pm_wakeup.h>
 
 #include "power.h"
+#include <soc/qcom/smsm.h>
 
 static suspend_state_t autosleep_state;
 static struct workqueue_struct *autosleep_wq;
-/*
- * Note: it is only safe to mutex_lock(&autosleep_lock) if a wakeup_source
- * is active, otherwise a deadlock with try_to_suspend() is possible.
- * Alternatively mutex_lock_interruptible() can be used.  This will then fail
- * if an auto_sleep cycle tries to freeze processes.
- */
 static DEFINE_MUTEX(autosleep_lock);
 static struct wakeup_source *autosleep_ws;
 
@@ -27,38 +22,62 @@ static void try_to_suspend(struct work_struct *work)
 {
 	unsigned int initial_count, final_count;
 
-	if (!pm_get_wakeup_count(&initial_count, true))
+	if (!pm_get_wakeup_count(&initial_count, true)) {
+#ifdef CONFIG_HTC_POWER_DEBUG
+		pr_info("[P] suspend abort, wakeup event nonzero\n");
+		htc_print_active_wakeup_sources();
+#endif
 		goto out;
+	}
 
 	mutex_lock(&autosleep_lock);
 
 	if (!pm_save_wakeup_count(initial_count) ||
 		system_state != SYSTEM_RUNNING) {
+#ifdef CONFIG_HTC_POWER_DEBUG
+		pr_info("[P] suspend abort, events not matched or being processed\n");
+#endif
 		mutex_unlock(&autosleep_lock);
 		goto out;
 	}
 
 	if (autosleep_state == PM_SUSPEND_ON) {
+#ifdef CONFIG_HTC_POWER_DEBUG
+		pr_info("[P] suspend abort, autosleep_state is ON\n");
+#endif
 		mutex_unlock(&autosleep_lock);
 		return;
 	}
 	if (autosleep_state >= PM_SUSPEND_MAX)
 		hibernate();
-	else
+	else {
+		smsm_change_state(SMSM_APPS_STATE, HTC_SMSM_APPS_RESUME, HTC_SMSM_APPS_SUSPEND);
+		printk(KERN_DEBUG "Enable garbage filter\n");
+#ifdef CONFIG_HTC_POWER_DEBUG
+		pr_info("[R] suspend start\n");
+#endif
 		pm_suspend(autosleep_state);
+	}
 
 	mutex_unlock(&autosleep_lock);
 
-	if (!pm_get_wakeup_count(&final_count, false))
+	if (!pm_get_wakeup_count(&final_count, false)) {
+#ifdef CONFIG_HTC_POWER_DEBUG
+		pr_info("[R] resume end\n");
+#endif
+		smsm_change_state(SMSM_APPS_STATE, HTC_SMSM_APPS_SUSPEND, HTC_SMSM_APPS_RESUME);
+		printk(KERN_DEBUG "Disable garbage filter\n");
 		goto out;
-
-	/*
-	 * If the wakeup occured for an unknown reason, wait to prevent the
-	 * system from trying to suspend and waking up in a tight loop.
-	 */
-	if (final_count == initial_count)
+	}
+	if (final_count == initial_count) {
+#ifdef CONFIG_HTC_POWER_DEBUG
+		pr_info("[P] wakeup occured for an unknown reason, wait HZ/2\n");
+#endif
 		schedule_timeout_uninterruptible(HZ / 2);
-
+	}
+#ifdef CONFIG_HTC_POWER_DEBUG
+	pr_info("[R] resume end\n");
+#endif
  out:
 	queue_up_suspend_work();
 }
@@ -113,8 +132,54 @@ int pm_autosleep_set_state(suspend_state_t state)
 	return 0;
 }
 
+
+static int wait_for_fb_status= 1;
+static ssize_t wait_for_fb_status_show(struct kobject *kobj,
+				       struct kobj_attribute *attr, char *buf)
+{
+	int ret = 0;
+
+	if (wait_for_fb_status == 1)
+		ret = sprintf(buf, "on\n");
+	else
+		ret = sprintf(buf, "off\n");
+
+	return ret;
+}
+
+static ssize_t wait_for_fb_status_store(struct kobject *kobj, struct kobj_attribute *attr,
+                const char *buf, size_t n)
+{
+	int val;
+
+	if (sscanf(buf, "%d", &val) == 1) {
+		wait_for_fb_status = !!val;
+		sysfs_notify(kobj, NULL, "wait_for_fb_status");
+		return n;
+	}
+
+	return -EINVAL;
+}
+power_attr(wait_for_fb_status);
+
+static struct attribute *g[] = {
+	&wait_for_fb_status_attr.attr,
+	NULL,
+};
+
+static struct attribute_group attr_group = {
+	.attrs = g,
+};
+
 int __init pm_autosleep_init(void)
 {
+	int ret;
+
+	ret = sysfs_create_group(power_kobj, &attr_group);
+	if (ret) {
+		pr_err("pm_autosleep_init: sysfs_create_group failed\n");
+	}
+
 	autosleep_ws = wakeup_source_register("autosleep");
 	if (!autosleep_ws)
 		return -ENOMEM;

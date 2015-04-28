@@ -21,11 +21,14 @@
 #include <linux/leds.h>
 #include <linux/qpnp/pwm.h>
 #include <linux/err.h>
+#include <linux/debug_display.h>
 
 #include "mdss_dsi.h"
 
 #define DT_CMD_HDR 6
 #define MIN_REFRESH_RATE 30
+
+#define BRI_SETTING_DEF 142
 
 DEFINE_LED_TRIGGER(bl_led_trigger);
 
@@ -104,7 +107,7 @@ static void mdss_dsi_panel_bklt_pwm(struct mdss_dsi_ctrl_pdata *ctrl, int level)
 	}
 }
 
-static char dcs_cmd[2] = {0x54, 0x00}; /* DTYPE_DCS_READ */
+static char dcs_cmd[2] = {0x54, 0x00}; 
 static struct dsi_cmd_desc dcs_read_cmd = {
 	{DTYPE_DCS_READ, 1, 0, 1, 5, sizeof(dcs_cmd)},
 	dcs_cmd
@@ -130,11 +133,8 @@ u32 mdss_dsi_panel_cmd_read(struct mdss_dsi_ctrl_pdata *ctrl, char cmd0,
 	cmdreq.flags = CMD_REQ_RX | CMD_REQ_COMMIT;
 	cmdreq.rlen = len;
 	cmdreq.rbuf = rbuf;
-	cmdreq.cb = fxn; /* call back */
+	cmdreq.cb = fxn; 
 	mdss_dsi_cmdlist_put(ctrl, &cmdreq);
-	/*
-	 * blocked here, until call back called
-	 */
 
 	return 0;
 }
@@ -156,7 +156,7 @@ static void mdss_dsi_panel_cmds_send(struct mdss_dsi_ctrl_pdata *ctrl,
 	cmdreq.cmds_cnt = pcmds->cmd_cnt;
 	cmdreq.flags = CMD_REQ_COMMIT;
 
-	/*Panel ON/Off commands should be sent in DSI Low Power Mode*/
+	
 	if (pcmds->link_state == DSI_LP_MODE)
 		cmdreq.flags  |= CMD_REQ_LP_MODE;
 
@@ -166,7 +166,45 @@ static void mdss_dsi_panel_cmds_send(struct mdss_dsi_ctrl_pdata *ctrl,
 	mdss_dsi_cmdlist_put(ctrl, &cmdreq);
 }
 
-static char led_pwm1[2] = {0x51, 0x0};	/* DTYPE_DCS_WRITE1 */
+static unsigned int bl_to_brightness(int val, int brt_dim, int brt_min, int brt_def, int brt_high, int brt_extra, int brt_max)
+{
+	unsigned int  brt_val;
+
+	if (val <= 0) {
+		brt_val = 0;
+	} else if (val > 0 && (val < BRI_SETTING_MIN)) {
+		brt_val = brt_dim;
+	} else if ((val >= BRI_SETTING_MIN) && (val <= BRI_SETTING_DEF)) {
+		brt_val = (val - BRI_SETTING_MIN) * (brt_def - brt_min) /
+		(BRI_SETTING_DEF - BRI_SETTING_MIN) + brt_min;
+	} else if (val > BRI_SETTING_DEF && val <= BRI_SETTING_HIGH) {
+		brt_val = (val - BRI_SETTING_DEF) * (brt_high - brt_def) /
+		(BRI_SETTING_HIGH - BRI_SETTING_DEF) + brt_def;
+	} else if (val > BRI_SETTING_HIGH && val <= BRI_SETTING_EXTRA) {
+		brt_val = (val - BRI_SETTING_HIGH) * (brt_extra - brt_high) /
+		(BRI_SETTING_EXTRA - BRI_SETTING_HIGH) + brt_high;
+	} else if (val > BRI_SETTING_EXTRA && val <= BRI_SETTING_MAX) {
+		brt_val = (val - BRI_SETTING_EXTRA) * (brt_max - brt_extra) /
+		(BRI_SETTING_MAX - BRI_SETTING_EXTRA) + brt_extra;
+	} else if (val > BRI_SETTING_MAX)
+		brt_val = brt_max;
+
+	PR_DISP_INFO("%s:level=%d, brightness=%d", __func__, val, brt_val);
+	return brt_val;
+}
+#if 0
+static unsigned char linear_pwm(int val, int max_brt, int bl_max)
+{
+	unsigned char bl_pwm  = BRI_SETTING_MAX;
+
+	bl_pwm = val * bl_max / max_brt;
+
+	PR_DISP_INFO("%s:brightness=%d, bl_pwm=%d\n", __func__,val, bl_pwm);
+	return bl_pwm;
+}
+#endif
+
+static char led_pwm1[2] = {0x51, 0x0};	
 static struct dsi_cmd_desc backlight_cmd = {
 	{DTYPE_DCS_WRITE1, 1, 0, 0, 1, sizeof(led_pwm1)},
 	led_pwm1
@@ -325,12 +363,6 @@ int mdss_dsi_panel_reset(struct mdss_panel_data *pdata, int enable)
 	return rc;
 }
 
-/**
- * mdss_dsi_roi_merge() -  merge two roi into single roi
- *
- * Function used by partial update with only one dsi intf take 2A/2B
- * (column/page) dcs commands.
- */
 static int mdss_dsi_roi_merge(struct mdss_dsi_ctrl_pdata *ctrl,
 					struct mdss_rect *roi)
 {
@@ -357,25 +389,24 @@ static int mdss_dsi_roi_merge(struct mdss_dsi_ctrl_pdata *ctrl,
 	}
 
 	if (l_roi->w == 0 && l_roi->h == 0) {
-		/* right only */
+		
 		*roi = *r_roi;
-		roi->x += l_pinfo->xres;/* add left full width to x-offset */
+		roi->x += l_pinfo->xres;
 	} else {
-		/* left only and left+righ */
+		
 		*roi = *l_roi;
-		roi->w +=  r_roi->w; /* add right width */
+		roi->w +=  r_roi->w; 
 		ans = 1;
 	}
 
 	return ans;
 }
 
-static char caset[] = {0x2a, 0x00, 0x00, 0x03, 0x00};	/* DTYPE_DCS_LWRITE */
-static char paset[] = {0x2b, 0x00, 0x00, 0x05, 0x00};	/* DTYPE_DCS_LWRITE */
+static char caset[] = {0x2a, 0x00, 0x00, 0x03, 0x00};	
+static char paset[] = {0x2b, 0x00, 0x00, 0x05, 0x00};	
 
-/* pack into one frame before sent */
 static struct dsi_cmd_desc set_col_page_addr_cmd[] = {
-	{{DTYPE_DCS_LWRITE, 0, 0, 0, 1, sizeof(caset)}, caset},	/* packed */
+	{{DTYPE_DCS_LWRITE, 0, 0, 0, 1, sizeof(caset)}, caset},	
 	{{DTYPE_DCS_LWRITE, 1, 0, 0, 1, sizeof(paset)}, paset},
 };
 
@@ -429,14 +460,6 @@ static int mdss_dsi_set_col_page_addr(struct mdss_panel_data *pdata)
 	pinfo = &pdata->panel_info;
 	p_roi = &pinfo->roi;
 
-	/*
-	 * to avoid keep sending same col_page info to panel,
-	 * if roi_merge enabled, the roi of left ctrl is used
-	 * to compare against new merged roi and saved new
-	 * merged roi to it after comparing.
-	 * if roi_merge disabled, then the calling ctrl's roi
-	 * and pinfo's roi are used to compare.
-	 */
 	if (pinfo->partial_update_roi_merge) {
 		left_or_both = mdss_dsi_roi_merge(ctrl, &roi);
 		other = mdss_dsi_get_ctrl_by_index(DSI_CTRL_LEFT);
@@ -446,15 +469,15 @@ static int mdss_dsi_set_col_page_addr(struct mdss_panel_data *pdata)
 		roi = *p_roi;
 	}
 
-	/* roi had changed, do col_page update */
+	
 	if (!mdss_rect_cmp(c_roi, &roi)) {
 		pr_debug("%s: ndx=%d x=%d y=%d w=%d h=%d\n",
 				__func__, ctrl->ndx, p_roi->x,
 				p_roi->y, p_roi->w, p_roi->h);
 
-		*c_roi = roi; /* keep to ctrl */
+		*c_roi = roi; 
 		if (c_roi->w == 0 || c_roi->h == 0) {
-			/* no new frame update */
+			
 			pr_debug("%s: ctrl=%d, no partial roi set\n",
 						__func__, ctrl->ndx);
 			return 0;
@@ -462,7 +485,7 @@ static int mdss_dsi_set_col_page_addr(struct mdss_panel_data *pdata)
 
 		if (pinfo->dcs_cmd_by_left) {
 			if (left_or_both && ctrl->ndx == DSI_CTRL_RIGHT) {
-				/* 2A/2B sent by left already */
+				
 				return 0;
 			}
 		}
@@ -473,18 +496,13 @@ static int mdss_dsi_set_col_page_addr(struct mdss_panel_data *pdata)
 							DSI_CTRL_LEFT);
 			mdss_dsi_send_col_page_addr(ctrl, &roi, 0);
 		} else {
-			/*
-			 * when sync_wait_broadcast enabled,
-			 * need trigger at right ctrl to
-			 * start both dcs cmd transmission
-			 */
 			other = mdss_dsi_get_other_ctrl(ctrl);
 			if (!other)
 				goto end;
 
 			if (mdss_dsi_is_left_ctrl(ctrl)) {
 				if (pinfo->partial_update_roi_merge) {
-					/* to dsi-1 only */
+					
 					mdss_dsi_send_col_page_addr(other,
 							&other->roi, 0);
 				} else {
@@ -495,7 +513,7 @@ static int mdss_dsi_set_col_page_addr(struct mdss_panel_data *pdata)
 				}
 			} else {
 				if (pinfo->partial_update_roi_merge) {
-					/* to dsi-1 only */
+					
 					mdss_dsi_send_col_page_addr(ctrl,
 							&ctrl->roi, 0);
 				} else {
@@ -556,17 +574,21 @@ static void mdss_dsi_panel_bl_ctrl(struct mdss_panel_data *pdata,
 	ctrl_pdata = container_of(pdata, struct mdss_dsi_ctrl_pdata,
 				panel_data);
 
-	/*
-	 * Some backlight controllers specify a minimum duty cycle
-	 * for the backlight brightness. If the brightness is less
-	 * than it, the controller can malfunction.
-	 */
 
 	if ((bl_level < pdata->panel_info.bl_min) && (bl_level != 0))
 		bl_level = pdata->panel_info.bl_min;
 
 	switch (ctrl_pdata->bklt_ctrl) {
 	case BL_WLED:
+		if (!ctrl_pdata->panel_data.panel_info.act_brt)
+			bl_level = bl_to_brightness(bl_level, ctrl_pdata->brt_dim,
+							ctrl_pdata->brt_min,
+							ctrl_pdata->brt_def,
+							ctrl_pdata->brt_high,
+							ctrl_pdata->brt_extra,
+							ctrl_pdata->brt_max);
+
+		PR_DISP_INFO("%s:bl_level=%d\n", __func__, bl_level);
 		led_trigger_event(bl_led_trigger, bl_level);
 		break;
 	case BL_PWM:
@@ -577,14 +599,6 @@ static void mdss_dsi_panel_bl_ctrl(struct mdss_panel_data *pdata,
 			mdss_dsi_panel_bklt_dcs(ctrl_pdata, bl_level);
 			break;
 		}
-		/*
-		 * DCS commands to update backlight are usually sent at
-		 * the same time to both the controllers. However, if
-		 * sync_wait is enabled, we need to ensure that the
-		 * dcs commands are first sent to the non-trigger
-		 * controller so that when the commands are triggered,
-		 * both controllers receive it at the same time.
-		 */
 		sctrl = mdss_dsi_get_other_ctrl(ctrl_pdata);
 		if (mdss_dsi_sync_wait_trigger(ctrl_pdata)) {
 			if (sctrl)
@@ -624,7 +638,9 @@ static int mdss_dsi_panel_on(struct mdss_panel_data *pdata)
 			goto end;
 	}
 
-	if (ctrl->on_cmds.cmd_cnt)
+	if (pdata->panel_info.first_power_on == 1)
+		pdata->panel_info.first_power_on = 0;
+	else if (ctrl->on_cmds.cmd_cnt)
 		mdss_dsi_panel_cmds_send(ctrl, &ctrl->on_cmds);
 
 end:
@@ -681,7 +697,7 @@ static int mdss_dsi_panel_low_power_config(struct mdss_panel_data *pdata,
 	pr_debug("%s: ctrl=%p ndx=%d enable=%d\n", __func__, ctrl, ctrl->ndx,
 		enable);
 
-	/* Any panel specific low power commands/config */
+	
 	if (enable)
 		pinfo->blank_state = MDSS_PANEL_BLANK_LOW_POWER;
 	else
@@ -756,7 +772,7 @@ static int mdss_dsi_parse_dcs_cmds(struct device_node *np,
 
 	memcpy(buf, data, blen);
 
-	/* scan dcs commands */
+	
 	bp = buf;
 	len = blen;
 	cnt = 0;
@@ -802,7 +818,7 @@ static int mdss_dsi_parse_dcs_cmds(struct device_node *np,
 		len -= dchdr->dlen;
 	}
 
-	/*Set default link state to LP Mode*/
+	
 	pcmds->link_state = DSI_LP_MODE;
 
 	if (link_key) {
@@ -963,12 +979,6 @@ static void mdss_panel_parse_te_params(struct device_node *np,
 
 	u32 tmp;
 	int rc = 0;
-	/*
-	 * TE default: dsi byte clock calculated base on 70 fps;
-	 * around 14 ms to complete a kickoff cycle if te disabled;
-	 * vclk_line base on 60 fps; write is faster than read;
-	 * init == start == rdptr;
-	 */
 	panel_info->te.tear_check_en =
 		!of_property_read_bool(np, "qcom,mdss-tear-check-disable");
 	rc = of_property_read_u32
@@ -1283,7 +1293,7 @@ static void mdss_dsi_parse_panel_horizintal_line_idle(struct device_node *np,
 	if (!src || len == 0)
 		return;
 
-	cnt = len % 3; /* 3 fields per entry */
+	cnt = len % 3; 
 	if (cnt) {
 		pr_err("%s: invalid horizontal idle len=%d\n", __func__, len);
 		return;
@@ -1321,10 +1331,6 @@ static int mdss_dsi_set_refresh_rate_range(struct device_node *pan_node,
 		pr_warn("%s:%d, Unable to read min refresh rate\n",
 				__func__, __LINE__);
 
-		/*
-		 * Since min refresh rate is not specified when dynamic
-		 * fps is enabled, using minimum as 30
-		 */
 		pinfo->min_fps = MIN_REFRESH_RATE;
 		rc = 0;
 	}
@@ -1336,11 +1342,6 @@ static int mdss_dsi_set_refresh_rate_range(struct device_node *pan_node,
 		pr_warn("%s:%d, Unable to read max refresh rate\n",
 				__func__, __LINE__);
 
-		/*
-		 * Since max refresh rate was not specified when dynamic
-		 * fps is enabled, using the default panel refresh rate
-		 * as max refresh rate supported.
-		 */
 		pinfo->max_fps = pinfo->mipi.frame_rate;
 		rc = 0;
 	}
@@ -1394,10 +1395,14 @@ static void mdss_dsi_parse_dfps_config(struct device_node *pan_node,
 	return;
 }
 
+extern int htc_mdss_dsi_parse_dcs_cmds(struct device_node *np,
+		struct dsi_panel_cmds *pcmds, char *cmd_key, char *link_key);
+
+
 static int mdss_panel_parse_dt(struct device_node *np,
 			struct mdss_dsi_ctrl_pdata *ctrl_pdata)
 {
-	u32 tmp;
+	u32 tmp = 0, res[6] = {0};
 	int rc, i, len;
 	const char *data;
 	static const char *pdest;
@@ -1717,11 +1722,103 @@ static int mdss_panel_parse_dt(struct device_node *np,
 	mdss_dsi_parse_dcs_cmds(np, &ctrl_pdata->off_cmds,
 		"qcom,mdss-dsi-off-command", "qcom,mdss-dsi-off-command-state");
 
+	mdss_dsi_parse_dcs_cmds(np, &ctrl_pdata->status_cmds,
+			"qcom,mdss-dsi-panel-status-command",
+				"qcom,mdss-dsi-panel-status-command-state");
+	rc = of_property_read_u32(np, "qcom,mdss-dsi-panel-status-value", &tmp);
+	ctrl_pdata->status_value = (!rc ? &tmp : 0);
+
+	ctrl_pdata->status_mode = ESD_MAX;
+	rc = of_property_read_string(np,
+				"qcom,mdss-dsi-panel-status-check-mode", &data);
+	if (!rc) {
+		if (!strcmp(data, "bta_check")) {
+			ctrl_pdata->status_mode = ESD_BTA;
+		} else if (!strcmp(data, "reg_read")) {
+			ctrl_pdata->status_mode = ESD_REG;
+			ctrl_pdata->status_cmds_rlen = 1;
+			ctrl_pdata->check_read_status =
+						mdss_dsi_gen_read_status;
+		} else if (!strcmp(data, "reg_read_nt35596")) {
+			ctrl_pdata->status_mode = ESD_REG_NT35596;
+			ctrl_pdata->status_error_count = 0;
+			ctrl_pdata->status_cmds_rlen = 8;
+			ctrl_pdata->check_read_status =
+						mdss_dsi_nt35596_read_status;
+		}
+	}
+
 	rc = mdss_dsi_parse_panel_features(np, ctrl_pdata);
 	if (rc) {
 		pr_err("%s: failed to parse panel features\n", __func__);
 		goto error;
 	}
+	
+	rc = of_property_read_u32(np, "htc,mdss-skip-first-pinctl", &tmp);
+	pinfo->skip_first_pinctl = (!rc ? tmp : 0);
+
+	rc = of_property_read_u32(np, "htc,panel-id", &tmp);
+	pinfo->htc_panel_id = (!rc ? tmp : 0);
+
+	rc = of_property_read_u32(np, "htc,mdss-max-brt-level", &tmp);
+	pinfo->act_max_brt = (!rc ? tmp : MDSS_MAX_BL_BRIGHTNESS);
+	pinfo->max_brt = MDSS_MAX_BL_BRIGHTNESS;
+
+	rc = of_property_read_u32_array(np, "htc,mdss-bl-brt", res, 6);
+	if (rc) {
+		pr_err("%s:%d, mdss-bl-brt not specified\n",
+						 __func__, __LINE__);
+	}
+	ctrl_pdata->brt_dim   = (!rc ? res[0] : BRI_SETTING_MIN);
+	ctrl_pdata->brt_min   = (!rc ? res[1] : BRI_SETTING_MIN);
+	ctrl_pdata->brt_def   = (!rc ? res[2] : BRI_SETTING_DEF);
+	ctrl_pdata->brt_high  = (!rc ? res[3] : BRI_SETTING_HIGH);
+	ctrl_pdata->brt_extra = (!rc ? res[4] : BRI_SETTING_EXTRA);
+	ctrl_pdata->brt_max   = (!rc ? res[5] : BRI_SETTING_MAX);
+
+	rc = of_property_read_u32(np, "htc,mdss-camera-blk", &tmp);
+	pinfo->camera_blk = (!rc ? tmp : BRI_SETTING_DEF);
+
+	rc = of_property_read_u32(np, "htc,mdss-camera-dua-blk", &tmp);
+	pinfo->camera_dua_blk = (!rc ? tmp : pinfo->camera_blk);
+
+	mdss_dsi_parse_dcs_cmds(np, &ctrl_pdata->cabc_off_cmds,
+		"htc,cabc-off-cmds", "qcom,mdss-dsi-default-command-state");
+
+	mdss_dsi_parse_dcs_cmds(np, &ctrl_pdata->cabc_ui_cmds,
+		"htc,cabc-ui-cmds", "qcom,mdss-dsi-default-command-state");
+
+	mdss_dsi_parse_dcs_cmds(np, &ctrl_pdata->dimming_on_cmds,
+		"htc,dimming-on-cmds", "qcom,mdss-dsi-default-command-state");
+
+	htc_mdss_dsi_parse_dcs_cmds(np, &ctrl_pdata->cabc_off_cmds,
+		"htc-fmt,cabc-off-cmds", "qcom,mdss-dsi-default-command-state");
+
+	htc_mdss_dsi_parse_dcs_cmds(np, &ctrl_pdata->cabc_ui_cmds,
+		"htc-fmt,cabc-ui-cmds", "qcom,mdss-dsi-default-command-state");
+
+	htc_mdss_dsi_parse_dcs_cmds(np, &ctrl_pdata->cabc_video_cmds,
+		"htc-fmt,cabc-video-cmds", "qcom,mdss-dsi-default-command-state");
+
+	htc_mdss_dsi_parse_dcs_cmds(np, &ctrl_pdata->dimming_on_cmds,
+		"htc-fmt,dimming-on-cmds", "qcom,mdss-dsi-default-command-state");
+
+	if(!ctrl_pdata->cabc_off_cmds.cmd_cnt || !ctrl_pdata->cabc_off_cmds.blen)
+		mdss_dsi_parse_dcs_cmds(np, &ctrl_pdata->cabc_off_cmds,
+			"htc,cabc-off-cmds", "qcom,mdss-dsi-default-command-state");
+
+	if(!ctrl_pdata->cabc_ui_cmds.cmd_cnt || !ctrl_pdata->cabc_ui_cmds.blen)
+		mdss_dsi_parse_dcs_cmds(np, &ctrl_pdata->cabc_ui_cmds,
+			"htc,cabc-ui-cmds", "qcom,mdss-dsi-default-command-state");
+
+	if(!ctrl_pdata->cabc_video_cmds.cmd_cnt || !ctrl_pdata->cabc_video_cmds.blen)
+		mdss_dsi_parse_dcs_cmds(np, &ctrl_pdata->cabc_video_cmds,
+			"htc,cabc-video-cmds", "qcom,mdss-dsi-default-command-state");
+
+	if(!ctrl_pdata->dimming_on_cmds.cmd_cnt || !ctrl_pdata->dimming_on_cmds.blen)
+		mdss_dsi_parse_dcs_cmds(np, &ctrl_pdata->dimming_on_cmds,
+			"htc,dimming-on-cmds", "qcom,mdss-dsi-default-command-state");
+	
 
 	mdss_dsi_parse_panel_horizintal_line_idle(np, ctrl_pdata);
 
@@ -1766,6 +1863,8 @@ int mdss_dsi_panel_init(struct device_node *node,
 
 	if (!cmd_cfg_cont_splash)
 		pinfo->cont_splash_enabled = false;
+
+	ctrl_pdata->panel_data.panel_info.first_power_on = pinfo->cont_splash_enabled;
 	pr_info("%s: Continuous splash %s\n", __func__,
 		pinfo->cont_splash_enabled ? "enabled" : "disabled");
 

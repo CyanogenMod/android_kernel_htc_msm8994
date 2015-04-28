@@ -23,53 +23,41 @@
 struct cfg80211_registered_device {
 	const struct cfg80211_ops *ops;
 	struct list_head list;
-	/* we hold this mutex during any call so that
-	 * we cannot do multiple calls at once, and also
-	 * to avoid the deregister call to proceed while
-	 * any call is in progress */
 	struct mutex mtx;
 
-	/* rfkill support */
+	
 	struct rfkill_ops rfkill_ops;
 	struct rfkill *rfkill;
 	struct work_struct rfkill_sync;
 
-	/* ISO / IEC 3166 alpha2 for which this device is receiving
-	 * country IEs on, this can help disregard country IEs from APs
-	 * on the same alpha2 quickly. The alpha2 may differ from
-	 * cfg80211_regdomain's alpha2 when an intersection has occurred.
-	 * If the AP is reconfigured this can also be used to tell us if
-	 * the country on the country IE changed. */
 	char country_ie_alpha2[2];
 
-	/* If a Country IE has been received this tells us the environment
-	 * which its telling us its in. This defaults to ENVIRON_ANY */
 	enum environment_cap env;
 
-	/* wiphy index, internal only */
+	
 	int wiphy_idx;
 
-	/* associated wireless interfaces */
+	
 	struct mutex devlist_mtx;
-	/* protected by devlist_mtx or RCU */
+	
 	struct list_head wdev_list;
 	int devlist_generation, wdev_id;
-	int opencount; /* also protected by devlist_mtx */
+	int opencount; 
 	wait_queue_head_t dev_wait;
 
 	struct list_head beacon_registrations;
 	spinlock_t beacon_registrations_lock;
 
-	/* protected by RTNL only */
+	
 	int num_running_ifaces;
 	int num_running_monitor_ifaces;
 
-	/* BSSes/scanning */
+	
 	spinlock_t bss_lock;
 	struct list_head bss_list;
 	struct rb_root bss_tree;
 	u32 bss_generation;
-	struct cfg80211_scan_request *scan_req; /* protected by RTNL */
+	struct cfg80211_scan_request *scan_req; 
 	struct cfg80211_sched_scan_request *sched_scan_req;
 	unsigned long suspend_at;
 	struct work_struct scan_done_wk;
@@ -86,11 +74,15 @@ struct cfg80211_registered_device {
 
 	struct delayed_work dfs_update_channels_wk;
 
-	/* netlink port which started critical protocol (0 means not started) */
+	
 	u32 crit_proto_nlportid;
 
-	/* must be last because of the way we do wiphy_priv(),
-	 * and it should at least be aligned to NETDEV_ALIGN */
+    
+    spinlock_t destroy_list_lock;
+    struct list_head destroy_list;
+    struct work_struct destroy_work;
+    
+
 	struct wiphy wiphy __aligned(NETDEV_ALIGN);
 };
 
@@ -135,7 +127,7 @@ struct cfg80211_internal_bss {
 	unsigned long refcount;
 	atomic_t hold;
 
-	/* must be last because of priv member */
+	
 	struct cfg80211_bss pub;
 };
 
@@ -159,10 +151,8 @@ static inline void cfg80211_unhold_bss(struct cfg80211_internal_bss *bss)
 struct cfg80211_registered_device *cfg80211_rdev_by_wiphy_idx(int wiphy_idx);
 int get_wiphy_idx(struct wiphy *wiphy);
 
-/* requires cfg80211_rdev_mutex to be held! */
 struct wiphy *wiphy_idx_to_wiphy(int wiphy_idx);
 
-/* identical to cfg80211_get_dev_from_info but only operate on ifindex */
 extern struct cfg80211_registered_device *
 cfg80211_get_dev_from_ifindex(struct net *net, int ifindex);
 
@@ -267,7 +257,13 @@ struct cfg80211_beacon_registration {
 	u32 nlportid;
 };
 
-/* free object */
+struct cfg80211_iface_destroy {
+   struct list_head list;
+   u32 nlportid;
+};
+
+void cfg80211_destroy_ifaces(struct cfg80211_registered_device *rdev);
+
 extern void cfg80211_dev_free(struct cfg80211_registered_device *rdev);
 
 extern int cfg80211_dev_rename(struct cfg80211_registered_device *rdev,
@@ -279,7 +275,6 @@ void cfg80211_bss_expire(struct cfg80211_registered_device *dev);
 void cfg80211_bss_age(struct cfg80211_registered_device *dev,
                       unsigned long age_secs);
 
-/* IBSS */
 int __cfg80211_join_ibss(struct cfg80211_registered_device *rdev,
 			 struct net_device *dev,
 			 struct cfg80211_ibss_params *params,
@@ -297,7 +292,6 @@ void __cfg80211_ibss_joined(struct net_device *dev, const u8 *bssid);
 int cfg80211_ibss_wext_join(struct cfg80211_registered_device *rdev,
 			    struct wireless_dev *wdev);
 
-/* mesh */
 extern const struct mesh_config default_mesh_config;
 extern const struct mesh_setup default_mesh_setup;
 int __cfg80211_join_mesh(struct cfg80211_registered_device *rdev,
@@ -314,11 +308,9 @@ int cfg80211_set_mesh_channel(struct cfg80211_registered_device *rdev,
 			      struct wireless_dev *wdev,
 			      struct cfg80211_chan_def *chandef);
 
-/* AP */
 int cfg80211_stop_ap(struct cfg80211_registered_device *rdev,
 		     struct net_device *dev);
 
-/* MLME */
 int __cfg80211_mlme_auth(struct cfg80211_registered_device *rdev,
 			 struct net_device *dev,
 			 struct ieee80211_channel *chan,
@@ -381,7 +373,6 @@ void cfg80211_oper_and_ht_capa(struct ieee80211_ht_cap *ht_capa,
 void cfg80211_oper_and_vht_capa(struct ieee80211_vht_cap *vht_capa,
 				const struct ieee80211_vht_cap *vht_capa_mask);
 
-/* SME */
 int __cfg80211_connect(struct cfg80211_registered_device *rdev,
 		       struct net_device *dev,
 		       struct cfg80211_connect_params *connect,
@@ -412,7 +403,6 @@ void cfg80211_conn_work(struct work_struct *work);
 void cfg80211_sme_failed_assoc(struct wireless_dev *wdev);
 bool cfg80211_sme_failed_reassoc(struct wireless_dev *wdev);
 
-/* internal helpers */
 bool cfg80211_supported_cipher_suite(struct wiphy *wiphy, u32 cipher);
 int cfg80211_validate_key_settings(struct cfg80211_registered_device *rdev,
 				   struct key_params *params, int key_idx,
@@ -442,12 +432,6 @@ int cfg80211_can_use_iftype_chan(struct cfg80211_registered_device *rdev,
 				 enum cfg80211_chan_mode chanmode,
 				 u8 radar_detect);
 
-/**
- * cfg80211_chandef_dfs_required - checks if radar detection is required
- * @wiphy: the wiphy to validate against
- * @chandef: the channel definition to check
- * Return: 1 if radar detection is required, 0 if it is not, < 0 on error
- */
 int cfg80211_chandef_dfs_required(struct wiphy *wiphy,
 				  const struct cfg80211_chan_def *c);
 
@@ -523,12 +507,7 @@ void cfg80211_stop_p2p_device(struct cfg80211_registered_device *rdev,
 #ifdef CONFIG_CFG80211_DEVELOPER_WARNINGS
 #define CFG80211_DEV_WARN_ON(cond)	WARN_ON(cond)
 #else
-/*
- * Trick to enable using it as a condition,
- * and also not give a warning when it's
- * not used that way.
- */
 #define CFG80211_DEV_WARN_ON(cond)	({bool __r = (cond); __r; })
 #endif
 
-#endif /* __NET_WIRELESS_CORE_H */
+#endif 

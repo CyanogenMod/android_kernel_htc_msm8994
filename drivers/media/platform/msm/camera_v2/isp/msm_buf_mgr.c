@@ -414,7 +414,7 @@ static int msm_isp_get_buf(struct msm_isp_buf_mgr *buf_mgr, uint32_t id,
 							mped_info_tmp2->len)
 						&& (mped_info_tmp1->paddr ==
 						mped_info_tmp2->paddr)) {
-						/* found one buf */
+						
 						list_del_init(
 							&temp_buf_info->list);
 						*buf_info = temp_buf_info;
@@ -460,8 +460,6 @@ static int msm_isp_get_buf(struct msm_isp_buf_mgr *buf_mgr, uint32_t id,
 		}
 		break;
 	case MSM_ISP_BUFFER_SRC_SCRATCH:
-		/* In scratch buf case we have only on buffer in queue.
-		 * We return every time same buffer. */
 		*buf_info = list_entry(bufq->head.next, typeof(**buf_info),
 				list);
 		break;
@@ -946,11 +944,11 @@ static int msm_isp_attach_ctx(struct msm_isp_buf_mgr *buf_mgr,
 {
 	int rc, i;
 	if (cmd->security_mode == NON_SECURE_MODE) {
-		/*non secure mode*/
+		
 		for (i = 0; i < buf_mgr->num_iommu_ctx; i++) {
 
 			if (buf_mgr->attach_ref_cnt[NON_SECURE_MODE][i] == 0) {
-				/* attach only once */
+				
 				rc = iommu_attach_device(
 					buf_mgr->iommu_domain,
 					buf_mgr->iommu_ctx[i]);
@@ -959,15 +957,16 @@ static int msm_isp_attach_ctx(struct msm_isp_buf_mgr *buf_mgr,
 						__func__, i, rc);
 					return -EINVAL;
 				}
+				buf_mgr->attach_state = MSM_ISP_BUF_MGR_ATTACH;
 			}
 			buf_mgr->attach_ref_cnt[NON_SECURE_MODE][i]++;
 		}
 	} else {
-		/*secure mode*/
+		
 		for (i = 0; i < buf_mgr->num_iommu_secure_ctx; i++) {
 
 			if (buf_mgr->attach_ref_cnt[SECURE_MODE][i] == 0) {
-				/* attach only once */
+				
 				rc = iommu_attach_device(
 					buf_mgr->iommu_domain_secure,
 					buf_mgr->iommu_secure_ctx[i]);
@@ -976,11 +975,11 @@ static int msm_isp_attach_ctx(struct msm_isp_buf_mgr *buf_mgr,
 						__func__, i, rc);
 					return -EINVAL;
 				}
+				buf_mgr->attach_state = MSM_ISP_BUF_MGR_ATTACH;
 			}
 			buf_mgr->attach_ref_cnt[SECURE_MODE][i]++;
 		}
 	}
-	buf_mgr->attach_state = MSM_ISP_BUF_MGR_ATTACH;
 	return 0;
 }
 
@@ -988,35 +987,32 @@ static int msm_isp_detach_ctx(struct msm_isp_buf_mgr *buf_mgr)
 {
 	int i;
 
-	if (buf_mgr->attach_state == MSM_ISP_BUF_MGR_DETACH ||
-		buf_mgr->open_count)
-		return 0;
-
 	if (buf_mgr->secure_enable == NON_SECURE_MODE) {
-		/*non secure mode*/
+		
 		for (i = 0; i < buf_mgr->num_iommu_ctx; i++) {
-			/*Detach only if ref count is one*/
+			
 			if (buf_mgr->attach_ref_cnt[NON_SECURE_MODE][i] == 1) {
 				iommu_detach_device(buf_mgr->iommu_domain,
 					buf_mgr->iommu_ctx[i]);
+				buf_mgr->attach_state = MSM_ISP_BUF_MGR_DETACH;
 			}
 			if (buf_mgr->attach_ref_cnt[NON_SECURE_MODE][i] > 0)
 				--buf_mgr->attach_ref_cnt[NON_SECURE_MODE][i];
 		}
 	} else {
-		/*secure mode*/
+		
 		for (i = 0; i < buf_mgr->num_iommu_secure_ctx; i++) {
-			/*Detach only if ref count is one*/
+			
 			if (buf_mgr->attach_ref_cnt[SECURE_MODE][i] == 1) {
 				iommu_detach_device(
 						buf_mgr->iommu_domain_secure,
 						buf_mgr->iommu_secure_ctx[i]);
+				buf_mgr->attach_state = MSM_ISP_BUF_MGR_DETACH;
 			}
 			if (buf_mgr->attach_ref_cnt[SECURE_MODE][i] > 0)
 				--buf_mgr->attach_ref_cnt[SECURE_MODE][i];
 		}
 	}
-	buf_mgr->attach_state = MSM_ISP_BUF_MGR_DETACH;
 	return 0;
 }
 
@@ -1026,6 +1022,7 @@ int msm_isp_smmu_attach(struct msm_isp_buf_mgr *buf_mgr,
 	struct msm_vfe_smmu_attach_cmd *cmd = arg;
 	int rc = 0;
 	pr_debug("%s: cmd->security_mode : %d\n", __func__, cmd->security_mode);
+	mutex_lock(&buf_mgr->lock);
 	if (cmd->iommu_attach_mode == IOMMU_ATTACH) {
 		buf_mgr->secure_enable = cmd->security_mode;
 		rc = msm_isp_attach_ctx(buf_mgr, cmd);
@@ -1037,6 +1034,7 @@ int msm_isp_smmu_attach(struct msm_isp_buf_mgr *buf_mgr,
 		msm_isp_detach_ctx(buf_mgr);
 
 iommu_error:
+	mutex_unlock(&buf_mgr->lock);
 	return rc;
 }
 
@@ -1046,11 +1044,15 @@ static int msm_isp_init_isp_buf_mgr(
 	const char *ctx_name, uint16_t num_buf_q)
 {
 	int rc = -1;
-	if (buf_mgr->open_count++)
+	mutex_lock(&buf_mgr->lock);
+	if (buf_mgr->open_count++) {
+		mutex_unlock(&buf_mgr->lock);
 		return 0;
+	}
 
 	if (!num_buf_q) {
 		pr_err("Invalid buffer queue number\n");
+		mutex_unlock(&buf_mgr->lock);
 		return rc;
 	}
 	CDBG("%s: E\n", __func__);
@@ -1067,25 +1069,31 @@ static int msm_isp_init_isp_buf_mgr(
 	buf_mgr->client = msm_ion_client_create(ctx_name);
 	buf_mgr->buf_handle_cnt = 0;
 	buf_mgr->pagefault_debug = 0;
+	mutex_unlock(&buf_mgr->lock);
 	return 0;
 bufq_error:
+	mutex_unlock(&buf_mgr->lock);
 	return rc;
 }
 
 static int msm_isp_deinit_isp_buf_mgr(
 	struct msm_isp_buf_mgr *buf_mgr)
 {
+	mutex_lock(&buf_mgr->lock);
 	if (buf_mgr->open_count > 0)
 		buf_mgr->open_count--;
 
-	if (buf_mgr->open_count)
+	if (buf_mgr->open_count) {
+		mutex_unlock(&buf_mgr->lock);
 		return 0;
+	}
 	msm_isp_release_all_bufq(buf_mgr);
 	ion_client_destroy(buf_mgr->client);
 	kfree(buf_mgr->bufq);
 	buf_mgr->num_buf_q = 0;
 	buf_mgr->pagefault_debug = 0;
 	msm_isp_detach_ctx(buf_mgr);
+	mutex_unlock(&buf_mgr->lock);
 	return 0;
 }
 
@@ -1213,6 +1221,7 @@ int msm_isp_create_isp_buf_mgr(
 	buf_mgr->pagefault_debug = 0;
 	buf_mgr->secure_enable = NON_SECURE_MODE;
 	buf_mgr->attach_state = MSM_ISP_BUF_MGR_DETACH;
+	mutex_init(&buf_mgr->lock);
 
 	for (i = 0; i < MAX_PROTECTION_MODE; i++)
 		for (j = 0; j < MAX_IOMMU_CTX; j++)

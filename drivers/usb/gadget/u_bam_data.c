@@ -27,7 +27,7 @@
 #include "u_bam_data.h"
 
 #define BAM_DATA_RX_Q_SIZE	128
-#define BAM_DATA_MUX_RX_REQ_SIZE  2048   /* Must be 1KB aligned */
+#define BAM_DATA_MUX_RX_REQ_SIZE  2048   
 #define BAM_DATA_PENDING_LIMIT	220
 
 #define SYS_BAM_RX_PKT_FLOW_CTRL_SUPPORT	1
@@ -57,9 +57,9 @@ module_param(bam_data_mux_rx_req_size, uint, S_IRUGO | S_IWUSR);
 #define MSM_VENDOR_ID			BIT(16)
 
 struct rndis_data_ch_info {
-	/* this provides downlink (device->host i.e host) side configuration*/
+	
 	u32 dl_max_transfer_size;
-	/* this provides uplink (host->device i.e device) side configuration */
+	
 	u32 ul_max_transfer_size;
 	u32 ul_max_packets_number;
 	bool ul_aggregation_enable;
@@ -95,7 +95,7 @@ struct bam_data_ch_info {
 	enum transport_type			trans;
 	struct usb_bam_connect_ipa_params	ipa_params;
 
-	/* UL workaround parameters */
+	
 	struct sys2ipa_sw_data	ul_params;
 	struct list_head	rx_idle;
 	struct sk_buff_head	rx_skb_q;
@@ -112,7 +112,7 @@ struct bam_data_ch_info {
 	unsigned int		rx_flow_control_disable;
 	unsigned int		rx_flow_control_enable;
 	unsigned int		rx_flow_control_triggered;
-	/* used for RNDIS/ECM network inteface based design */
+	
 	atomic_t		is_net_interface_up;
 };
 
@@ -127,10 +127,6 @@ enum u_bam_data_event_type {
 	U_BAM_DATA_RESUME_E
 };
 
-/*
- * Used exclusively for RNDIS adpator enable/disable
- * operation performed on host machine.
- */
 enum u_bam_rndis_state {
 	RNDIS_DISCONNECT = 0,
 	RNDIS_SOFT_DISABLE,
@@ -165,7 +161,6 @@ static void bam2bam_data_suspend_work(struct work_struct *w);
 static void bam2bam_data_resume_work(struct work_struct *w);
 static void bam_data_free_reqs(struct bam_data_port *port);
 
-/*----- sys2bam towards the IPA (UL workaround) --------------- */
 
 static int bam_data_alloc_requests(struct usb_ep *ep, struct list_head *head,
 		int num,
@@ -205,7 +200,6 @@ static inline dma_addr_t bam_data_get_dma_from_skb(struct sk_buff *skb)
 	return *((dma_addr_t *)(skb->cb));
 }
 
-/* This function should be called with port_lock lock taken */
 static struct sk_buff *bam_data_alloc_skb_from_pool(
 	struct bam_data_port *port)
 {
@@ -222,12 +216,6 @@ static struct sk_buff *bam_data_alloc_skb_from_pool(
 		return NULL;
 
 	if (d->rx_skb_idle.qlen == 0) {
-		/*
-		 * In case skb idle pool is empty, we allow to allocate more
-		 * skbs so we dynamically enlarge the pool size when needed.
-		 * Therefore, in steady state this dynamic allocation will
-		 * stop when the pool will arrive to its optimal size.
-		 */
 		pr_debug("%s: allocate skb\n", __func__);
 		skb = alloc_skb(d->rx_buffer_size + BAM_MUX_HDR, GFP_ATOMIC);
 		if (!skb) {
@@ -322,18 +310,15 @@ static void bam_data_ipa_sys2bam_notify_cb(void *priv,
 	case IPA_WRITE_DONE:
 		d = container_of(ul, struct bam_data_ch_info, ul_params);
 		port = container_of(d, struct bam_data_port, data_ch);
-		/* call into bam_demux functionality that'll recycle the data */
+		
 		bam_data_write_done(port, (struct sk_buff *)(data));
 		break;
 	case IPA_RECEIVE:
-		/* call the callback given by tethering driver init function
-		 * (and was given to ipa_connect)
-		 */
 		if (ul->teth_cb)
 			ul->teth_cb(ul->teth_priv, event, data);
 		break;
 	default:
-		/* unexpected event */
+		
 		pr_err("%s: unexpected event %d\n", __func__, event);
 		break;
 	}
@@ -412,7 +397,7 @@ static void bam_data_epout_complete(struct usb_ep *ep, struct usb_request *req)
 		break;
 	case -ECONNRESET:
 	case -ESHUTDOWN:
-		/* cable disconnection */
+		
 		spin_lock_irqsave(&port->port_lock, flags);
 		bam_data_free_skb_to_pool(port, skb);
 		d->freed_rx_reqs++;
@@ -481,7 +466,6 @@ static void bam_data_epout_complete(struct usb_ep *ep, struct usb_request *req)
 		spin_unlock(&port->port_lock);
 	}
 }
-/* It should be called with port_lock acquire. */
 static int bam_data_sys2bam_alloc_req(struct bam_data_port *port, bool in)
 {
 	int			ret;
@@ -573,7 +557,6 @@ static void bam_data_write_toipa(struct work_struct *w)
 
 }
 
-/*------------data_path----------------------------*/
 
 static void bam_data_endless_rx_complete(struct usb_ep *ep,
 					 struct usb_request *req)
@@ -662,14 +645,14 @@ static int bam_data_peer_reset_cb(void *param)
 
 	pr_debug("%s: reset by peer\n", __func__);
 
-	/* Reset BAM */
+	
 	ret = usb_bam_a2_reset(0);
 	if (ret) {
 		pr_err("%s: BAM reset failed %d\n", __func__, ret);
 		return ret;
 	}
 
-	/* Unregister the peer reset callback */
+	
 	usb_bam_register_peer_reset_cb(NULL, NULL);
 
 	return 0;
@@ -711,6 +694,11 @@ static void bam2bam_free_rx_skb_idle_list(struct bam_data_port *port)
 
 	while (d->rx_skb_idle.qlen > 0) {
 		skb = __skb_dequeue(&d->rx_skb_idle);
+		if (!skb) {
+			pr_err("%s(): skb is NULL.\n", __func__);
+			return;
+		}
+
 		dma_addr = gbam_get_dma_from_skb(skb);
 
 		if (gadget && dma_addr != DMA_ERROR_CODE) {
@@ -727,26 +715,10 @@ static void bam2bam_free_rx_skb_idle_list(struct bam_data_port *port)
 							d->freed_skb);
 }
 
-/*
- * bam_data_ipa_disconnect()- Perform USB IPA function level disconnect
- * struct bam_data_ch_info - Per USB IPA port data structure
- *
- * Make sure to call IPA rndis/ecm/mbim related disconnect APIs() only
- * if those APIs init counterpart is already performed.
- * MBIM: teth_bridge_connect() is NO_OPS and teth_bridge_init() is
- * being called with atomic context on cable connect, hence there is no
- * need to consider for this check. is_net_interface_up is being used
- * for RNDIS/ECM driver due to its different design with usage of
- * network interface created by IPA driver.
- */
 static void bam_data_ipa_disconnect(struct bam_data_ch_info *d)
 {
 	pr_debug("%s(): is_net_interface_up:%d\n",
 		__func__, atomic_read(&d->is_net_interface_up));
-	/*
-	 * Check if is_net_interface_up is set to 1, then perform disconnect
-	 * part and set is_net_interface_up to zero.
-	 */
 	if (atomic_xchg(&d->is_net_interface_up, 0) == 1) {
 		void *priv;
 		if (d->func_type == USB_FUNC_ECM) {
@@ -782,25 +754,13 @@ static void bam2bam_data_disconnect_work(struct work_struct *w)
 		return;
 	}
 
-	/*
-	 * Mark port as disconnected, to maintaine this driver state,
-	 * even if there gonna be errors down in this function.
-	 */
 	port->is_connected = false;
 	d = &port->data_ch;
 
-	/*
-	 * Unlock the port here and not at the end of this work,
-	 * because we do not want to activate usb_bam, ipa and
-	 * tethe bridge logic in atomic context and wait uneeded time.
-	 * Either way other works will not fire until end of this work
-	 * and event functions (as bam_data_connect) will not influance
-	 * while lower layers connect pipes, etc.
-	*/
 	spin_unlock_irqrestore(&port->port_lock, flags);
 
 	if (d->trans == USB_GADGET_XPORT_BAM2BAM_IPA) {
-		/* Perform IPA functions' disconnect */
+		
 		bam_data_ipa_disconnect(d);
 		ret = usb_bam_disconnect_ipa(&d->ipa_params);
 		if (ret)
@@ -809,10 +769,6 @@ static void bam2bam_data_disconnect_work(struct work_struct *w)
 
 	pr_debug("Disconnect workqueue done (port %p)\n", port);
 }
-/*
- * This function configured data fifo based on index passed to get bam2bam
- * configuration.
- */
 static void configure_usb_data_fifo(u8 idx, struct usb_ep *ep,
 		enum usb_bam_pipe_type pipe_type)
 {
@@ -833,7 +789,6 @@ static void configure_usb_data_fifo(u8 idx, struct usb_ep *ep,
 	}
 }
 
-/* Start RX transfers according to pipe_type */
 static inline int bam_data_start_rx_transfers(struct bam_data_ch_info *d,
 				struct bam_data_port *port)
 {
@@ -898,12 +853,6 @@ static void bam2bam_data_connect_work(struct work_struct *w)
 		return;
 	}
 
-	/*
-	 * Disabling RNDIS network adaptor disable/enable performs
-	 * USB IPA disconect and connect respectively. This particular
-	 * check makes sure that when we re-enable USB eps are not
-	 * re-renabled.
-	*/
 	if (d->trans == USB_GADGET_XPORT_BAM2BAM_IPA &&
 		d->func_type == USB_FUNC_RNDIS &&
 		port->rndis_s == RNDIS_SOFT_ENABLE)
@@ -914,7 +863,7 @@ static void bam2bam_data_connect_work(struct work_struct *w)
 		if (d->trans == USB_GADGET_XPORT_BAM2BAM_IPA &&
 			d->src_pipe_type == USB_BAM_PIPE_SYS2BAM) {
 
-			/* UL workaround requirements */
+			
 			skb_queue_head_init(&d->rx_skb_q);
 			skb_queue_head_init(&d->rx_skb_idle);
 			INIT_LIST_HEAD(&d->rx_idle);
@@ -956,10 +905,6 @@ static void bam2bam_data_connect_work(struct work_struct *w)
 		d->tx_req->length = 0;
 		d->tx_req->no_interrupt = 1;
 	}
-	/*
-	 * Mark port as connected, to maintaine this driver state,
-	 * even if there gonna be errors down in this function.
-	 */
 	port->is_connected = true;
 
 	if (d->trans == USB_GADGET_XPORT_BAM2BAM_IPA) {
@@ -1004,7 +949,7 @@ static void bam2bam_data_connect_work(struct work_struct *w)
 				rndis_qc_get_skip_ep_config();
 		}
 
-		/* Support for UL using system-to-IPA */
+		
 		if (d->src_pipe_type == USB_BAM_PIPE_SYS2BAM) {
 			d->ul_params.teth_cb = d->ipa_params.notify;
 			d->ipa_params.notify =
@@ -1052,7 +997,7 @@ static void bam2bam_data_connect_work(struct work_struct *w)
 					port->port_usb->out,
 					d->src_pipe_type);
 
-		/* Remove support for UL using system-to-IPA towards DL */
+		
 		if (d->src_pipe_type == USB_BAM_PIPE_SYS2BAM) {
 			d->ipa_params.notify = d->ul_params.teth_cb;
 			d->ipa_params.priv = d->ul_params.teth_priv;
@@ -1086,10 +1031,6 @@ static void bam2bam_data_connect_work(struct work_struct *w)
 			goto disconnect_ipa;
 		}
 
-		/*
-		 * Cable might have been disconnected after releasing the
-		 * spinlock and re-enabling IRQs. Hence check again.
-		 */
 		spin_lock_irqsave(&port->port_lock, flags);
 		if (port->rndis_s == RNDIS_DISCONNECT &&
 			port->last_event ==  U_BAM_DATA_DISCONNECT_E) {
@@ -1118,7 +1059,7 @@ static void bam2bam_data_connect_work(struct work_struct *w)
 					port->port_usb->in,
 					d->dst_pipe_type);
 
-		/* Upadate BAM specific attributes in usb_request */
+		
 		if (gadget_is_dwc3(gadget)) {
 			sps_params = MSM_SPS_MODE | MSM_DISABLE_WB
 				| MSM_PRODUCER | d->src_pipe_idx;
@@ -1195,10 +1136,10 @@ static void bam2bam_data_connect_work(struct work_struct *w)
 			}
 			is_ipa_rndis_net_on = true;
 		}
-	} else { /* transport type is USB_GADGET_XPORT_BAM2BAM */
-		/* Upadate BAM specific attributes in usb_request */
+	} else { 
+		
 		usb_bam_reset_complete();
-		/* Setup BAM connection and fetch USB PIPE index */
+		
 		ret = usb_bam_connect(d->src_connection_idx, &d->src_pipe_idx);
 		if (ret) {
 			pr_err("usb_bam_connect (src) failed: err:%d\n", ret);
@@ -1218,7 +1159,7 @@ static void bam2bam_data_connect_work(struct work_struct *w)
 		d->tx_req->udc_priv = sps_params;
 	}
 
-	/* Don't queue the transfers yet, only after network stack is up */
+	
 	if (d->trans == USB_GADGET_XPORT_BAM2BAM_IPA &&
 		(d->func_type == USB_FUNC_RNDIS ||
 		d->func_type == USB_FUNC_ECM)) {
@@ -1227,11 +1168,11 @@ static void bam2bam_data_connect_work(struct work_struct *w)
 		return;
 	}
 
-	/* queue in & out requests */
+	
 	bam_data_start_rx_transfers(d, port);
 	bam_data_start_endless_tx(port);
 
-	/* Register for peer reset callback if USB_GADGET_XPORT_BAM2BAM */
+	
 	if (d->trans != USB_GADGET_XPORT_BAM2BAM_IPA) {
 		usb_bam_register_peer_reset_cb(bam_data_peer_reset_cb, port);
 
@@ -1250,11 +1191,6 @@ disconnect_ipa:
 	usb_bam_disconnect_ipa(&d->ipa_params);
 }
 
-/*
- * Called when IPA triggers us that the network interface is up.
- *  Starts the transfers on bulk endpoints.
- * (optimization reasons, the pipes and bam with IPA are already connected)
- */
 void bam_data_start_rx_tx(u8 port_num)
 {
 	struct bam_data_port	*port;
@@ -1263,7 +1199,7 @@ void bam_data_start_rx_tx(u8 port_num)
 
 	pr_debug("%s: Triggered: starting tx, rx", __func__);
 
-	/* queue in & out requests */
+	
 	port = bam2bam_data_ports[port_num];
 	if (!port) {
 		pr_err("%s: port is NULL, can't start tx, rx", __func__);
@@ -1272,13 +1208,6 @@ void bam_data_start_rx_tx(u8 port_num)
 
 	spin_lock_irqsave(&port->port_lock, flags);
 	d = &port->data_ch;
-	/*
-	 * As this API is being called once network interface is up for
-	 * RNDIS/ECM i.e. USB driver has already notified USB cable connect
-	 * notification. Hence set this here and only clear as part of USB
-	 * cable disconnect i.e. bam_data_disconnect() API even not as part
-	 * of any error happen in this API further.
-	 */
 	atomic_set(&d->is_net_interface_up, 1);
 	if (!port->port_usb || !port->port_usb->in->driver_data
 		|| !port->port_usb->out->driver_data) {
@@ -1296,7 +1225,7 @@ void bam_data_start_rx_tx(u8 port_num)
 		goto out;
 	}
 
-	/* queue in & out requests */
+	
 	pr_debug("%s: Starting rx", __func__);
 	spin_unlock_irqrestore(&port->port_lock, flags);
 	if (bam_data_start_rx_transfers(d, port))
@@ -1364,7 +1293,7 @@ int bam2bam_data_port_select(int portno)
 	if (!work_pending(&port->resume_w))
 		INIT_WORK(&port->resume_w, bam2bam_data_resume_work);
 
-	/* data ch */
+	
 	d = &port->data_ch;
 	d->port = port;
 	bam2bam_data_ports[portno] = port;
@@ -1462,13 +1391,6 @@ void bam_data_disconnect(struct data_port *gr, u8 port_num)
 
 	d = &port->data_ch;
 
-	/*
-	 * Flag disable_eps and rndis_s state as RNDIS_SOFT_DISABLE are
-	 * being used to detect that this API is being called due to
-	 * performing RNDIS adaptor disable on host. In normal case,
-	 * disable_eps would be always false, which would make sure to
-	 * perform disconnect sequeunce.
-	 */
 	if (d->trans == USB_GADGET_XPORT_BAM2BAM_IPA &&
 		d->func_type == USB_FUNC_RNDIS) {
 		if (rndis_data.adaptor_disable &&
@@ -1488,13 +1410,6 @@ void bam_data_disconnect(struct data_port *gr, u8 port_num)
 
 		if (port->port_usb->in && port->port_usb->in->driver_data) {
 
-			/*
-			 * Disable endpoints.
-			 * Unlocking is needed since disabling the eps might
-			 * stop active transfers and therefore the request
-			 * complete function will be called, where we try
-			 * to obtain the spinlock as well.
-			 */
 			spin_unlock_irqrestore(&port->port_lock, flags);
 			usb_ep_disable(port->port_usb->out);
 			if (d->rx_req) {
@@ -1511,7 +1426,7 @@ void bam_data_disconnect(struct data_port *gr, u8 port_num)
 			}
 			spin_lock_irqsave(&port->port_lock, flags);
 
-			/* Only for SYS2BAM mode related UL workaround */
+			
 			if (d->trans == USB_GADGET_XPORT_BAM2BAM_IPA &&
 				d->src_pipe_type == USB_BAM_PIPE_SYS2BAM) {
 
@@ -1526,17 +1441,13 @@ void bam_data_disconnect(struct data_port *gr, u8 port_num)
 				pr_debug("rx_reqs: allocated:%d freed:%d\n",
 					d->alloc_rx_reqs, d->freed_rx_reqs);
 
-				/* reset all skb/reqs related statistics */
+				
 				d->total_skb = 0;
 				d->freed_skb = 0;
 				d->freed_rx_reqs = 0;
 				d->alloc_rx_reqs = 0;
 			}
 
-			/*
-			 * Set endless flag to false as USB Endpoint
-			 * is already disable.
-			 */
 			if (d->trans == USB_GADGET_XPORT_BAM2BAM ||
 				d->trans == USB_GADGET_XPORT_BAM2BAM_IPA ||
 				d->trans == USB_GADGET_XPORT_BAM) {
@@ -1601,10 +1512,6 @@ int bam_data_connect(struct data_port *gr, u8 port_num,
 	d->rx_buffer_size = (gr->rx_buffer_size ? gr->rx_buffer_size :
 					bam_mux_rx_req_size);
 
-	/*
-	 * Both source (consumer) and destination (producer) use the same
-	 * controller, so checking just one of them should suffice.
-	 */
 	if (usb_bam_get_bam_type(src_connection_idx) == HSIC_CTRL) {
 		d->ipa_params.src_client = IPA_CLIENT_HSIC1_PROD;
 		d->ipa_params.dst_client = IPA_CLIENT_HSIC1_CONS;
@@ -1623,11 +1530,6 @@ int bam_data_connect(struct data_port *gr, u8 port_num,
 		d->rx_flow_control_enable = 0;
 		d->rx_flow_control_triggered = 0;
 
-		/*
-		 * Query pipe type using IPA src/dst index with
-		 * usbbam driver. It is being set either as
-		 * BAM2BAM or SYS2BAM.
-		 */
 		if (usb_bam_get_pipe_type(d->ipa_params.src_idx,
 			&d->src_pipe_type) ||
 			usb_bam_get_pipe_type(d->ipa_params.dst_idx,
@@ -1638,13 +1540,6 @@ int bam_data_connect(struct data_port *gr, u8 port_num,
 		}
 	}
 
-	/*
-	 * Check for pipe_type. If it is BAM2BAM, then it is required
-	 * to disable Xfer complete and Xfer not ready interrupts for
-	 * that particular endpoint. Hence it set endless flag based
-	 * it which is considered into UDC driver while enabling
-	 * USB Endpoint.
-	 */
 	if (d->trans == USB_GADGET_XPORT_BAM2BAM ||
 		d->trans == USB_GADGET_XPORT_BAM2BAM_IPA ||
 		d->trans == USB_GADGET_XPORT_BAM) {
@@ -1771,15 +1666,6 @@ static int bam_data_wake_cb(void *param)
 
 	func = d_port->func;
 
-	/*
-	 * In Super-Speed mode, remote wakeup is not allowed for suspended
-	 * functions which have been disallowed by the host to issue Funtion
-	 * Remote Wakeup.
-	 * Note - We deviate here from the USB 3.0 spec and allow
-	 * non-suspended functions to issue remote-wakeup even if they were not
-	 * allowed to do so by the host. This is done in order to support non
-	 * fully USB 3.0 compatible hosts.
-	 */
 	if ((gadget->speed == USB_SPEED_SUPER) && (func->func_is_suspended)) {
 		if (!func->func_wakeup_allowed)
 			return -ENOTSUPP;
@@ -1852,10 +1738,6 @@ static void bam_data_stop(void *param, enum usb_bam_pipe_dir dir)
 	struct bam_data_port *port = param;
 
 	if (dir == USB_TO_PEER_PERIPHERAL) {
-		/*
-		 * Only handling BAM2BAM, as there is no equivelant to
-		 * bam_data_stop_endless_rx() for the SYS2BAM use case
-		 */
 		if (port->data_ch.src_pipe_type == USB_BAM_PIPE_BAM2BAM)
 			bam_data_stop_endless_rx(port);
 	} else {

@@ -17,11 +17,10 @@
 #include <sound/pcm.h>
 #include <sound/soc.h>
 
-/* A dummy driver useful only to advertise hardware parameters */
 static struct snd_soc_dai_driver msm_stub_dais[] = {
 	{
 		.name = "msm-stub-rx",
-		.playback = { /* Support maximum range */
+		.playback = { 
 			.stream_name = "Playback",
 			.channels_min = 1,
 			.channels_max = 8,
@@ -31,13 +30,23 @@ static struct snd_soc_dai_driver msm_stub_dais[] = {
 	},
 	{
 		.name = "msm-stub-tx",
-		.capture = { /* Support maximum range */
+		.capture = { 
 			.stream_name = "Record",
 			.channels_min = 1,
 			.channels_max = 8,
 			.rates = SNDRV_PCM_RATE_8000_48000,
 			.formats = (SNDRV_PCM_FMTBIT_S16_LE |
 				    SNDRV_PCM_FMTBIT_S24_LE),
+		},
+	},
+	{
+		.name = "msm_htc_mi2s_codec",
+		.playback = { 
+			.stream_name = "htc-virtual-mi2s-if",
+			.channels_min = 1,
+			.channels_max = 8,
+			.rates = SNDRV_PCM_RATE_8000_48000,
+			.formats = SNDRV_PCM_FMTBIT_S16_LE,
 		},
 	},
 };

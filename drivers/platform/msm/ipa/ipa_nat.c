@@ -1,4 +1,4 @@
-/* Copyright (c) 2012-2014, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2012-2015, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -23,6 +23,7 @@
 
 #define IPA_NAT_SYSTEM_MEMORY  0
 #define IPA_NAT_SHARED_MEMORY  1
+#define IPA_NAT_TEMP_MEM_SIZE 128
 
 static int ipa_nat_vma_fault_remap(
 	 struct vm_area_struct *vma, struct vm_fault *vmf)
@@ -33,7 +34,6 @@ static int ipa_nat_vma_fault_remap(
 	return VM_FAULT_SIGBUS;
 }
 
-/* VMA related file operations functions */
 static struct vm_operations_struct ipa_nat_remap_vm_ops = {
 	.fault = ipa_nat_vma_fault_remap,
 };
@@ -113,13 +113,26 @@ static const struct file_operations ipa_nat_fops = {
 	.mmap = ipa_nat_mmap
 };
 
-/**
- * create_nat_device() - Create the NAT device
- *
- * Called during ipa init to create nat device
- *
- * Returns:	0 on success, negative on failure
- */
+void allocate_temp_nat_memory(void)
+{
+	struct ipa_nat_mem *nat_ctx = &(ipa_ctx->nat_mem);
+	int gfp_flags = GFP_KERNEL | __GFP_ZERO;
+
+	nat_ctx->tmp_vaddr =
+		dma_alloc_coherent(ipa_ctx->pdev, IPA_NAT_TEMP_MEM_SIZE,
+				&nat_ctx->tmp_dma_handle, gfp_flags);
+
+	if (nat_ctx->tmp_vaddr == NULL) {
+		IPAERR("Temp Memory alloc failed\n");
+		nat_ctx->is_tmp_mem = false;
+		return;
+	}
+
+	nat_ctx->is_tmp_mem = true;
+	IPADBG("IPA NAT allocated temp memory successfully\n");
+	return;
+}
+
 int create_nat_device(void)
 {
 	struct ipa_nat_mem *nat_ctx = &(ipa_ctx->nat_mem);
@@ -167,6 +180,7 @@ int create_nat_device(void)
 			MINOR(nat_ctx->dev_num));
 
 	nat_ctx->is_dev = true;
+	allocate_temp_nat_memory();
 	IPADBG("IPA NAT device created successfully\n");
 	result = 0;
 	goto bail;
@@ -194,15 +208,6 @@ bail:
 	return result;
 }
 
-/**
- * allocate_nat_device() - Allocates memory for the NAT device
- * @mem:	[in/out] memory parameters
- *
- * Called by NAT client driver to allocate memory for the NAT entries. Based on
- * the request size either shared or system memory will be used.
- *
- * Returns:	0 on success, negative on failure
- */
 int allocate_nat_device(struct ipa_ioc_nat_alloc_mem *mem)
 {
 	struct ipa_nat_mem *nat_ctx = &(ipa_ctx->nat_mem);
@@ -222,6 +227,12 @@ int allocate_nat_device(struct ipa_ioc_nat_alloc_mem *mem)
 	if (nat_ctx->is_dev != true) {
 		IPAERR("Nat device not created successfully during boot up\n");
 		result = -EPERM;
+		goto bail;
+	}
+
+	if (nat_ctx->is_dev_init == true) {
+		IPAERR("Device already init\n");
+		result = 0;
 		goto bail;
 	}
 
@@ -259,18 +270,10 @@ bail:
 	return result;
 }
 
-/* IOCTL function handlers */
-/**
- * ipa_nat_init_cmd() - Post IP_V4_NAT_INIT command to IPA HW
- * @init:	[in] initialization command attributes
- *
- * Called by NAT client driver to post IP_V4_NAT_INIT command to IPA HW
- *
- * Returns:	0 on success, negative on failure
- */
 int ipa_nat_init_cmd(struct ipa_ioc_v4_nat_init *init)
 {
-	struct ipa_desc desc = { 0 };
+	struct ipa_register_write *reg_write_nop;
+	struct ipa_desc desc[2];
 	struct ipa_ip_v4_nat_init *cmd;
 	u16 size = sizeof(struct ipa_ip_v4_nat_init);
 	int result;
@@ -292,11 +295,31 @@ int ipa_nat_init_cmd(struct ipa_ioc_v4_nat_init *init)
 		goto bail;
 	}
 
+	memset(&desc, 0, sizeof(desc));
+	
+	reg_write_nop = kzalloc(sizeof(*reg_write_nop), GFP_KERNEL);
+	if (!reg_write_nop) {
+		IPAERR("no mem\n");
+		result = -ENOMEM;
+		goto bail;
+	}
+
+	reg_write_nop->skip_pipeline_clear = 0;
+	reg_write_nop->value_mask = 0x0;
+
+	desc[0].opcode = IPA_REGISTER_WRITE;
+	desc[0].type = IPA_IMM_CMD_DESC;
+	desc[0].callback = NULL;
+	desc[0].user1 = NULL;
+	desc[0].user2 = 0;
+	desc[0].pyld = (void *)reg_write_nop;
+	desc[0].len = sizeof(*reg_write_nop);
+
 	cmd = kmalloc(size, GFP_KERNEL);
 	if (!cmd) {
 		IPAERR("Failed to alloc immediate command object\n");
 		result = -ENOMEM;
-		goto bail;
+		goto free_nop;
 	}
 	if (ipa_ctx->nat_mem.vaddr) {
 		IPADBG("using system memory for nat table\n");
@@ -323,7 +346,7 @@ int ipa_nat_init_cmd(struct ipa_ioc_v4_nat_init *init)
 			IPAERR("index_expn_offset: 0x%x\n",
 				init->index_expn_offset);
 			result = -EPERM;
-			goto free_cmd;
+			goto free_mem;
 		}
 		cmd->ipv4_rules_addr =
 			ipa_ctx->nat_mem.dma_handle + init->ipv4_rules_offset;
@@ -367,18 +390,18 @@ int ipa_nat_init_cmd(struct ipa_ioc_v4_nat_init *init)
 	IPADBG("Expansion Table size:0x%x\n", cmd->size_expansion_tables);
 	cmd->public_ip_addr = init->ip_addr;
 	IPADBG("Public ip address:0x%x\n", cmd->public_ip_addr);
-	desc.opcode = IPA_IP_V4_NAT_INIT;
-	desc.type = IPA_IMM_CMD_DESC;
-	desc.callback = NULL;
-	desc.user1 = NULL;
-	desc.user2 = 0;
-	desc.pyld = (void *)cmd;
-	desc.len = size;
+	desc[1].opcode = IPA_IP_V4_NAT_INIT;
+	desc[1].type = IPA_IMM_CMD_DESC;
+	desc[1].callback = NULL;
+	desc[1].user1 = NULL;
+	desc[1].user2 = 0;
+	desc[1].pyld = (void *)cmd;
+	desc[1].len = size;
 	IPADBG("posting v4 init command\n");
-	if (ipa_send_cmd(1, &desc)) {
+	if (ipa_send_cmd(2, desc)) {
 		IPAERR("Fail to send immediate command\n");
 		result = -EPERM;
-		goto free_cmd;
+		goto free_mem;
 	}
 
 	ipa_ctx->nat_mem.public_ip_addr = init->ip_addr;
@@ -412,20 +435,14 @@ int ipa_nat_init_cmd(struct ipa_ioc_v4_nat_init *init)
 
 	IPADBG("return\n");
 	result = 0;
-free_cmd:
+free_mem:
 	kfree(cmd);
+free_nop:
+	kfree(reg_write_nop);
 bail:
 	return result;
 }
 
-/**
- * ipa_nat_dma_cmd() - Post NAT_DMA command to IPA HW
- * @dma:	[in] initialization command attributes
- *
- * Called by NAT client driver to post NAT_DMA command to IPA HW
- *
- * Returns:	0 on success, negative on failure
- */
 int ipa_nat_dma_cmd(struct ipa_ioc_nat_dma_cmd *dma)
 {
 	struct ipa_nat_dma *cmd = NULL;
@@ -480,12 +497,6 @@ bail:
 	return ret;
 }
 
-/**
- * ipa_nat_free_mem_and_device() - free the NAT memory and remove the device
- * @nat_ctx:	[in] the IPA NAT memory to free
- *
- * Called by NAT client driver to free the NAT memory and remove the device
- */
 void ipa_nat_free_mem_and_device(struct ipa_nat_mem *nat_ctx)
 {
 	IPADBG("\n");
@@ -508,17 +519,10 @@ void ipa_nat_free_mem_and_device(struct ipa_nat_mem *nat_ctx)
 	return;
 }
 
-/**
- * ipa_nat_del_cmd() - Delete a NAT table
- * @del:	[in] delete table table table parameters
- *
- * Called by NAT client driver to delete the nat table
- *
- * Returns:	0 on success, negative on failure
- */
 int ipa_nat_del_cmd(struct ipa_ioc_v4_nat_del *del)
 {
-	struct ipa_desc desc = { 0 };
+	struct ipa_register_write *reg_write_nop;
+	struct ipa_desc desc[2];
 	struct ipa_ip_v4_nat_init *cmd;
 	u16 size = sizeof(struct ipa_ip_v4_nat_init);
 	u8 mem_type = IPA_NAT_SHARED_MEMORY;
@@ -526,16 +530,43 @@ int ipa_nat_del_cmd(struct ipa_ioc_v4_nat_del *del)
 	int result;
 
 	IPADBG("\n");
+	if (ipa_ctx->nat_mem.is_tmp_mem) {
+		IPAERR("using temp memory during nat del\n");
+		mem_type = IPA_NAT_SYSTEM_MEMORY;
+		base_addr = ipa_ctx->nat_mem.tmp_dma_handle;
+	}
+
 	if (del->public_ip_addr == 0) {
 		IPADBG("Bad Parameter\n");
 		result = -EPERM;
 		goto bail;
 	}
+
+	memset(&desc, 0, sizeof(desc));
+	
+	reg_write_nop = kzalloc(sizeof(*reg_write_nop), GFP_KERNEL);
+	if (!reg_write_nop) {
+		IPAERR("no mem\n");
+		result = -ENOMEM;
+		goto bail;
+	}
+
+	reg_write_nop->skip_pipeline_clear = 0;
+	reg_write_nop->value_mask = 0x0;
+
+	desc[0].opcode = IPA_REGISTER_WRITE;
+	desc[0].type = IPA_IMM_CMD_DESC;
+	desc[0].callback = NULL;
+	desc[0].user1 = NULL;
+	desc[0].user2 = 0;
+	desc[0].pyld = (void *)reg_write_nop;
+	desc[0].len = sizeof(*reg_write_nop);
+
 	cmd = kmalloc(size, GFP_KERNEL);
 	if (cmd == NULL) {
 		IPAERR("Failed to alloc immediate command object\n");
 		result = -ENOMEM;
-		goto bail;
+		goto free_nop;
 	}
 	cmd->table_index = del->table_index;
 	cmd->ipv4_rules_addr = base_addr;
@@ -548,16 +579,16 @@ int ipa_nat_del_cmd(struct ipa_ioc_v4_nat_del *del)
 	cmd->index_table_expansion_addr_type = mem_type;
 	cmd->size_base_tables = 0;
 	cmd->size_expansion_tables = 0;
-	cmd->public_ip_addr = del->public_ip_addr;
+	cmd->public_ip_addr = 0;
 
-	desc.opcode = IPA_IP_V4_NAT_INIT;
-	desc.type = IPA_IMM_CMD_DESC;
-	desc.callback = NULL;
-	desc.user1 = NULL;
-	desc.user2 = 0;
-	desc.pyld = (void *)cmd;
-	desc.len = size;
-	if (ipa_send_cmd(1, &desc)) {
+	desc[1].opcode = IPA_IP_V4_NAT_INIT;
+	desc[1].type = IPA_IMM_CMD_DESC;
+	desc[1].callback = NULL;
+	desc[1].user1 = NULL;
+	desc[1].user2 = 0;
+	desc[1].pyld = (void *)cmd;
+	desc[1].len = size;
+	if (ipa_send_cmd(2, desc)) {
 		IPAERR("Fail to send immediate command\n");
 		result = -EPERM;
 		goto free_mem;
@@ -576,6 +607,8 @@ int ipa_nat_del_cmd(struct ipa_ioc_v4_nat_del *del)
 	result = 0;
 free_mem:
 	kfree(cmd);
+free_nop:
+	kfree(reg_write_nop);
 bail:
 	return result;
 }

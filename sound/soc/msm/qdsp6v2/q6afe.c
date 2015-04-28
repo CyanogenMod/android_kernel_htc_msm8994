@@ -25,6 +25,18 @@
 #include "msm-pcm-routing-v2.h"
 #include <sound/audio_cal_utils.h>
 
+#undef pr_info
+#undef pr_err
+#define pr_info(fmt, ...) pr_aud_info(fmt, ##__VA_ARGS__)
+#define pr_err(fmt, ...) pr_aud_err(fmt, ##__VA_ARGS__)
+#define klocwork_check_q6audio_get_port_index(index) {\
+	if (index < 0 || index > AFE_MAX_PORTS) {\
+		pr_err("%s: AFE port index[%d] invalid!\n",\
+				__func__, index);\
+		return -EINVAL;\
+	}\
+}
+
 enum {
 	AFE_COMMON_RX_CAL = 0,
 	AFE_COMMON_TX_CAL,
@@ -165,7 +177,7 @@ static int32_t afe_callback(struct apr_client_data *data, void *priv)
 			this_afe.apr = NULL;
 			rtac_set_afe_handle(this_afe.apr);
 		}
-		/* send info to user */
+		
 		if (this_afe.task == NULL)
 			this_afe.task = current;
 		pr_debug("%s: task_name = %s pid = %d\n",
@@ -206,11 +218,11 @@ static int32_t afe_callback(struct apr_client_data *data, void *priv)
 			pr_debug("%s:opcode = 0x%x cmd = 0x%x status = 0x%x token=%d\n",
 				__func__, data->opcode,
 				payload[0], payload[1], data->token);
-			/* payload[1] contains the error status for response */
+			
 			if (payload[1] != 0) {
 				atomic_set(&this_afe.status, -1);
-				pr_err("%s: cmd = 0x%x returned error = 0x%x\n",
-					__func__, payload[0], payload[1]);
+				pr_err("%s: cmd = 0x%x returned error = 0x%x token=%d\n",
+					__func__, payload[0], payload[1], data->token);
 			}
 			switch (payload[0]) {
 			case AFE_PORT_CMD_SET_PARAM_V2:
@@ -429,9 +441,6 @@ int afe_q6_interface_prepare(void)
 	return ret;
 }
 
-/*
- * afe_apr_send_pkt : returns 0 on success, negative otherwise.
- */
 static int afe_apr_send_pkt(void *data, wait_queue_head_t *wait)
 {
 	int ret;
@@ -454,7 +463,7 @@ static int afe_apr_send_pkt(void *data, wait_queue_head_t *wait)
 		}
 	} else if (ret == 0) {
 		pr_err("%s: packet not transmitted\n", __func__);
-		/* apr_send_pkt can return 0 when nothing is transmitted */
+		
 		ret = -EINVAL;
 	}
 
@@ -539,6 +548,7 @@ static int afe_spk_ramp_dn_cfg(int port)
 		goto fail_cmd;
 	}
 	index = q6audio_get_port_index(port);
+	klocwork_check_q6audio_get_port_index(index);
 	config.hdr.hdr_field = APR_HDR_FIELD(APR_MSG_TYPE_SEQ_CMD,
 			APR_HDR_LEN(APR_HDR_SIZE), APR_PKT_VER);
 	config.hdr.pkt_size = sizeof(config);
@@ -574,7 +584,7 @@ static int afe_spk_ramp_dn_cfg(int port)
 		ret = -EINVAL;
 		goto fail_cmd;
 	}
-	/* dsp needs atleast 15ms to ramp down pilot tone*/
+	
 	usleep_range(15000, 15010);
 	ret = 0;
 fail_cmd:
@@ -610,6 +620,7 @@ static int afe_spk_prot_prepare(int src_port, int dst_port, int param_id,
 		goto fail_cmd;
 	}
 	index = q6audio_get_port_index(src_port);
+	klocwork_check_q6audio_get_port_index(index);
 	switch (param_id) {
 	case AFE_PARAM_ID_FBSP_MODE_RX_CFG:
 		config.pdata.module_id = AFE_MODULE_FB_SPKR_PROT_V2_RX;
@@ -1063,6 +1074,7 @@ static int afe_send_slimbus_slave_port_cfg(
 
 	pr_debug("%s: enter, port_id =  0x%x\n", __func__, port_id);
 	index = q6audio_get_port_index(port_id);
+	klocwork_check_q6audio_get_port_index(index);
 	ret = q6audio_validate_port(port_id);
 	if (ret < 0) {
 		pr_err("%s: port id = 0x%x ret %d\n", __func__, port_id, ret);
@@ -1115,6 +1127,7 @@ static int afe_aanc_port_cfg(void *apr, uint16_t tx_port, uint16_t rx_port)
 	}
 
 	index = q6audio_get_port_index(tx_port);
+	klocwork_check_q6audio_get_port_index(index);
 	ret = q6audio_validate_port(tx_port);
 	if (ret < 0) {
 		pr_err("%s: port id: 0x%x ret %d\n", __func__, tx_port, ret);
@@ -1186,6 +1199,7 @@ static int afe_aanc_mod_enable(void *apr, uint16_t tx_port, uint16_t enable)
 	}
 
 	index = q6audio_get_port_index(tx_port);
+	klocwork_check_q6audio_get_port_index(index);
 	ret = q6audio_validate_port(tx_port);
 	if (ret < 0) {
 		pr_err("%s: port id: 0x%x ret %d\n", __func__, tx_port, ret);
@@ -1381,11 +1395,6 @@ int afe_set_config(enum afe_config_type config_type, void *config_data, int arg)
 	return ret;
 }
 
-/*
- * afe_clear_config - If SSR happens ADSP loses AFE configs, let AFE driver know
- *		      about the state so client driver can wait until AFE is
- *		      reconfigured.
- */
 void afe_clear_config(enum afe_config_type config)
 {
 	clear_bit(config, &afe_configured_cmd);
@@ -1409,6 +1418,7 @@ int afe_send_spdif_clk_cfg(struct afe_param_id_spdif_clk_cfg *cfg,
 		return ret;
 	}
 	index = q6audio_get_port_index(port_id);
+	klocwork_check_q6audio_get_port_index(index);
 	ret = q6audio_validate_port(port_id);
 	if (ret < 0) {
 		pr_err("%s: port id: 0x%x ret %d\n", __func__, port_id, ret);
@@ -1485,6 +1495,7 @@ int afe_send_spdif_ch_status_cfg(struct afe_param_id_spdif_ch_status_cfg
 		return ret;
 	}
 	index = q6audio_get_port_index(port_id);
+	klocwork_check_q6audio_get_port_index(index);
 	ret = q6audio_validate_port(port_id);
 	if (ret < 0) {
 		pr_err("%s: port id: 0x%x ret %d\n", __func__, port_id, ret);
@@ -1551,6 +1562,7 @@ static int afe_send_cmd_port_start(u16 port_id)
 
 	pr_debug("%s: enter\n", __func__);
 	index = q6audio_get_port_index(port_id);
+	klocwork_check_q6audio_get_port_index(index);
 	ret = q6audio_validate_port(port_id);
 	if (ret < 0) {
 		pr_err("%s: port id: 0x%x ret %d\n", __func__, port_id, ret);
@@ -1617,6 +1629,7 @@ int afe_spdif_port_start(u16 port_id, struct afe_spdif_port_config *spdif_port,
 	pr_debug("%s: port id: 0x%x\n", __func__, port_id);
 
 	index = q6audio_get_port_index(port_id);
+	klocwork_check_q6audio_get_port_index(index);
 	ret = q6audio_validate_port(port_id);
 	if (ret < 0) {
 		pr_err("%s: port id: 0x%x ret %d\n", __func__, port_id, ret);
@@ -1676,7 +1689,7 @@ fail_cmd:
 }
 
 int afe_port_start(u16 port_id, union afe_port_config *afe_config,
-	u32 rate) /* This function is no blocking */
+	u32 rate) 
 {
 	struct afe_audioif_config_command config;
 	int ret = 0;
@@ -1707,7 +1720,7 @@ int afe_port_start(u16 port_id, union afe_port_config *afe_config,
 			proxy_afe_instance[port_id & 0x1], port_id);
 
 		if (!afe_close_done[port_id & 0x1]) {
-			/*close pcm dai corresponding to the proxy dai*/
+			
 			afe_close(port_id - 0x10);
 			pcm_afe_instance[port_id & 0x1]++;
 			pr_debug("%s: reconfigure afe port again\n", __func__);
@@ -1717,9 +1730,10 @@ int afe_port_start(u16 port_id, union afe_port_config *afe_config,
 		port_id = VIRTUAL_ID_TO_PORTID(port_id);
 	}
 
-	pr_debug("%s: port id: 0x%x\n", __func__, port_id);
+	pr_info("%s: port id: 0x%x\n", __func__, port_id);
 
 	index = q6audio_get_port_index(port_id);
+	klocwork_check_q6audio_get_port_index(index);
 	ret = q6audio_validate_port(port_id);
 	if (ret < 0) {
 		pr_err("%s: port id: 0x%x ret %d\n", __func__, port_id, ret);
@@ -1736,7 +1750,7 @@ int afe_port_start(u16 port_id, union afe_port_config *afe_config,
 	afe_send_cal(port_id);
 	afe_send_hw_delay(port_id, rate);
 
-	/* Start SW MAD module */
+	
 	mad_type = afe_port_get_mad_type(port_id);
 	pr_debug("%s: port_id 0x%x, mad_type %d\n", __func__, port_id,
 		 mad_type);
@@ -1972,6 +1986,7 @@ int afe_open(u16 port_id,
 	pr_err("%s: port_id 0x%x rate %d\n", __func__, port_id, rate);
 
 	index = q6audio_get_port_index(port_id);
+	klocwork_check_q6audio_get_port_index(index);
 	ret = q6audio_validate_port(port_id);
 	if (ret < 0) {
 		pr_err("%s: Invalid port 0x%x ret %d", __func__, port_id, ret);
@@ -2106,7 +2121,7 @@ int afe_loopback(u16 enable, u16 rx_port, u16 tx_port)
 	struct afe_loopback_cfg_v1 lb_cmd;
 	int ret = 0;
 	int index = 0;
-
+	pr_info("%s: 0x%x -> 0x%x en:%d\n",__func__,tx_port,rx_port,enable);
 	if (rx_port == MI2S_RX)
 		rx_port = AFE_PORT_ID_PRIMARY_MI2S_RX;
 	if (tx_port == MI2S_TX)
@@ -2119,6 +2134,7 @@ int afe_loopback(u16 enable, u16 rx_port, u16 tx_port)
 	}
 
 	index = q6audio_get_port_index(rx_port);
+	klocwork_check_q6audio_get_port_index(index);
 	ret = q6audio_validate_port(rx_port);
 	if (ret < 0) {
 		pr_err("%s: Invalid port 0x%x ret %d", __func__, rx_port, ret);
@@ -2181,6 +2197,7 @@ int afe_loopback_gain(u16 port_id, u16 volume)
 		goto fail_cmd;
 	}
 	index = q6audio_get_port_index(port_id);
+	klocwork_check_q6audio_get_port_index(index);
 	ret = q6audio_validate_port(port_id);
 	if (ret < 0) {
 		pr_err("%s: Invalid port 0x%x ret %d",
@@ -2188,7 +2205,7 @@ int afe_loopback_gain(u16 port_id, u16 volume)
 		return -EINVAL;
 	}
 
-	/* RX ports numbers are even .TX ports numbers are odd. */
+	
 	if (port_id % 2 == 0) {
 		pr_err("%s: Failed : afe loopback gain only for TX ports. port_id %d\n",
 				__func__, port_id);
@@ -2279,6 +2296,7 @@ int afe_start_pseudo_port(u16 port_id)
 	}
 
 	index = q6audio_get_port_index(port_id);
+	klocwork_check_q6audio_get_port_index(index);
 	ret = q6audio_validate_port(port_id);
 	if (ret < 0) {
 		pr_err("%s: Invalid port 0x%x ret %d",
@@ -2317,6 +2335,7 @@ int afe_pseudo_port_stop_nowait(u16 port_id)
 		return -EINVAL;
 	}
 	index = q6audio_get_port_index(port_id);
+	klocwork_check_q6audio_get_port_index(index);
 	ret = q6audio_validate_port(port_id);
 	if (ret < 0) {
 		pr_err("%s: Invalid port 0x%x ret %d",
@@ -2447,6 +2466,7 @@ int afe_stop_pseudo_port(u16 port_id)
 	}
 
 	index = q6audio_get_port_index(port_id);
+	klocwork_check_q6audio_get_port_index(index);
 	ret = q6audio_validate_port(port_id);
 	if (ret < 0) {
 		pr_err("%s: Invalid port 0x%x ret %d\n",
@@ -2648,7 +2668,7 @@ int afe_cmd_memory_map(phys_addr_t dma_addr_p, u32 dma_buf_sz)
 	mregion->mem_pool_id = ADSP_MEMORY_MAP_SHMEM8_4K_POOL;
 	mregion->num_regions = 1;
 	mregion->property_flag = 0x00;
-	/* Todo */
+	
 	index = mregion->hdr.token = IDX_RSVD_2;
 
 	payload = ((u8 *) mmap_region_cmd +
@@ -2720,6 +2740,7 @@ int afe_cmd_memory_map_nowait(int port_id, phys_addr_t dma_addr_p,
 		rtac_set_afe_handle(this_afe.apr);
 	}
 	index = q6audio_get_port_index(port_id);
+	klocwork_check_q6audio_get_port_index(index);
 	ret = q6audio_validate_port(port_id);
 	if (ret < 0) {
 		pr_err("%s: Invalid port 0x%x ret %d",
@@ -2850,7 +2871,7 @@ int afe_cmd_memory_unmap(u32 mem_map_handle)
 	mregion.hdr.opcode = AFE_SERVICE_CMD_SHARED_MEM_UNMAP_REGIONS;
 	mregion.mem_map_handle = mem_map_handle;
 
-	/* Todo */
+	
 	index = mregion.hdr.token = IDX_RSVD_2;
 
 	atomic_set(&this_afe.status, 0);
@@ -2983,6 +3004,7 @@ int afe_unregister_get_events(u16 port_id)
 	}
 
 	index = q6audio_get_port_index(port_id);
+	klocwork_check_q6audio_get_port_index(index);
 	ret = q6audio_validate_port(port_id);
 	if (ret < 0) {
 		pr_err("%s: Invalid port 0x%x ret %d", __func__, port_id, ret);
@@ -3317,6 +3339,7 @@ int afe_dtmf_generate_rx(int64_t duration_in_ms,
 		goto fail_cmd;
 	}
 	index = q6audio_get_port_index(this_afe.dtmf_gen_rx_portid);
+	klocwork_check_q6audio_get_port_index(index);
 	ret = wait_event_timeout(this_afe.wait[index],
 		(atomic_read(&this_afe.state) == 0),
 			msecs_to_jiffies(TIMEOUT_MS));
@@ -3341,6 +3364,7 @@ int afe_sidetone(u16 tx_port_id, u16 rx_port_id, u16 enable, uint16_t gain)
 	pr_info("%s: tx_port_id: 0x%x rx_port_id: 0x%x enable:%d gain:%d\n",
 			__func__, tx_port_id, rx_port_id, enable, gain);
 	index = q6audio_get_port_index(rx_port_id);
+	klocwork_check_q6audio_get_port_index(index);
 	ret = q6audio_validate_port(rx_port_id);
 	if (ret < 0) {
 		pr_err("%s: Invalid port 0x%x %d", __func__, rx_port_id, ret);
@@ -3354,9 +3378,9 @@ int afe_sidetone(u16 tx_port_id, u16 rx_port_id, u16 enable, uint16_t gain)
 	cmd_sidetone.hdr.dest_port = 0;
 	cmd_sidetone.hdr.token = 0;
 	cmd_sidetone.hdr.opcode = AFE_PORT_CMD_SET_PARAM_V2;
-	/* should it be rx or tx port id ?? , bharath*/
+	
 	cmd_sidetone.param.port_id = tx_port_id;
-	/* size of data param & payload */
+	
 	cmd_sidetone.param.payload_size = (sizeof(cmd_sidetone) -
 			sizeof(struct apr_hdr) -
 			sizeof(struct afe_port_cmd_set_param_v2));
@@ -3365,7 +3389,7 @@ int afe_sidetone(u16 tx_port_id, u16 rx_port_id, u16 enable, uint16_t gain)
 	cmd_sidetone.param.mem_map_handle = 0x00;
 	cmd_sidetone.pdata.module_id = AFE_MODULE_LOOPBACK;
 	cmd_sidetone.pdata.param_id = AFE_PARAM_ID_LOOPBACK_CONFIG;
-	/* size of actual payload only */
+	
 	cmd_sidetone.pdata.param_size =  cmd_sidetone.param.payload_size -
 				sizeof(struct afe_port_param_data_v2);
 
@@ -3428,6 +3452,7 @@ int afe_validate_port(u16 port_id)
 	case AFE_PORT_ID_PRIMARY_MI2S_TX:
 	case AFE_PORT_ID_QUATERNARY_MI2S_RX:
 	case AFE_PORT_ID_QUATERNARY_MI2S_TX:
+	case AFE_PORT_ID_TERTIARY_MI2S_RX:
 	case AFE_PORT_ID_TERTIARY_MI2S_TX:
 	{
 		ret = 0;
@@ -3446,10 +3471,6 @@ int afe_convert_virtual_to_portid(u16 port_id)
 {
 	int ret;
 
-	/*
-	 * if port_id is virtual, convert to physical..
-	 * if port_id is already physical, return physical
-	 */
 	if (afe_validate_port(port_id) < 0) {
 		if (port_id == RT_PROXY_DAI_001_RX ||
 		    port_id == RT_PROXY_DAI_001_TX ||
@@ -3518,7 +3539,7 @@ int afe_close(int port_id)
 		ret = -EINVAL;
 		goto fail_cmd;
 	}
-	pr_debug("%s: port_id = 0x%x\n", __func__, port_id);
+	pr_info("%s: port_id = 0x%x\n", __func__, port_id);
 	if ((port_id == RT_PROXY_DAI_001_RX) ||
 			(port_id == RT_PROXY_DAI_002_TX)) {
 		pr_debug("%s: before decrementing pcm_afe_instance %d\n",
@@ -3549,6 +3570,7 @@ int afe_close(int port_id)
 
 	port_id = q6audio_convert_virtual_to_portid(port_id);
 	index = q6audio_get_port_index(port_id);
+	klocwork_check_q6audio_get_port_index(index);
 	ret = q6audio_validate_port(port_id);
 	if (ret < 0) {
 		pr_warn("%s: Not a valid port id 0x%x ret %d\n",
@@ -3589,10 +3611,6 @@ int afe_close(int port_id)
 				__func__, ret);
 	}
 
-	/*
-	 * even if ramp down configuration failed it is not serious enough to
-	 * warrant bailaing out.
-	 */
 	if (afe_spk_ramp_dn_cfg(port_id) < 0)
 		pr_err("%s: ramp down configuration failed\n", __func__);
 
@@ -3641,7 +3659,7 @@ int afe_set_digital_codec_core_clock(u16 port_id,
 	clk_cfg.hdr.token = index;
 
 	clk_cfg.hdr.opcode = AFE_PORT_CMD_SET_PARAM_V2;
-	/*default rx port is taken to enable the codec digital clock*/
+	
 	clk_cfg.param.port_id = q6audio_get_port_id(port_id);
 	clk_cfg.param.payload_size = sizeof(clk_cfg) - sizeof(struct apr_hdr)
 						- sizeof(clk_cfg.param);
@@ -3698,6 +3716,7 @@ int afe_set_lpass_clock(u16 port_id, struct afe_clk_cfg *cfg)
 		return ret;
 	}
 	index = q6audio_get_port_index(port_id);
+	klocwork_check_q6audio_get_port_index(index);
 	ret = q6audio_is_digital_pcm_interface(port_id);
 	if (ret < 0) {
 		pr_err("%s: q6audio_is_digital_pcm_interface fail %d\n",
@@ -3782,6 +3801,7 @@ int afe_set_lpass_internal_digital_codec_clock(u16 port_id,
 		return ret;
 	}
 	index = q6audio_get_port_index(port_id);
+	klocwork_check_q6audio_get_port_index(index);
 	ret = q6audio_is_digital_pcm_interface(port_id);
 	if (ret < 0) {
 		pr_err("%s: q6audio_is_digital_pcm_interface fail %d\n",
@@ -3887,6 +3907,7 @@ int afe_spk_prot_get_calib_data(struct afe_spkr_prot_get_vi_calib *calib_resp)
 		goto fail_cmd;
 	}
 	index = q6audio_get_port_index(port);
+	klocwork_check_q6audio_get_port_index(index);
 	calib_resp->hdr.hdr_field =
 	APR_HDR_FIELD(APR_MSG_TYPE_SEQ_CMD,
 	APR_HDR_LEN(APR_HDR_SIZE), APR_PKT_VER);
@@ -4223,7 +4244,7 @@ static int afe_get_cal_fb_spkr_prot(int32_t cal_type, size_t data_size,
 			cal_data->cal_info.status = 0;
 	} else if (this_afe.prot_cfg.mode ==
 				MSM_SPKR_PROT_CALIBRATION_IN_PROGRESS) {
-		/*Call AFE to query the status*/
+		
 		cal_data->cal_info.status = -EINVAL;
 		cal_data->cal_info.r0[SP_V2_SPKR_1] = -1;
 		cal_data->cal_info.r0[SP_V2_SPKR_2] = -1;
@@ -4249,7 +4270,7 @@ static int afe_get_cal_fb_spkr_prot(int32_t cal_type, size_t data_size,
 				cal_data->cal_info.r0[SP_V2_SPKR_2];
 		}
 	} else {
-		/*Indicates calibration data is invalid*/
+		
 		cal_data->cal_info.status = -EINVAL;
 		cal_data->cal_info.r0[SP_V2_SPKR_1] = -1;
 		cal_data->cal_info.r0[SP_V2_SPKR_2] = -1;
