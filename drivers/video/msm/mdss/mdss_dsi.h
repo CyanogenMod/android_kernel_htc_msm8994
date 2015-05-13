@@ -437,6 +437,8 @@ struct mdss_dsi_ctrl_pdata {
 	struct panel_horizontal_idle *line_idle;
 	struct mdss_util_intf *mdss_util;
 
+	bool dfps_status;	/* dynamic refresh status */
+
 	
 	void *dsi_pwrctrl_data;			
 	struct dsi_panel_cmds cabc_off_cmds;
