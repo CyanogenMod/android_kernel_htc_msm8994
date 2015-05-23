@@ -1347,6 +1347,7 @@ static int synaptics_rmi4_set_status(struct synaptics_rmi4_data *rmi4_data, int 
 	
 	report_control[0] = control_data[6];
 	report_control[1] = control_data[7];
+	report_control[2] = control_data[8];
 
 	if (rmi4_data->i2c_to_mcu) {
 		pr_info("%s: switch to MCU\n", __func__);
@@ -1355,7 +1356,7 @@ static int synaptics_rmi4_set_status(struct synaptics_rmi4_data *rmi4_data, int 
 	retval = synaptics_rmi4_reg_write(rmi4_data,
 			fhandler->full_addr.ctrl_base + ctrl_15_offset,
 			report_control,
-			sizeof(uint8_t) * 2);
+			sizeof(uint8_t) * 3);
 	if (retval < 0) {
 		dev_err(rmi4_data->pdev->dev.parent,
 				"%s: Failed to write F12_CTRL_15\n",
@@ -1364,7 +1365,7 @@ static int synaptics_rmi4_set_status(struct synaptics_rmi4_data *rmi4_data, int 
 	}
 
 	
-	report_control[0] = control_data[8];
+	report_control[0] = control_data[9];
 
 	if (rmi4_data->i2c_to_mcu) {
 		pr_info("%s: switch to MCU\n", __func__);
@@ -1928,6 +1929,7 @@ static int synaptics_rmi4_f12_abs_report(struct synaptics_rmi4_data *rmi4_data,
 				glove_status |= 1 << finger;
 		case F12_FINGER_STATUS:
 #ifdef TYPE_B_PROTOCOL
+		if (rmi4_data->hall_block_touch_event == 0) {
 			input_mt_slot(rmi4_data->input_dev, finger);
 			input_mt_report_slot_state(rmi4_data->input_dev,
 					MT_TOOL_FINGER, 1);
@@ -1937,6 +1939,7 @@ static int synaptics_rmi4_f12_abs_report(struct synaptics_rmi4_data *rmi4_data,
 			else
 				input_report_abs(rmi4_data->input_dev,
 						ABS_MT_GLOVE, 0);
+		}
 #endif
 
 #ifdef F12_DATA_15_WORKAROUND

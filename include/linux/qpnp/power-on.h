@@ -29,6 +29,7 @@ enum pon_power_off_type {
 	PON_POWER_OFF_WARM_RESET	= 0x01,
 	PON_POWER_OFF_SHUTDOWN		= 0x04,
 	PON_POWER_OFF_HARD_RESET	= 0x07,
+	PON_POWER_OFF_DVDD_HARD_RESET	= 0x08,
 };
 
 enum pon_type {

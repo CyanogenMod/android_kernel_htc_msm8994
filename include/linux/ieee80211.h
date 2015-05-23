@@ -1527,6 +1527,9 @@ enum ieee80211_sa_query_action {
 
 #define WLAN_CIPHER_SUITE_PMK       0x00904C00
 
+#define WLAN_AKM_SUITE_WAPI_PSK         0x000FAC11
+#define WLAN_AKM_SUITE_WAPI_CERT        0x000FAC12
+
 #define WLAN_MAX_KEY_LEN		32
 
 #define WLAN_PMKID_LEN			16
