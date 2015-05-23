@@ -130,11 +130,6 @@
 int dhd_rx_dump = 0;
 int dhd_event_dump = 0;
 #endif
-#ifdef DHD_TX_DUMP
-static const char *_get_packet_type_str(uint16 type);
-int dhd_tx_dump_flag = 0;
-#endif
-extern int otp_write;
 #if defined(USE_STATIC_MEMDUMP)
 #include <linux/path.h>
 #include <linux/namei.h>
@@ -2608,7 +2603,7 @@ dhd_os_wlfc_unblock(dhd_pub_t *pub)
 
 #endif 
 
-#if defined(DHD_8021X_DUMP) || defined(DHD_TX_DUMP)
+#if defined(DHD_8021X_DUMP)
 void
 dhd_tx_dump(osl_t *osh, void *pkt)
 {
@@ -2618,26 +2613,9 @@ dhd_tx_dump(osl_t *osh, void *pkt)
 	dump_data = PKTDATA(osh, pkt);
 	protocol = (dump_data[12] << 8) | dump_data[13];
 
-	DHD_ERROR(("TX DUMP - %s\n", _get_packet_type_str(protocol)));
 	if (protocol == ETHER_TYPE_802_1X) {
 		DHD_ERROR(("ETHER_TYPE_802_1X [TX]: ver %d, type %d, replay %d\n",
 			dump_data[14], dump_data[15], dump_data[30]));
-	}
-
-	if (dump_data[0] == 0xFF) {
-		DHD_ERROR(("%s: BROADCAST\n", __FUNCTION__));
-
-		if ((dump_data[12] == 8) &&
-			(dump_data[13] == 6)) {
-			DHD_ERROR(("%s: ARP %d\n",
-				__FUNCTION__, dump_data[0x15]));
-		}
-	} else if (dump_data[0] & 1) {
-		DHD_ERROR(("%s: MULTICAST: " MACDBG "\n",
-			__FUNCTION__, MAC2STRDBG(&dump_data[0])));
-	} else {
-		DHD_ERROR(("%s: UNICAST: " MACDBG "\n",
-			__FUNCTION__, MAC2STRDBG(&dump_data[0])));
 	}
 }
 #endif 
@@ -2731,15 +2709,8 @@ dhd_sendpkt(dhd_pub_t *dhdp, int ifidx, void *pktbuf)
 #ifdef WLMEDIA_HTSF
 	dhd_htsf_addtxts(dhdp, pktbuf);
 #endif
-#if defined(DHD_8021X_DUMP) || defined(DHD_TX_DUMP)
-#if defined(DHD_TX_DUMP)
-	if (dhd_tx_dump_flag) {
-#endif
-		dhd_tx_dump(dhdp->osh, pktbuf);
-#if defined(DHD_TX_DUMP)
-		dhd_tx_dump_flag = 0;
-	}
-#endif
+#if defined(DHD_8021X_DUMP)
+	dhd_tx_dump(dhdp->osh, pktbuf);
 #endif
 #ifdef PROP_TXSTATUS
 	{
@@ -2816,10 +2787,7 @@ dhd_start_xmit(struct sk_buff *skb, struct net_device *net)
 		netif_stop_queue(net);
 		
 		if (dhd->pub.up) {
-            if (otp_write)
-			    DHD_ERROR(("%s: Event HANG sent up\n", __FUNCTION__));
-            else
-                DHD_ERROR(("%s: Event HANG but OTP is empty\n", __FUNCTION__));
+			DHD_ERROR(("%s: Event HANG sent up\n", __FUNCTION__));
 			net_os_send_hang_message(net);
 		}
 		dhd->pub.tx_in_progress = FALSE;
@@ -3077,7 +3045,7 @@ dhd_txflowcontrol(dhd_pub_t *dhdp, int ifidx, bool state)
 	}
 }
 
-#if defined(DHD_RX_DUMP) || defined(DHD_TX_DUMP)
+#ifdef DHD_RX_DUMP
 typedef struct {
 	uint16 type;
 	const char *str;
@@ -3298,12 +3266,12 @@ dhd_rx_frame(dhd_pub_t *dhdp, int ifidx, void *pktbuf, int numpkt, uint8 chan)
 				}
 			} else if (dump_data[0] & 1) {
 				DHD_ERROR(("%s: MULTICAST: " MACDBG "\n",
-					__FUNCTION__, MAC2STRDBG(&dump_data[6])));
+					__FUNCTION__, MAC2STRDBG(dump_data)));
 			
 			
 			} else {
 				DHD_ERROR(("%s: UNICAST: " MACDBG "\n",
-					__FUNCTION__, MAC2STRDBG(&dump_data[6])));
+					__FUNCTION__, MAC2STRDBG(dump_data)));
 			}
 			
 #ifdef DHD_RX_FULL_DUMP
@@ -9052,11 +9020,8 @@ static void dhd_hang_process(void *dhd_info, void *event_info, u8 event)
 		}
 #endif
 		netif_stop_queue(dev);
-        if (otp_write)
-		    DHD_ERROR(("%s before send hang, do wlc down to prevent"
-			    " additional event from firmware\n", __FUNCTION__));
-        else
-            DHD_ERROR(("%s beforce hang OTP is empty \n", __FUNCTION__));
+		DHD_ERROR(("%s before send hang, do wlc down to prevent"
+			" additional event from firmware\n", __FUNCTION__));
 		dhd->pub.busstate = DHD_BUS_DOWN;
 		DHD_ERROR(("%s dhdpcie_checkdied = %d \n",
 			__FUNCTION__, dhdpcie_checkdied_2(&dhd->pub)));

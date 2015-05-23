@@ -2622,7 +2622,6 @@ static bool reuse_scratch_buffers(struct msm_vidc_inst *inst,
 	struct internal_buf *buf;
 	int rc = 0;
 	bool reused = false;
-	struct smem_client *mem_client  = inst->mem_client;
 
 	if (!inst) {
 		dprintk(VIDC_ERR, "%s: invalid params\n", __func__);
@@ -2639,10 +2638,8 @@ static bool reuse_scratch_buffers(struct msm_vidc_inst *inst,
 		if (buf->buffer_type != buffer_type)
 			continue;
 
-		mem_client->clnt = mem_client->clnt_alloc;
 		rc = set_internal_buf_on_fw(inst, buffer_type,
 				buf->handle, true);
-		mem_client->clnt = mem_client->clnt_import;
 		if (rc) {
 			dprintk(VIDC_ERR,
 				"%s: session_set_buffers failed\n", __func__);

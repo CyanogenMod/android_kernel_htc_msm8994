@@ -56,9 +56,6 @@ static void composite_request_reset(struct work_struct *w)
 		if (os_type == OS_LINUX && is_mtp_enable) {
 			fsg_update_mode(1);
 			fsg_mode = 1;
-		} else if (os_type == OS_LINUX && disk_mode) {
-			fsg_update_mode(0);
-			fsg_mode = 1;
 		} else {
 			fsg_update_mode(0);
 			fsg_mode = 0;

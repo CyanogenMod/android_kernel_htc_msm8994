@@ -46,7 +46,6 @@
 #define SCM_DLOAD_CMD			0x10
 
 extern void msm_watchdog_bark(void);
-extern int cable_source;
 
 static int restart_mode;
 static bool scm_pmic_arbiter_disable_supported;
@@ -215,9 +214,6 @@ static void halt_spmi_pmic_arbiter(void)
 	}
 }
 
-static bool hard_reset = 0;
-module_param(hard_reset, bool, 0600);
-
 static void msm_restart_prepare(char mode, const char *cmd)
 {
 #ifdef CONFIG_MSM_DLOAD_MODE
@@ -228,10 +224,7 @@ static void msm_restart_prepare(char mode, const char *cmd)
 #endif
 
 	
-	if(hard_reset)
-		qpnp_pon_system_pwr_off(PON_POWER_OFF_DVDD_HARD_RESET);
-	else
-		qpnp_pon_system_pwr_off(PON_POWER_OFF_WARM_RESET);
+	qpnp_pon_system_pwr_off(PON_POWER_OFF_WARM_RESET);
 
 	pr_info("%s: restart by command: [%s]\r\n", __func__, (cmd) ? cmd : "");
 
@@ -319,7 +312,6 @@ static void do_msm_restart(enum reboot_mode reboot_mode, const char *cmd)
 	mdelay(10000);
 }
 
-int qpnp_pon_set_s3_timer(u32 s3_debounce);
 static void do_msm_poweroff(void)
 {
 	int ret;
@@ -333,16 +325,7 @@ static void do_msm_poweroff(void)
 #ifdef CONFIG_MSM_DLOAD_MODE
 	set_dload_mode(0);
 #endif
-	qpnp_pon_set_s3_timer(2); 
-
-	if (cable_source > 0) {
-		set_restart_action(RESTART_REASON_OFFMODE_CHARGE, NULL);
-		qpnp_pon_system_pwr_off(PON_POWER_OFF_WARM_RESET);
-	} else {
-		set_restart_action(RESTART_REASON_POWEROFF, NULL);
-		qpnp_pon_system_pwr_off(PON_POWER_OFF_SHUTDOWN);
-	}
-
+	qpnp_pon_system_pwr_off(PON_POWER_OFF_SHUTDOWN);
 	
 	if (!is_scm_armv8())
 		ret = scm_call_atomic2(SCM_SVC_BOOT,

@@ -2705,12 +2705,6 @@ static irqreturn_t src_detect_handler(int irq, void *_chip)
 #if (defined(CONFIG_HTC_BATT_8960))
 	pr_warn( "triggered:pre_usb_present=%d, usb_present=%d\n",
 			chip->usb_present, usb_present);
-	
-	if (flag_force_ac_chg && usb_present) {
-		smbchg_sec_masked_write(the_chip,
-			the_chip->usb_chgpth_base + USB_AICL_CFG, AICL_EN_BIT, 0);
-		pr_smb(PR_STATUS, "ATS: disable AICL\n");
-	}
 
 	cable_detection_vbus_irq_handler();
 	schedule_work(&chip->notify_fg_work);
@@ -2811,8 +2805,6 @@ static irqreturn_t aicl_done_handler(int irq, void *_chip)
 				retry_aicl_cnt < RETRY_AICL_TOTAL) {
 			if (delayed_work_pending(&chip->retry_aicl_work))
 				cancel_delayed_work_sync(&chip->retry_aicl_work);
-			pr_smb(PR_STATUS, "Trigger re-do AICL in 3 minutes, cnt=%d\n",
-									retry_aicl_cnt);
 			schedule_delayed_work(&chip->retry_aicl_work,
 								msecs_to_jiffies(RETRY_AICL_INTERVAL_MS));
 		}
@@ -3243,14 +3235,6 @@ static void handle_usb_present_change(struct smbchg_chip *chip,
 			if (delayed_work_pending(&chip->retry_aicl_work))
 				cancel_delayed_work_sync(&chip->retry_aicl_work);
 			smbchg_aicl_deglitch_wa_check(chip);
-
-			if (flag_force_ac_chg) {
-				
-				smbchg_sec_masked_write(chip,
-					chip->usb_chgpth_base + USB_AICL_CFG,
-					AICL_EN_BIT, AICL_EN_BIT);
-				pr_smb(PR_STATUS, "ATS: Re-enable AICL\n");
-			}
 		} else {
 			wake_lock(&chip->eoc_worker_wlock);
 			schedule_delayed_work(&chip->eoc_work,
@@ -3336,8 +3320,6 @@ int pmi8994_set_pwrsrc_and_charger_enable(enum htc_power_source_type src,
 	case HTC_PWR_SOURCE_TYPE_9VAC:
 	case HTC_PWR_SOURCE_TYPE_MHL_AC:
 		if (the_chip->ftm_src == HTC_FTM_PWR_SOURCE_TYPE_AC)
-			mA = USB_MA_1000;
-		else if (flag_force_ac_chg)
 			mA = USB_MA_1000;
 		else
 			mA = USB_MA_1500;
@@ -4443,7 +4425,7 @@ static void dump_all(int more)
 	u8 chgr_sts = 0, chgr_rt_sts = 0, bat_if_rt_sts = 0;
 	u8 chgpth_rt_sts = 0, iusb_reg = 0, aicl_reg = 0;
 	u8 misc_rt_sts, chgr_cfg2, bat_if_cmd, chgpth_cmd, chgpth_cfg;
-	u8 chgpth_input_sts = 0, chgpth_aicl_cfg = 0;
+	u8 chgpth_input_sts = 0;
 	int ohm_val = 0, aicl_result;
 
 	vbus_uv = pmi8994_get_usbin_voltage_now(the_chip);
@@ -4463,8 +4445,6 @@ static void dump_all(int more)
 						the_chip->usb_chgpth_base + RT_STS, 1);
 	smbchg_read(the_chip, &chgpth_cmd,
 						the_chip->usb_chgpth_base + CMD_IL, 1);
-	smbchg_read(the_chip, &chgpth_aicl_cfg,
-						the_chip->usb_chgpth_base + USB_AICL_CFG, 1);
 	smbchg_read(the_chip, &chgpth_cfg,
 						the_chip->usb_chgpth_base + CHGPTH_CFG, 1);
 	smbchg_read(the_chip, &chgpth_input_sts,
@@ -4481,12 +4461,12 @@ static void dump_all(int more)
 
 	printk(KERN_ERR "[BATT][CHG] V=%d mV,I=%d mA,T=%d C,id=%d ohm,SoC=%d,vbus=%d,"
 			"H=%d,P=%d,CHG=%d,0x100E=%02x,0x1010=%02x,0x10FC=%02x,"
-			"0x1210=%02x,0x1242=%02x,0x130D=%02x,0x1310=%02x,0x1340=%02x,0x13F3=%02x,"
-			"0x13F4=%02x,0x1610=%02x,USB=%d,DC=%d,IUSB_MAX=%02x,AICL=%d,is_full=%d,"
+			"0x1210=%02x,0x1242=%02x,0x130D=%02x,0x1310=%02x,0x1340=%02x,0x13F4=%02x,"
+			"0x1610=%02x,USB=%d,DC=%d,IUSB_MAX=%02x,AICL=%d,is_full=%d,"
 			"is_limit_IUSB=%d,flag=%d%d%d%d%d\n",
 			svbat_mv, ibat_ma, batt_temp, ohm_val, soc, vbus_uv, health, present, charger_type,
 			chgr_sts, chgr_rt_sts, chgr_cfg2, bat_if_rt_sts, bat_if_cmd,
-			chgpth_input_sts, chgpth_rt_sts, chgpth_cmd, chgpth_aicl_cfg, chgpth_cfg, misc_rt_sts, usb_online,
+			chgpth_input_sts, chgpth_rt_sts, chgpth_cmd, chgpth_cfg, misc_rt_sts, usb_online,
 			dc_online, iusb_reg, aicl_result, is_batt_full, is_limit_IUSB, flag_force_ac_chg,
 			flag_pa_fake_batt_temp, flag_keep_charge_on, flag_disable_safety_timer,
 			flag_disable_temp_protection);

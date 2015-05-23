@@ -254,9 +254,6 @@ static int dhdpcie_resume_dev(struct pci_dev *dev)
 #ifdef DHD_RX_DUMP
 extern int dhd_rx_dump;
 #endif
-#ifdef DHD_TX_DUMP
-extern int dhd_tx_dump_flag;
-#endif
 int dhdpcie_pci_suspend_resume(struct dhd_bus *bus, bool state)
 {
 	int rc;
@@ -269,9 +266,6 @@ int dhdpcie_pci_suspend_resume(struct dhd_bus *bus, bool state)
 		rc = dhdpcie_suspend_dev(dev);
 #ifdef DHD_RX_DUMP
         if (!rc) dhd_rx_dump = 1;
-#endif
-#ifdef DHD_TX_DUMP
-        if (!rc) dhd_tx_dump_flag = 1;
 #endif
 	} else {
 		rc = dhdpcie_resume_dev(dev);

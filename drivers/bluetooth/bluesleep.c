@@ -231,8 +231,6 @@ void bluesleep_sleep_wakeup(void)
 		if (debug_mask & DEBUG_SUSPEND)
 			pr_info("waking up...... no need power up uart\n");
 		wake_lock(&bsi->wake_lock);
-		
-		mod_timer(&tx_timer, jiffies + (TX_TIMER_INTERVAL * HZ));
 		if (debug_mask & DEBUG_BTWAKE)
 			pr_info("BT WAKE: set to wake ...\n");
 		if (bsi->has_ext_wake == 1)

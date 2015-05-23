@@ -64,8 +64,6 @@
 #define HTC_BATT_CHG_DIS_BIT_USB_OVERHEAT	(1<<8)
 #define HTC_BATT_CHG_DIS_BIT_FTM	(1<<9)
 
-int cable_source;
-
 static int chg_dis_reason;
 static int chg_dis_active_mask = HTC_BATT_CHG_DIS_BIT_ID
 								| HTC_BATT_CHG_DIS_BIT_MFG
@@ -2428,9 +2426,6 @@ static void batt_worker(struct work_struct *work)
 	
 	batt_update_info_from_gauge();
 	batt_update_info_from_charger();
-
-	
-	cable_source = htc_batt_info.rep.charging_source;
 
 	
 	if(htc_batt_info.rep.charging_source < CHARGER_MHL_UNKNOWN)

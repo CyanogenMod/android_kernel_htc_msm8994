@@ -49,8 +49,6 @@ enum {
 static int os_type;
 static int fsg_mode = 0;
 static int is_mtp_enable;
-static int disk_mode = 0;
-static int is_mass_storage_enable;
 static bool connect2pc;
 
 #include "composite.c"
@@ -3501,7 +3499,6 @@ functions_store(struct device *pdev, struct device_attribute *attr,
 	if (get_radio_flag() & 0x20000)
 		buff = add_usb_radio_debug_function(buff);
 	is_mtp_enable = 0;
-	is_mass_storage_enable = 0;
 
 	strlcpy(buf, buff, sizeof(buf));
 	b = strim(buf);
@@ -3552,8 +3549,6 @@ functions_store(struct device *pdev, struct device_attribute *attr,
 
 			if (!strcmp(name, "mtp"))
 				is_mtp_enable = 1;
-			if (!strcmp(name, "mass_storage"))
-				is_mass_storage_enable = 1;
 
 			err = android_enable_function(dev, conf, name);
 			if (err)
@@ -3561,14 +3556,6 @@ functions_store(struct device *pdev, struct device_attribute *attr,
 							name, err);
 		}
 	}
-
-	if (!is_mtp_enable && is_mass_storage_enable && disk_mode_enable)
-		disk_mode = 1;
-	else if (is_mtp_enable && disk_mode_enable)
-		disk_mode = 0;
-
-	if (is_mtp_enable || is_mass_storage_enable)
-		fsg_mode = 0;
 
 	
 	while (curr_conf->next != &dev->configs) {

@@ -18,7 +18,7 @@ DHDCFLAGS = -Wall -Wstrict-prototypes -Dlinux -DBCMDRIVER               \
 	-DDHD_DONOT_FORWARD_BCMEVENT_AS_NETWORK_PKT -DRXFRAME_THREAD       \
 	-DMIRACAST_AMPDU_SIZE=8	-DWL_IFACE_COMB_NUM_CHANNELS	\
 	-DDHD_SET_FW_HIGHSPEED -DHTC_TX_TRACKING -DSOFTAP \
-	-DSUPPORT_2G_HT40 -DENABLE_FW_ROAM_SUSPEND -DDHD_RX_DUMP -DDHD_TX_DUMP \
+	-DSUPPORT_2G_HT40 -DENABLE_FW_ROAM_SUSPEND -DDHD_RX_DUMP \
 	-Idrivers/net/wireless/bcmdhd -Idrivers/net/wireless/bcmdhd/include   \
 	-Idrivers/net/wireless/bcmdhd/common/include
 
@@ -125,10 +125,6 @@ $(warning set WLFBT for HIMA TMUS)
 DHDCFLAGS += -DWLFBT
 endif
 endif
-
-## Enable WAPI support
-DHDCFLAGS += -DBCMWAPI_WPI -DBCMWAPI_WAI
-
 # HTC_WIFI_END
 
 #DHDCFLAGS += -DDISABLE_LDPC
