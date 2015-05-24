@@ -363,6 +363,7 @@ static const struct nla_policy nl80211_policy[NL80211_ATTR_MAX+1] = {
 	[NL80211_ATTR_MAC_HINT] = { .len = ETH_ALEN },
 	[NL80211_ATTR_WIPHY_FREQ_HINT] = { .type = NLA_U32 },
 	[NL80211_ATTR_TDLS_PEER_CAPABILITY] = { .type = NLA_U32 },
+        [NL80211_ATTR_IFACE_SOCKET_OWNER] = { .type = NLA_FLAG },
 	[NL80211_ATTR_AUTHORIZATION_STATUS] = { .type = NLA_U8 },
 	[NL80211_ATTR_KEY_REPLAY_CTR] = { .type = NLA_BINARY,
 				   .len = NL80211_KEY_REPLAY_CTR_LEN },
@@ -378,9 +379,7 @@ static const struct nla_policy nl80211_policy[NL80211_ATTR_MAX+1] = {
 				   .len = NL80211_KEY_LEN_PTK_KCK },
 	[NL80211_ATTR_PTK_KEK] = { .type = NLA_BINARY,
 				   .len = NL80211_KEY_LEN_PTK_KEK },
-    
-    [NL80211_ATTR_IFACE_SOCKET_OWNER] = { .type = NLA_FLAG },
-    
+
 };
 
 static const struct nla_policy nl80211_key_policy[NL80211_KEY_MAX + 1] = {
