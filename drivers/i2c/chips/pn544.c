@@ -19,7 +19,7 @@
 #include <linux/spinlock.h>
 #include <linux/wakelock.h>
 #include <linux/of_gpio.h>
-#include <linux/pn544.h>
+#include <linux/nfc/pn544.h>
 #include <linux/types.h>
 #include "pn544_htc.h"
 int is_debug = 0;
