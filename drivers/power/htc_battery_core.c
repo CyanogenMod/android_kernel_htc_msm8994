@@ -34,6 +34,9 @@
 #include <linux/qpnp/qpnp-charger.h>
 #endif
 
+extern int smbchg_otg_pulse_skip_enable(bool enable);
+extern int smbchg_get_otg_pulse_skip_en(void);
+
 #define USB_MA_0       (0)
 #define USB_MA_500     (500)
 #define USB_MA_1500    (1500)
@@ -862,6 +865,9 @@ static int htc_battery_set_property(struct power_supply *psy,
 			return ret;
 		}
 		break;
+	case POWER_SUPPLY_PROP_OTG_PULSE_SKIP_ENABLE:
+		ret = smbchg_otg_pulse_skip_enable(val->intval);
+		return ret;
 	default:
 		pr_info("%s: invalid type, psp=%d\n", __func__, psp);
 		return -EINVAL;
@@ -920,6 +926,9 @@ static int htc_battery_get_property(struct power_supply *psy,
 		val->intval = battery_core_info.rep.usb_overheat;
 		break;
 #endif
+	case POWER_SUPPLY_PROP_OTG_PULSE_SKIP_ENABLE:
+		val->intval = smbchg_get_otg_pulse_skip_en();
+		break;
 	default:
 		pr_info("%s: invalid type, psp=%d\n", __func__, psp);
 		return -EINVAL;
