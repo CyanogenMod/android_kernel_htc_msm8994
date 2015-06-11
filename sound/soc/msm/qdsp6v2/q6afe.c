@@ -25,10 +25,6 @@
 #include "msm-pcm-routing-v2.h"
 #include <sound/audio_cal_utils.h>
 
-#undef pr_info
-#undef pr_err
-#define pr_info(fmt, ...) pr_aud_info(fmt, ##__VA_ARGS__)
-#define pr_err(fmt, ...) pr_aud_err(fmt, ##__VA_ARGS__)
 #define klocwork_check_q6audio_get_port_index(index) {\
 	if (index < 0 || index > AFE_MAX_PORTS) {\
 		pr_err("%s: AFE port index[%d] invalid!\n",\

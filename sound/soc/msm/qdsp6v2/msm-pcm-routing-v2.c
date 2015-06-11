@@ -46,11 +46,6 @@
 #include "q6voice.h"
 #include "sound/q6lsm.h"
 
-#undef pr_info
-#undef pr_err
-#define pr_info(fmt, ...) pr_aud_info(fmt, ##__VA_ARGS__)
-#define pr_err(fmt, ...) pr_aud_err(fmt, ##__VA_ARGS__)
-
 static int get_cal_path(int path_type);
 
 #define EC_PORT_ID_PRIMARY_MI2S_TX    1

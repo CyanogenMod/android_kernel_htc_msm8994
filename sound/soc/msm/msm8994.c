@@ -38,10 +38,6 @@
 #include <sound/q6adm-v2.h>
 #include <sound/htc_acoustic_alsa.h>
 #include <linux/of_device.h>
-#undef pr_info
-#undef pr_err
-#define pr_info(fmt, ...) pr_aud_info(fmt, ##__VA_ARGS__)
-#define pr_err(fmt, ...) pr_aud_err(fmt, ##__VA_ARGS__)
 #define DRV_NAME "msm8994-asoc-snd"
 
 #define MSM8994_BRINGUP	(0)	
