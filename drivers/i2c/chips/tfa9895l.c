@@ -33,11 +33,7 @@
 #include <linux/of_gpio.h>
 #include <sound/htc_acoustic_alsa.h>
 
-#undef pr_info
-#undef pr_err
 #define pr_aud_fmt(fmt) "[AUD] " KBUILD_MODNAME ": " fmt
-#define pr_info(fmt, ...) printk(KERN_INFO pr_aud_fmt(fmt), ##__VA_ARGS__)
-#define pr_err(fmt, ...) printk(KERN_ERR pr_aud_fmt(fmt), ##__VA_ARGS__)
 
 static struct i2c_client *this_client;
 struct mutex spk_ampl_lock;

@@ -41,11 +41,6 @@
 #include <sound/audio_cal_utils.h>
 #include <sound/msm-dts-eagle.h>
 
-#undef pr_info
-#undef pr_err
-#define pr_info(fmt, ...) pr_aud_info(fmt, ##__VA_ARGS__)
-#define pr_err(fmt, ...) pr_aud_err(fmt, ##__VA_ARGS__)
-
 #define TRUE        0x01
 #define FALSE       0x00
 
