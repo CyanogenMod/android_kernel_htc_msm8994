@@ -3679,8 +3679,8 @@ static struct snd_soc_dai_link msm8994_common_dai_links[] = {
 		.be_id = MSM_FRONTEND_DAI_MULTIMEDIA10,
 	},
 	{
-		.name = "MSM8994 Compress8",
-		.stream_name = "Compress8",
+		.name = "MSM8994 Compr8",
+		.stream_name = "COMPR8",
 		.cpu_dai_name = "MultiMedia8",
 		.platform_name = "msm-compress-dsp",
 		.dynamic = 1,
