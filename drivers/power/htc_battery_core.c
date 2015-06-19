@@ -119,6 +119,7 @@ struct workqueue_struct *batt_charger_ctrl_wq;
 static unsigned int charger_ctrl_stat;
 static unsigned int ftm_charger_ctrl_stat;
 static unsigned int safety_timer_disable_stat;
+static unsigned int navigation_stat;
 
 static int test_power_monitor;
 static int test_ftm_mode;
@@ -575,6 +576,32 @@ static ssize_t htc_battery_set_phone_call(struct device *dev,
 	return count;
 }
 
+static ssize_t htc_battery_set_net_call(struct device *dev,
+				struct device_attribute *attr,
+				const char *buf, size_t count)
+{
+	unsigned long net_call = 0;
+	int rc = 0;
+
+	rc = strict_strtoul(buf, 10, &net_call);
+	if (rc)
+		return rc;
+
+	BATT_LOG("set context net_call=%lu", net_call);
+
+	if (!battery_core_info.func.func_context_event_handler) {
+		BATT_ERR("No context_event_notify function!");
+		return -ENOENT;
+	}
+
+	if (net_call)
+		battery_core_info.func.func_context_event_handler(EVENT_NET_TALK_START);
+	else
+		battery_core_info.func.func_context_event_handler(EVENT_NET_TALK_STOP);
+
+	return count;
+}
+
 static ssize_t htc_battery_set_play_music(struct device *dev,
 				struct device_attribute *attr,
 				const char *buf, size_t count)
@@ -629,6 +656,18 @@ static ssize_t htc_battery_set_network_search(struct device *dev,
 
 	return count;
 }
+
+static ssize_t htc_battery_navigation_stat(struct device *dev,
+				struct device_attribute *attr,
+				char *buf)
+{
+	int i = 0;
+
+	i += scnprintf(buf + i, PAGE_SIZE - i, "%d\n", navigation_stat);
+
+	return i;
+}
+
 static ssize_t htc_battery_set_navigation(struct device *dev,
 				struct device_attribute *attr,
 				const char *buf, size_t count)
@@ -646,6 +685,8 @@ static ssize_t htc_battery_set_navigation(struct device *dev,
 		BATT_ERR("No context_event_notify function!");
 		return -ENOENT;
 	}
+
+	navigation_stat = (unsigned int)navigation;
 
 	if (navigation) {
 		battery_core_info.func.func_context_event_handler(
@@ -765,11 +806,13 @@ static struct device_attribute htc_set_delta_attrs[] = {
 		htc_battery_charger_ctrl_timer),
 	__ATTR(phone_call, S_IWUSR | S_IWGRP, NULL,
 		htc_battery_set_phone_call),
+	__ATTR(net_call, S_IWUSR | S_IWGRP, NULL,
+		htc_battery_set_net_call),
 	__ATTR(play_music, S_IWUSR | S_IWGRP, NULL,
 		htc_battery_set_play_music),
 	__ATTR(network_search, S_IWUSR | S_IWGRP, NULL,
 		htc_battery_set_network_search),
-	__ATTR(navigation, S_IWUSR | S_IWGRP, NULL,
+	__ATTR(navigation, S_IWUSR | S_IWGRP, htc_battery_navigation_stat,
 		htc_battery_set_navigation),
 	__ATTR(context_event, S_IWUSR | S_IWGRP, NULL,
 		htc_battery_set_context_event),
