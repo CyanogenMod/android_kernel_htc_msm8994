@@ -52,6 +52,12 @@ struct route_payload {
 	unsigned int session_id;
 };
 
+struct msm_pcm_channel_mux {
+	int out_channel;
+	int input_channel;
+	u16 channel_config[16][16];
+};
+
 int srs_trumedia_open(int port_id, int copp_idx, __s32 srs_tech_id,
 		      void *srs_params);
 
@@ -131,4 +137,10 @@ int q6adm_enable_effect(u16 port_id, int copp_idx, uint32_t copp_id, uint32_t pa
 int adm_send_compressed_device_mute(int port_id, int copp_idx, bool mute_on);
 
 int adm_send_compressed_device_latency(int port_id, int copp_idx, int latency);
+
+int programable_channel_mixer(int port_id, int copp_idx, int session_id,
+		int session_type, struct msm_pcm_channel_mux *ch_mux,
+		int num_ch);
+
+
 #endif /* __Q6_ADM_V2_H__ */
