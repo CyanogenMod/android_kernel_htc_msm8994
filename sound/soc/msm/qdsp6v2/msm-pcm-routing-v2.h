@@ -259,4 +259,8 @@ void msm_pcm_routing_reg_stream_app_type_cfg(int fedai_id, int app_type,
 int msm_pcm_routing_get_port(struct snd_pcm_substream *substream, u16 *port_id);
 int htc_adm_effect_control(enum HTC_ADM_EFFECT_ID effect_id, u16 port_id, uint32_t copp_id, uint32_t param_id,
 		uint32_t payload_size, void *payload );
-#endif 
+
+int msm_pcm_routing_channel_mixer(int fedai_id, bool perf_mode,
+			int dspst_id, int stream_type, int be_id);
+
+#endif /*_MSM_PCM_H*/
