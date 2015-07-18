@@ -336,7 +336,9 @@ static int __rtc_set_alarm(struct rtc_device *rtc, struct rtc_wkalrm *alarm)
 {
 	struct rtc_time tm;
 	long now, scheduled;
+#ifdef CONFIG_HTC_PNPMGR
 	unsigned long tmp;
+#endif
 	int err;
 
 	err = rtc_valid_tm(&alarm->time);
@@ -452,9 +454,11 @@ int rtc_initialize_alarm(struct rtc_device *rtc, struct rtc_wkalrm *alarm)
 {
 	int err;
 	struct rtc_time now;
+#ifdef CONFIG_HTC_PNPMGR
 	struct timespec ts;
 
 	pr_info("[RTC] %s: bootmode: %s\n", __func__, htc_get_bootmode());
+#endif
 
 	err = rtc_valid_tm(&alarm->time);
 	if (err != 0)
@@ -468,11 +472,13 @@ int rtc_initialize_alarm(struct rtc_device *rtc, struct rtc_wkalrm *alarm)
 	if (err)
 		return err;
 
+#ifdef CONFIG_HTC_PNPMGR
 	if (!strcmp(htc_get_bootmode(), "offmode_charging")) {
 		getnstimeofday(&ts);
 		offmode_alarm_min = (ts.tv_sec/60)%60;
 		offmode_alarm_sec = (ts.tv_sec)%60;
 	}
+#endif
 
 	rtc->aie_timer.node.expires = rtc_tm_to_ktime(alarm->time);
 	rtc->aie_timer.period = ktime_set(0, 0);
