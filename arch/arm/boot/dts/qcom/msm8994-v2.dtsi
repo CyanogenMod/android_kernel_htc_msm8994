@@ -297,6 +297,25 @@
 &msm_gpu {
 	/* Updated chip ID */
 	qcom,chipid = <0x04030001>;
+	qcom,gpu-pwrlevels {
+		qcom,gpu-pwrlevel@0 {
+			reg = <0>;
+			qcom,gpu-freq = <630000000>;
+			qcom,bus-freq = <8>;
+			qcom,bus-min = <7>;
+			qcom,bus-max = <8>;
+		};
+	};
+	qcom,ocmem-bus-client {
+		qcom,msm-bus,vectors-KBps =
+			<89 662 0 10080000>, /* gpu= 630 */
+			<89 662 0  8160000>, /* gpu= 510 */
+			<89 662 0  7200000>, /* gpu= 450 */
+			<89 662 0  6240000>, /* gpu= 390 */
+			<89 662 0  4880000>, /* gpu= 305 */
+			<89 662 0  2880000>, /* gpu= 180 */
+			<89 662 0 0>;
+	};
 
 	qcom,initial-pwrlevel = <4>;
 	qcom,msm-bus,num-cases = <10>;
@@ -360,7 +379,7 @@
 		};
 		qcom,gpu-pwrlevel@5 {
 			reg = <5>;
-			qcom,gpu-freq = <190000000>;
+			qcom,gpu-freq = <180000000>;
 			qcom,bus-freq = <2>;
 			qcom,bus-min = <1>;
 			qcom,bus-max = <3>;
@@ -390,7 +409,7 @@
 			<89 662 0 7200000>, /* gpu= 450 */
 			<89 662 0 6240000>, /* gpu= 390 */
 			<89 662 0 4880000>, /* gpu= 305 */
-			<89 662 0 3040000>, /* gpu= 190 */
+			<89 662 0 2880000>, /* gpu= 180 */
 			<89 662 0 0>;
 	};
 };
