@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2013-2014, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2013-2015, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -164,26 +164,43 @@ static void uncached_logk_timestamp(int idx)
 }
 
 #if defined(CONFIG_MSM_RTB_SEPARATE_CPUS)
+/*
+ * Since it is not necessarily true that nentries % step_size == 0,
+ * must make appropriate adjustments to the index when a "wraparound"
+ * occurs to ensure that msm_rtb.rtb[x] always belongs to the same cpu.
+ * It is desired to give all cpus the same number of entries; this leaves
+ * (nentries % step_size) dead space at the end of the buffer.
+ */
 static int msm_rtb_get_idx(void)
 {
 	int cpu, i, offset;
 	atomic_t *index;
+	unsigned long flags;
+	u32 unused_buffer_size = msm_rtb.nentries % msm_rtb.step_size;
+	int adjusted_size;
 
 	cpu = raw_smp_processor_id();
 
 	index = &per_cpu(msm_rtb_idx_cpu, cpu);
 
+	local_irq_save(flags);
 	i = atomic_add_return(msm_rtb.step_size, index);
 	i -= msm_rtb.step_size;
 
-	
-	offset = (i & (msm_rtb.nentries - 1)) -
-		 ((i - msm_rtb.step_size) & (msm_rtb.nentries - 1));
+	/*
+	 * Check if index has wrapped around or is in the unused region at the
+	 * end of the buffer
+	 */
+	adjusted_size = atomic_read(index) + unused_buffer_size;
+	offset = (adjusted_size & (msm_rtb.nentries - 1)) -
+		 ((adjusted_size - msm_rtb.step_size) & (msm_rtb.nentries - 1));
 	if (offset < 0) {
 		uncached_logk_timestamp(i);
-		i = atomic_add_return(msm_rtb.step_size, index);
+		i = atomic_add_return(msm_rtb.step_size + unused_buffer_size,
+									index);
 		i -= msm_rtb.step_size;
 	}
+	local_irq_restore(flags);
 
 	return i;
 }

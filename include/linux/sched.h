@@ -109,8 +109,8 @@ extern unsigned long nr_iowait(void);
 extern unsigned long nr_iowait_cpu(int cpu);
 extern unsigned long this_cpu_load(void);
 
-extern void sched_update_nr_prod(int cpu, unsigned long nr, bool inc);
-extern void sched_get_nr_running_avg(int *avg, int *iowait_avg);
+extern void sched_update_nr_prod(int cpu, long delta, bool inc);
+extern void sched_get_nr_running_avg(int *avg, int *iowait_avg, int *big_avg);
 
 extern void calc_global_load(unsigned long ticks);
 extern void update_cpu_load_nohz(void);
@@ -1523,6 +1523,9 @@ sched_set_cpu_cstate(int cpu, int cstate, int wakeup_energy, int wakeup_latency)
 {
 }
 #endif
+
+extern int sched_set_wake_up_idle(struct task_struct *p, int wake_up_idle);
+extern u32 sched_get_wake_up_idle(struct task_struct *p);
 
 #ifdef CONFIG_SCHED_HMP
 
