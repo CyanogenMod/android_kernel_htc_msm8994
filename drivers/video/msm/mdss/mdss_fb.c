@@ -851,17 +851,12 @@ static DEVICE_ATTR(msm_fb_src_split_info, S_IRUGO, mdss_fb_get_src_split_info,
 	NULL);
 static DEVICE_ATTR(msm_fb_thermal_level, S_IRUGO | S_IWUSR,
 	mdss_fb_get_thermal_level, mdss_fb_set_thermal_level);
-<<<<<<< HEAD
 static DEVICE_ATTR(msm_fb_panel_status, S_IRUGO | S_IWUSR,
 	mdss_fb_get_panel_status, mdss_fb_force_panel_dead);
 static DEVICE_ATTR(msm_fb_dfps_mode, S_IRUGO | S_IWUSR,
 	mdss_fb_get_dfps_mode, mdss_fb_change_dfps_mode);
-=======
-static DEVICE_ATTR(msm_fb_panel_status, S_IRUGO,
-	mdss_fb_get_panel_status, NULL);
 static DEVICE_ATTR(rgb, S_IRUGO | S_IWUSR | S_IWGRP, mdss_get_rgb, mdss_set_rgb);
 
->>>>>>> ae8a5436... video: mdss: Color temperature interface using PCC
 static struct attribute *mdss_fb_attrs[] = {
 	&dev_attr_msm_fb_type.attr,
 	&dev_attr_msm_fb_split.attr,
@@ -872,11 +867,8 @@ static struct attribute *mdss_fb_attrs[] = {
 	&dev_attr_msm_fb_src_split_info.attr,
 	&dev_attr_msm_fb_thermal_level.attr,
 	&dev_attr_msm_fb_panel_status.attr,
-<<<<<<< HEAD
 	&dev_attr_msm_fb_dfps_mode.attr,
-=======
 	&dev_attr_rgb.attr,
->>>>>>> ae8a5436... video: mdss: Color temperature interface using PCC
 	NULL,
 };
 
