@@ -2335,10 +2335,6 @@ static inline int migration_needed(struct rq *rq, struct task_struct *p)
 	if (!sched_enable_hmp || p->state != TASK_RUNNING)
 		return 0;
 
-	if (over_schedule_budget(cpu_of(rq)))
-		return MOVE_TO_BUDGET_CAPABLE_CPU;
-
-	
 	if (task_will_be_throttled(p))
 		return 0;
 
