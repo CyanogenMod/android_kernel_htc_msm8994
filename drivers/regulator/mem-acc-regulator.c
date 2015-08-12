@@ -31,7 +31,6 @@
 
 #define BYTES_PER_FUSE_ROW		8
 
-/* mem-acc config flags */
 #define MEM_ACC_SKIP_L1_CONFIG		BIT(0)
 #define MEM_ACC_OVERRIDE_CONFIG		BIT(1)
 
@@ -154,10 +153,6 @@ static int mem_acc_fuse_is_setting_expected(
 static inline u32 apc_to_acc_corner(struct mem_acc_regulator *mem_acc_vreg,
 								int corner)
 {
-	/*
-	 * corner_acc_map maps the corner from index 0 and  APC corner value
-	 * starts from the value 1
-	 */
 	return mem_acc_vreg->corner_acc_map[corner - 1];
 }
 
@@ -166,10 +161,6 @@ static void __update_acc_sel(struct mem_acc_regulator *mem_acc_vreg,
 {
 	u32 acc_data, acc_data_old, i, bit, acc_corner;
 
-	/*
-	 * Do not configure the L1 ACC corner if the the corresponding flag is
-	 * set.
-	 */
 	if ((mem_type == MEMORY_L1)
 			&& (mem_acc_vreg->flags & MEM_ACC_SKIP_L1_CONFIG))
 		return;

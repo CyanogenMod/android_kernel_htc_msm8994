@@ -53,3 +53,11 @@ obj-$(CONFIG_ARCH_OMAP)	+= omap/
 ccflags-y += -I$(srctree)/drivers/media/i2c
 
 obj-y += msm/
+
+#++ DTV_PCN1000006_HTC_PANASONIC_MAKEFILE
+# [HTC]  Panasonic makefile
+obj-$(CONFIG_VIDEO_PANASONIC) += panasonic/
+#-- DTV_PCN1000006_HTC_PANASONIC_MAKEFILE
+
+
+

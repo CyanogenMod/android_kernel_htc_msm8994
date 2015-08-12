@@ -1,7 +1,15 @@
 #ifndef _GPIO_KEYS_H
 #define _GPIO_KEYS_H
 
+#define KEY_LOGD(fmt, args...) printk(KERN_DEBUG "[KEY] "fmt, ##args)
+#define KEY_LOGI(fmt, args...) printk(KERN_INFO "[KEY] "fmt, ##args)
+#define KEY_LOGE(fmt, args...) printk(KERN_ERR "[KEY][ERR] "fmt, ##args)
+
 struct device;
+
+#ifdef CONFIG_POWER_KEY_EID
+extern void power_key_resume_handler(int);
+#endif
 
 struct gpio_keys_button {
 	/* Configuration parameters */

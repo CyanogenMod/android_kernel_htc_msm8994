@@ -49,8 +49,8 @@ static struct work_struct ipa_qmi_service_init_work;
 static bool is_load_uc;
 static uint32_t ipa_wan_platform;
 struct ipa_qmi_context *ipa_qmi_ctx;
+static bool workqueues_stopped;
 
-/* QMI A5 service */
 
 static struct msg_desc ipa_indication_reg_req_desc = {
 	.max_msg_len = QMI_IPA_INDICATION_REGISTER_REQ_MAX_MSG_LEN_V01,
@@ -316,8 +316,9 @@ static void qmi_ipa_a5_svc_ntfy(struct qmi_handle *handle,
 {
 	switch (event) {
 	case QMI_RECV_MSG:
-		queue_delayed_work(ipa_svc_workqueue,
-				   &work_recv_msg, 0);
+		if (!workqueues_stopped)
+			queue_delayed_work(ipa_svc_workqueue,
+					   &work_recv_msg, 0);
 		break;
 	default:
 		break;
@@ -336,16 +337,12 @@ static struct qmi_svc_ops_options ipa_a5_svc_ops_options = {
 };
 
 
-/****************************************************/
-/*                 QMI A5 client ->Q6               */
-/****************************************************/
 static void ipa_q6_clnt_recv_msg(struct work_struct *work);
 static DECLARE_DELAYED_WORK(work_recv_msg_client, ipa_q6_clnt_recv_msg);
 static void ipa_q6_clnt_svc_arrive(struct work_struct *work);
 static DECLARE_DELAYED_WORK(work_svc_arrive, ipa_q6_clnt_svc_arrive);
 static void ipa_q6_clnt_svc_exit(struct work_struct *work);
 static DECLARE_DELAYED_WORK(work_svc_exit, ipa_q6_clnt_svc_exit);
-/* Test client port for IPC Router */
 static struct qmi_handle *ipa_q6_clnt;
 static int ipa_q6_clnt_reset;
 
@@ -477,14 +474,13 @@ static int qmi_init_modem_send_sync_msg(void)
 		resp.resp.error, "ipa_init_modem_driver_resp_msg_v01");
 }
 
-/* sending filter-install-request to modem*/
 int qmi_filter_request_send(struct ipa_install_fltr_rule_req_msg_v01 *req)
 {
 	struct ipa_install_fltr_rule_resp_msg_v01 resp;
 	struct msg_desc req_desc, resp_desc;
 	int rc;
 
-	/* check if the filter rules from IPACM is valid */
+	
 	if (req->filter_spec_list_len == 0) {
 		IPAWANDBG("IPACM pass zero rules to Q6\n");
 	} else {
@@ -607,14 +603,13 @@ int qmi_disable_force_clear_datapath_send(
 	return rc;
 }
 
-/* sending filter-installed-notify-request to modem*/
 int qmi_filter_notify_send(struct ipa_fltr_installed_notif_req_msg_v01 *req)
 {
 	struct ipa_fltr_installed_notif_resp_msg_v01 resp;
 	struct msg_desc req_desc, resp_desc;
 	int rc = 0, i = 0;
 
-	/* check if the filter rules from IPACM is valid */
+	
 	if (req->filter_index_list_len == 0) {
 		IPAWANERR(" delete UL filter rule for pipe %d\n",
 		req->source_pipe_index);
@@ -675,8 +670,9 @@ static void ipa_q6_clnt_notify(struct qmi_handle *handle,
 	switch (event) {
 	case QMI_RECV_MSG:
 		IPAWANDBG("client qmi recv message called");
-		queue_delayed_work(ipa_clnt_resp_workqueue,
-				   &work_recv_msg_client, 0);
+		if (!workqueues_stopped)
+			queue_delayed_work(ipa_clnt_resp_workqueue,
+					   &work_recv_msg_client, 0);
 		break;
 	default:
 		break;
@@ -710,20 +706,16 @@ static void ipa_q6_clnt_svc_arrive(struct work_struct *work)
 	}
 	ipa_q6_clnt_reset = 0;
 	IPAWANDBG("Q6 QMI service available now\n");
-	/* Initialize modem IPA-driver */
+	
 	IPAWANDBG("send qmi_init_modem_send_sync_msg to modem\n");
 	rc = qmi_init_modem_send_sync_msg();
 	if (rc == -ENETRESET) {
 		IPAWANERR("qmi_init_modem_send_sync_msg failed due to SSR!\n");
-		/* Cleanup will take place when ipa_wwan_remove is called */
+		
 		return;
 	}
 	if (rc != 0) {
 		IPAWANERR("qmi_init_modem_send_sync_msg failed\n");
-		/*
-		 * This is a very unexpected scenario, which requires a kernel
-		 * panic in order to force dumps for QMI/Q6 side analysis.
-		 */
 		BUG();
 		return;
 	}
@@ -766,12 +758,14 @@ static int ipa_q6_clnt_svc_event_notify(struct notifier_block *this,
 	IPAWANDBG("event %ld\n", code);
 	switch (code) {
 	case QMI_SERVER_ARRIVE:
-		queue_delayed_work(ipa_clnt_req_workqueue,
-				   &work_svc_arrive, 0);
+		if (!workqueues_stopped)
+			queue_delayed_work(ipa_clnt_req_workqueue,
+					   &work_svc_arrive, 0);
 		break;
 	case QMI_SERVER_EXIT:
-		queue_delayed_work(ipa_clnt_req_workqueue,
-				   &work_svc_exit, 0);
+		if (!workqueues_stopped)
+			queue_delayed_work(ipa_clnt_req_workqueue,
+					   &work_svc_exit, 0);
 		break;
 	default:
 		break;
@@ -812,11 +806,6 @@ static void ipa_qmi_service_init_worker(struct work_struct *work)
 		goto destroy_ipa_A7_svc_wq;
 	}
 
-	/*
-	 * Setting the current connection to NULL, as due to a race between
-	 * server and client clean-up in SSR, the disconnect_cb might not
-	 * have necessarily been called
-	 */
 	curr_conn = NULL;
 
 	rc = qmi_svc_register(ipa_svc_handle, &ipa_a5_svc_ops_options);
@@ -877,6 +866,8 @@ int ipa_qmi_service_init(bool load_uc, uint32_t wan_platform_type)
 	is_load_uc = load_uc;
 	qmi_modem_init_fin = false;
 	qmi_indication_fin = false;
+	workqueues_stopped = false;
+
 	if (!ipa_svc_handle) {
 		INIT_WORK(&ipa_qmi_service_init_work,
 			ipa_qmi_service_init_worker);
@@ -889,7 +880,9 @@ void ipa_qmi_service_exit(void)
 {
 	int ret = 0;
 
-	/* qmi-service */
+	workqueues_stopped = true;
+
+	
 	if (ipa_svc_handle) {
 		ret = qmi_svc_unregister(ipa_svc_handle);
 		if (ret < 0)
@@ -940,4 +933,18 @@ void ipa_qmi_service_exit(void)
 	ipa_svc_handle = 0;
 	qmi_modem_init_fin = false;
 	qmi_indication_fin = false;
+}
+
+void ipa_qmi_stop_workqueues(void)
+{
+	IPAWANDBG("Stopping all QMI workqueues\n");
+
+	
+	workqueues_stopped = true;
+
+	
+	cancel_delayed_work(&work_recv_msg);
+	cancel_delayed_work(&work_recv_msg_client);
+	cancel_delayed_work(&work_svc_arrive);
+	cancel_delayed_work(&work_svc_exit);
 }

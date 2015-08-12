@@ -21,7 +21,7 @@
 static struct qseecom_handle *sdmx_qseecom_handles[SDMX_MAX_SESSIONS];
 static struct mutex sdmx_lock[SDMX_MAX_SESSIONS];
 
-#define QSEECOM_SBUFF_SIZE	SZ_16K
+#define QSEECOM_SBUFF_SIZE	SZ_128K
 #define QSEECOM_ALIGN_SIZE	0x40
 #define QSEECOM_ALIGN_MASK	(QSEECOM_ALIGN_SIZE - 1)
 #define QSEECOM_ALIGN(x)	\
@@ -240,12 +240,6 @@ static int get_cmd_rsp_buffers(int handle_index,
 	return SDMX_SUCCESS;
 }
 
-/*
- * Returns version of secure-demux app.
- *
- * @session_handle: Returned instance handle. Must not be NULL.
- * Return error code
- */
 int sdmx_get_version(int session_handle, int32_t *version)
 {
 	int res, cmd_len, rsp_len;
@@ -291,12 +285,6 @@ out:
 }
 EXPORT_SYMBOL(sdmx_get_version);
 
-/*
- * Initializes a new secure demux instance and returns a handle of the instance.
- *
- * @session_handle: handle of a secure demux instance to get its version.
- * Return the version if successfull or an error code.
- */
 int sdmx_open_session(int *session_handle)
 {
 	int res, cmd_len, rsp_len;
@@ -366,12 +354,6 @@ int sdmx_open_session(int *session_handle)
 }
 EXPORT_SYMBOL(sdmx_open_session);
 
-/*
- * Closes a secure demux instance.
- *
- * @session_handle: handle of a secure demux instance to close.
- * Return error code
- */
 int sdmx_close_session(int session_handle)
 {
 	int res, cmd_len, rsp_len;
@@ -424,18 +406,6 @@ out:
 }
 EXPORT_SYMBOL(sdmx_close_session);
 
-/*
- * Configures an open secure demux instance.
- *
- * @session_handle: secure demux instance
- * @proc_mode: Defines secure demux's behavior in case of output
- *             buffer overflow.
- * @inp_mode: Defines the input encryption settings.
- * @pkt_format: TS packet length in input buffer.
- * @odd_scramble_bits: Value of the scramble bits indicating the ODD key.
- * @even_scramble_bits: Value of the scramble bits indicating the EVEN key.
- * Return error code
- */
 int sdmx_set_session_cfg(int session_handle,
 	enum sdmx_proc_mode proc_mode,
 	enum sdmx_inp_mode inp_mode,
@@ -489,23 +459,6 @@ out:
 }
 EXPORT_SYMBOL(sdmx_set_session_cfg);
 
-/*
- * Creates a new secure demux filter and returns a filter handle
- *
- * @session_handle: secure demux instance
- * @pid: pid to filter
- * @filter_type: type of filtering
- * @meta_data_buf: meta data buffer descriptor
- * @data_buf_mode: data buffer mode (ring/linear)
- * @num_data_bufs: number of data buffers (use 1 for a ring buffer)
- * @data_bufs: data buffers descriptors array
- * @filter_handle: returned filter handle
- * @ts_out_format: output format for raw filters
- * @flags: optional flags for filter
- *	   (currently only clear section CRC verification is supported)
- *
- * Return error code
- */
 int sdmx_add_filter(int session_handle,
 	u16 pid,
 	enum sdmx_filter filterype,
@@ -587,14 +540,6 @@ out:
 }
 EXPORT_SYMBOL(sdmx_add_filter);
 
-/*
- * Removes a secure demux filter
- *
- * @session_handle: secure demux instance
- * @filter_handle: filter handle to remove
- *
- * Return error code
- */
 int sdmx_remove_filter(int session_handle, int filter_handle)
 {
 	int res, cmd_len, rsp_len;
@@ -639,18 +584,6 @@ out:
 }
 EXPORT_SYMBOL(sdmx_remove_filter);
 
-/*
- * Associates a key ladder index for the specified pid
- *
- * @session_handle: secure demux instance
- * @pid: pid
- * @key_ladder_index: key ladder index to associate to the pid
- *
- * Return error code
- *
- * Note: if pid already has some key ladder index associated, it will be
- * overridden.
- */
 int sdmx_set_kl_ind(int session_handle, u16 pid, u32 key_ladder_index)
 {
 	int res, cmd_len, rsp_len;
@@ -696,15 +629,6 @@ out:
 }
 EXPORT_SYMBOL(sdmx_set_kl_ind);
 
-/*
- * Adds the specified pid to an existing raw (recording) filter
- *
- * @session_handle: secure demux instance
- * @filter_handle: raw filter handle
- * @pid: pid
- *
- * Return error code
- */
 int sdmx_add_raw_pid(int session_handle, int filter_handle, u16 pid)
 {
 	int res, cmd_len, rsp_len;
@@ -750,15 +674,6 @@ out:
 }
 EXPORT_SYMBOL(sdmx_add_raw_pid);
 
-/*
- * Removes the specified pid from a raw (recording) filter
- *
- * @session_handle: secure demux instance
- * @filter_handle: raw filter handle
- * @pid: pid
- *
- * Return error code
- */
 int sdmx_remove_raw_pid(int session_handle, int filter_handle, u16 pid)
 {
 	int res, cmd_len, rsp_len;
@@ -804,21 +719,6 @@ out:
 }
 EXPORT_SYMBOL(sdmx_remove_raw_pid);
 
-/*
- * Call secure demux to perform processing on the specified input buffer
- *
- * @session_handle: secure demux instance
- * @flags: input flags. Currently only EOS marking is supported.
- * @input_buf_desc: input buffer descriptor
- * @input_fill_count: number of bytes available in input buffer
- * @input_read_offset: offset inside input buffer where data starts
- * @error_indicators: returned general error indicators
- * @status_indicators: returned general status indicators
- * @num_filters: number of filters in filter status array
- * @filter_status: filter status descriptor array
- *
- * Return error code
- */
 int sdmx_process(int session_handle, u8 flags,
 	struct sdmx_buff_descr *input_buf_desc,
 	u32 *input_fill_count,
@@ -889,16 +789,6 @@ out:
 }
 EXPORT_SYMBOL(sdmx_process);
 
-/*
- * Returns session-level & filter-level debug counters
- *
- * @session_handle: secure demux instance
- * @session_counters: returned session-level debug counters
- * @num_filters: returned number of filters reported in filter_counters
- * @filter_counters: returned filter-level debug counters array
- *
- * Return error code
- */
 int sdmx_get_dbg_counters(int session_handle,
 	struct sdmx_session_dbg_counters *session_counters,
 	u32 *num_filters,
@@ -954,13 +844,6 @@ out:
 }
 EXPORT_SYMBOL(sdmx_get_dbg_counters);
 
-/*
- * Reset debug counters
- *
- * @session_handle: secure demux instance
- *
- * Return error code
- */
 int sdmx_reset_dbg_counters(int session_handle)
 {
 	int res, cmd_len, rsp_len;
@@ -1004,14 +887,6 @@ out:
 }
 EXPORT_SYMBOL(sdmx_reset_dbg_counters);
 
-/*
- * Set debug log verbosity level
- *
- * @session_handle: secure demux instance
- * @level: requested log level
- *
- * Return error code
- */
 int sdmx_set_log_level(int session_handle, enum sdmx_log_level level)
 {
 	int res, cmd_len, rsp_len;

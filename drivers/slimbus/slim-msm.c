@@ -17,6 +17,11 @@
 #include <linux/msm-sps.h>
 #include "slim-msm.h"
 
+#undef pr_info
+#undef pr_err
+#define pr_info(fmt, ...) pr_aud_info(fmt, ##__VA_ARGS__)
+#define pr_err(fmt, ...) pr_aud_err(fmt, ##__VA_ARGS__)
+
 int msm_slim_rx_enqueue(struct msm_slim_ctrl *dev, u32 *buf, u8 len)
 {
 	spin_lock(&dev->rx_lock);
@@ -80,12 +85,6 @@ irqreturn_t msm_slim_port_irq_handler(struct msm_slim_ctrl *dev, u32 pstat)
 	int i;
 	u32 int_en = readl_relaxed(PGD_THIS_EE(PGD_PORT_INT_EN_EEn,
 							dev->ver));
-	/*
-	 * different port-interrupt than what we enabled, ignore.
-	 * This may happen if overflow/underflow is reported, but
-	 * was disabled due to unavailability of buffers provided by
-	 * client.
-	 */
 	if ((pstat & int_en) == 0)
 		return IRQ_HANDLED;
 	for (i = 0; i < dev->port_nums; i++) {
@@ -102,22 +101,14 @@ irqreturn_t msm_slim_port_irq_handler(struct msm_slim_ctrl *dev, u32 pstat)
 			}
 		}
 	}
-	/*
-	 * Disable port interrupt here. Re-enable when more
-	 * buffers are provided for this port.
-	 */
 	writel_relaxed((int_en & (~pstat)),
 			PGD_THIS_EE(PGD_PORT_INT_EN_EEn,
 					dev->ver));
-	/* clear port interrupts */
+	
 	writel_relaxed(pstat, PGD_THIS_EE(PGD_PORT_INT_CL_EEn,
 							dev->ver));
 	SLIM_INFO(dev, "disabled overflow/underflow for port 0x%x", pstat);
 
-	/*
-	 * Guarantee that port interrupt bit(s) clearing writes go
-	 * through before exiting ISR
-	 */
 	mb();
 	return IRQ_HANDLED;
 }
@@ -381,21 +372,20 @@ int msm_slim_port_xfer(struct slim_controller *ctrl, u8 pn, phys_addr_t iobuf,
 				SPS_IOVEC_FLAG_INT);
 	dev_dbg(dev->dev, "sps submit xfer error code:%x\n", ret);
 	if (!ret) {
-		/* Enable port interrupts */
+		
 		u32 int_port = readl_relaxed(PGD_THIS_EE(PGD_PORT_INT_EN_EEn,
 						dev->ver));
 		if (!(int_port & (1 << (dev->pipes[pn].port_b))))
 			writel_relaxed((int_port |
 				(1 << dev->pipes[pn].port_b)),
 				PGD_THIS_EE(PGD_PORT_INT_EN_EEn, dev->ver));
-		/* Make sure that port registers are updated before returning */
+		
 		mb();
 	}
 
 	return ret;
 }
 
-/* Queue up Tx message buffer */
 static int msm_slim_post_tx_msgq(struct msm_slim_ctrl *dev, u8 *buf, int len)
 {
 	int ret;
@@ -528,13 +518,6 @@ u32 *msm_slim_manage_tx_msgq(struct msm_slim_ctrl *dev, bool getbuf,
 			return retbuf;
 		}
 
-		/*
-		 * superframe size will vary based on clock gear
-		 * 1 superframe will consume at least 1 message
-		 * if HW is in good condition. With MX_RETRIES,
-		 * make sure we wait for a [3, 10] superframes
-		 * before deciding HW couldn't process descriptors
-		 */
 		usleep_range(100, 250);
 		retries++;
 	} while (ret && (retries < INIT_MX_RETRIES));
@@ -561,10 +544,6 @@ int msm_send_msg_buf(struct msm_slim_ctrl *dev, u32 *buf, u8 len, u32 tx_reg)
 u32 *msm_get_msg_buf(struct msm_slim_ctrl *dev, int len,
 			struct completion *comp)
 {
-	/*
-	 * Currently we block a transaction until the current one completes.
-	 * In case we need multiple transactions, use message Q
-	 */
 	if (dev->use_tx_msgqs != MSM_MSGQ_ENABLED) {
 		dev->wr_comp[0] = comp;
 		return dev->tx_buf;
@@ -579,13 +558,6 @@ msm_slim_rx_msgq_event(struct msm_slim_ctrl *dev, struct sps_event_notify *ev)
 	u32 *buf = ev->data.transfer.user;
 	struct sps_iovec *iovec = &ev->data.transfer.iovec;
 
-	/*
-	 * Note the virtual address needs to be offset by the same index
-	 * as the physical address or just pass in the actual virtual address
-	 * if the sps_mem_buffer is not needed.  Note that if completion is
-	 * used, the virtual address won't be available and will need to be
-	 * calculated based on the offset of the physical address
-	 */
 	if (ev->event_id == SPS_EVENT_DESC_DONE) {
 
 		pr_debug("buf = 0x%p, data = 0x%x\n", buf, *buf);
@@ -605,7 +577,6 @@ static void msm_slim_rx_msgq_cb(struct sps_event_notify *notify)
 	msm_slim_rx_msgq_event(dev, notify);
 }
 
-/* Queue up Rx message buffer */
 static int msm_slim_post_rx_msgq(struct msm_slim_ctrl *dev, int ix)
 {
 	int ret;
@@ -702,13 +673,9 @@ int msm_slim_connect_endp(struct msm_slim_ctrl *dev,
 		goto sps_reg_event_failed;
 	}
 
-	/*
-	 * Call transfer_one for each 4-byte buffer
-	 * Use (buf->size/4) - 1 for the number of buffer to post
-	 */
 
 	if (endpoint == &dev->rx_msgq) {
-		/* Setup the transfer */
+		
 		for (i = 0; i < (MSM_SLIM_DESC_NUM - 1); i++) {
 			ret = msm_slim_post_rx_msgq(dev, i);
 			if (ret) {
@@ -876,7 +843,6 @@ static int msm_slim_data_port_assign(struct msm_slim_ctrl *dev)
 	}
 	return data_ports;
 }
-/* Registers BAM h/w resource with SPS driver and initializes msgq endpoints */
 int msm_slim_sps_init(struct msm_slim_ctrl *dev, struct resource *bam_mem,
 			u32 pipe_reg, bool remote)
 {
@@ -971,13 +937,6 @@ init_msgq:
 	if (ret && bam_handle)
 		dev->use_tx_msgqs = MSM_MSGQ_DISABLED;
 
-	/*
-	 * If command interface for BAM fails, register interface is used for
-	 * commands.
-	 * It is possible that other BAM usecases (e.g. apps channels) will
-	 * still need BAM. Since BAM is successfully initialized, we can
-	 * continue using it for non-command use cases.
-	 */
 
 	return 0;
 }
@@ -1035,7 +994,6 @@ void msm_slim_sps_exit(struct msm_slim_ctrl *dev, bool dereg)
 	dev->port_nums = 0;
 }
 
-/* Slimbus QMI Messaging */
 #define SLIMBUS_QMI_SELECT_INSTANCE_REQ_V01 0x0020
 #define SLIMBUS_QMI_SELECT_INSTANCE_RESP_V01 0x0020
 #define SLIMBUS_QMI_POWER_REQ_V01 0x0021
@@ -1322,6 +1280,10 @@ static int msm_slim_qmi_send_power_request(struct msm_slim_ctrl *dev,
 					&resp_desc, &resp, sizeof(resp), 5000);
 	if (rc < 0) {
 		SLIM_ERR(dev, "%s: QMI send req failed %d\n", __func__, rc);
+#ifdef CONFIG_HTC_DEBUG_DSP
+		pr_err("trigger ramdump to keep status\n");
+		BUG();
+#endif
 		return rc;
 	}
 

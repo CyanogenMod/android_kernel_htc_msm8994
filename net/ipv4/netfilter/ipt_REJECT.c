@@ -1,6 +1,3 @@
-/*
- * This is a module which is used for rejecting packets.
- */
 
 /* (C) 1999-2001 Paul `Rusty' Russell
  * (C) 2002-2004 Netfilter Core Team <coreteam@netfilter.org>
@@ -32,7 +29,6 @@ MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Netfilter Core Team <coreteam@netfilter.org>");
 MODULE_DESCRIPTION("Xtables: packet \"rejection\" target for IPv4");
 
-/* Send RST reply */
 static void send_reset(struct sk_buff *oldskb, int hook)
 {
 	struct sk_buff *nskb;
@@ -129,6 +125,14 @@ static void send_reset(struct sk_buff *oldskb, int hook)
 static inline void send_unreach(struct sk_buff *skb_in, int code)
 {
 	icmp_send(skb_in, ICMP_DEST_UNREACH, code, 0);
+
+#ifdef CONFIG_HTC_NETWORK_MODIFY
+	if(skb_in->sk && skb_in->sk->sk_state == TCP_TIME_WAIT){
+		pr_warn("[NET]%s: ipt_REJECT: ignore force socket error when sk state is in TCP_TIME_WAIT.\n", __func__);
+		return;
+	}
+#endif
+
 #ifdef CONFIG_IP_NF_TARGET_REJECT_SKERR
 	if (skb_in->sk) {
 		skb_in->sk->sk_err = icmp_err_convert[code].errno;

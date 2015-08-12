@@ -42,7 +42,6 @@
 
 #define GSBI_CTRL_REG                 0x0
 #define GSBI_SPI_CONFIG               0x30
-/* B-family only registers */
 #define QUP_HARDWARE_VER              0x0030
 #define QUP_HARDWARE_VER_2_1_1        0X20010001
 #define QUP_OPERATIONAL_MASK          0x0028
@@ -73,18 +72,15 @@
 #define SPI_INPUT_FIFO                QSD_REG(0x0200) QUP_REG(0x0218)
 #define SPI_STATE                     QSD_REG(SPI_OPERATIONAL) QUP_REG(0x0004)
 
-/* QUP_CONFIG fields */
 #define SPI_CFG_N                     0x0000001F
 #define SPI_NO_INPUT                  0x00000080
 #define SPI_NO_OUTPUT                 0x00000040
 #define SPI_EN_EXT_OUT_FLAG           0x00010000
 
-/* SPI_CONFIG fields */
 #define SPI_CFG_LOOPBACK              0x00000100
 #define SPI_CFG_INPUT_FIRST           0x00000200
 #define SPI_CFG_HS_MODE               0x00000400
 
-/* SPI_IO_CONTROL fields */
 #define SPI_IO_C_FORCE_CS             0x00000800
 #define SPI_IO_C_CLK_IDLE_HIGH        0x00000400
 #define SPI_IO_C_MX_CS_MODE           0x00000100
@@ -94,7 +90,6 @@
 #define SPI_IO_C_TRISTATE_CS          0x00000002
 #define SPI_IO_C_NO_TRI_STATE         0x00000001
 
-/* SPI_IO_MODES fields */
 #define SPI_IO_M_OUTPUT_BIT_SHIFT_EN  QSD_REG(0x00004000) QUP_REG(0x00010000)
 #define SPI_IO_M_PACK_EN              QSD_REG(0x00002000) QUP_REG(0x00008000)
 #define SPI_IO_M_UNPACK_EN            QSD_REG(0x00001000) QUP_REG(0x00004000)
@@ -112,7 +107,6 @@
 #define OUTPUT_MODE_SHIFT             QSD_REG(8)          QUP_REG(10)
 #define INPUT_MODE_SHIFT              QSD_REG(10)         QUP_REG(12)
 
-/* SPI_OPERATIONAL fields */
 #define SPI_OP_MAX_INPUT_DONE_FLAG    0x00000800
 #define SPI_OP_MAX_OUTPUT_DONE_FLAG   0x00000400
 #define SPI_OP_INPUT_SERVICE_FLAG     0x00000200
@@ -135,7 +129,6 @@ enum msm_spi_state {
 	SPI_OP_STATE_PAUSE = 0x00000003,
 };
 
-/* SPI_ERROR_FLAGS fields */
 #define SPI_ERR_OUTPUT_OVER_RUN_ERR   0x00000020
 #define SPI_ERR_INPUT_UNDER_RUN_ERR   0x00000010
 #define SPI_ERR_OUTPUT_UNDER_RUN_ERR  0x00000008
@@ -143,26 +136,19 @@ enum msm_spi_state {
 #define SPI_ERR_CLK_OVER_RUN_ERR      0x00000002
 #define SPI_ERR_CLK_UNDER_RUN_ERR     0x00000001
 
-/* We don't allow transactions larger than 4K-64 or 64K-64 due to
-   mx_input/output_cnt register size */
-#define SPI_MAX_TRANSFERS             QSD_REG(0xFC0) QUP_REG(0xFC0)
+#define SPI_MAX_TRANSFERS             QSD_REG(0x6000) QUP_REG(0x6000)
 #define SPI_MAX_LEN                   (SPI_MAX_TRANSFERS * dd->bytes_per_word)
 
 #define SPI_NUM_CHIPSELECTS           4
 #define SPI_SUPPORTED_MODES  (SPI_CPOL | SPI_CPHA | SPI_CS_HIGH | SPI_LOOP)
 
-/* high speed mode is when bus rate is greater then 26MHz */
 #define SPI_HS_MIN_RATE               (26000000)
 
 #define SPI_DELAY_THRESHOLD           1
-/* Default timeout is 10 milliseconds */
 #define SPI_DEFAULT_TIMEOUT           10
-/* 250 microseconds */
 #define SPI_TRYLOCK_DELAY             250
 
-/* Data Mover burst size */
 #define DM_BURST_SIZE                 16
-/* Data Mover commands should be aligned to 64 bit(8 bytes) */
 #define DM_BYTE_ALIGN                 8
 
 enum msm_spi_qup_version {
@@ -199,20 +185,18 @@ static char const * const spi_cs_rsrcs[] = {
 };
 
 enum msm_spi_mode {
-	SPI_FIFO_MODE  = 0x0,  /* 00 */
-	SPI_BLOCK_MODE = 0x1,  /* 01 */
-	SPI_BAM_MODE   = 0x3,  /* 11 */
-	SPI_MODE_NONE  = 0xFF, /* invalid value */
+	SPI_FIFO_MODE  = 0x0,  
+	SPI_BLOCK_MODE = 0x1,  
+	SPI_BAM_MODE   = 0x3,  
+	SPI_MODE_NONE  = 0xFF, 
 };
 
-/* Structure for SPI CS GPIOs */
 struct spi_cs_gpio {
 	int  gpio_num;
 	bool valid;
 };
 
 #ifdef CONFIG_DEBUG_FS
-/* Used to create debugfs entries */
 static struct msm_spi_regs{
 	const char *name;
 	mode_t mode;
@@ -262,16 +246,6 @@ static struct msm_spi_regs{
 };
 #endif
 
-/**
- * qup_i2c_clk_path_vote: data to use bus scaling driver for clock path vote
- *
- * @client_hdl when zero, client is not registered with the bus scaling driver,
- *      and bus scaling functionality should not be used. When non zero, it
- *      is a bus scaling client id and may be used to vote for clock path.
- * @reg_err when true, registration error was detected and an error message was
- *      logged. i2c will attempt to re-register but will log error only once.
- *      once registration succeed, the flag is set to false.
- */
 struct qup_i2c_clk_path_vote {
 	u32                         client_hdl;
 	struct msm_bus_scale_pdata *pdata;
@@ -386,7 +360,6 @@ struct msm_spi {
 	bool			is_init_complete;
 };
 
-/* Forward declaration */
 static irqreturn_t msm_spi_input_irq(int irq, void *dev_id);
 static irqreturn_t msm_spi_output_irq(int irq, void *dev_id);
 static irqreturn_t msm_spi_error_irq(int irq, void *dev_id);
@@ -469,7 +442,6 @@ static inline void msm_spi_clear_error_flags(struct msm_spi *dd)
 }
 
 #else
-/* In QUP the same interrupt line is used for input, output and error*/
 static inline int msm_spi_request_irq(struct msm_spi *dd,
 				struct platform_device *pdev,
 				struct spi_master *master)
@@ -505,9 +477,6 @@ static inline void msm_spi_ack_clk_err(struct msm_spi *dd)
 static inline void
 msm_spi_set_bpw_and_no_io_flags(struct msm_spi *dd, u32 *config, int n);
 
-/**
- * msm_spi_set_qup_config: set QUP_CONFIG to no_input, no_output, and N bits
- */
 static inline void msm_spi_set_qup_config(struct msm_spi *dd, int bpw)
 {
 	u32 qup_config = readl_relaxed(dd->base + QUP_CONFIG);

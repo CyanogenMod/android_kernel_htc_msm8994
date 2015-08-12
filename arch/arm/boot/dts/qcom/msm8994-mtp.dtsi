@@ -11,7 +11,6 @@
  */
 
 #include "msm8994-pinctrl.dtsi"
-#include "msm8994-camera-sensor-mtp.dtsi"
 
 / {
 	bt_qca6174 {
@@ -41,9 +40,12 @@
 
 	qcom,nonremovable;
 
+	htc,slot-type = <0>;
+	htc,clk-rates = <400000 20000000 25000000 50000000 100000000 192000000 400000000>;
 	qcom,clk-rates = <400000 20000000 25000000 50000000 100000000 192000000 384000000>;
 	qcom,bus-speed-mode = "HS400_1p8v", "HS200_1p8v", "DDR_1p8v";
 	status = "ok";
+	htc,bkops_support;
 };
 
 &sdhc_2 {
@@ -62,14 +64,16 @@
 	interrupt-map-mask = <0xffffffff>;
 	interrupt-map = <0 &intc 0 125 0
 			1 &intc 0 221 0
-			2 &pm8994_gpios 8 0x3>;
+			2 &pm8994_gpios 5 0x3>;
 	interrupt-names = "hc_irq", "pwr_irq", "status_irq";
-	cd-gpios = <&pm8994_gpios 8 0x1>;
+	cd-gpios = <&pm8994_gpios 5 0x1>;
 
-	pinctrl-names = "active", "sleep";
+	pinctrl-names = "active", "active_sdr104", "sleep";
 	pinctrl-0 = <&sdc2_clk_on &sdc2_cmd_on &sdc2_data_on>;
-	pinctrl-1 = <&sdc2_clk_off &sdc2_cmd_off &sdc2_data_off>;
+	pinctrl-1 = <&sdc2_clk_on_sdr104 &sdc2_cmd_on &sdc2_data_on>;
+	pinctrl-2 = <&sdc2_clk_off &sdc2_cmd_off &sdc2_data_off>;
 
+	htc,slot-type = <1>;
 	qcom,clk-rates = <400000 20000000 25000000 50000000 100000000 200000000>;
 	qcom,bus-speed-mode = "SDR12", "SDR25", "SDR50", "DDR50", "SDR104";
 	status = "ok";
@@ -104,6 +108,17 @@
 		qcom,scale-function = <0>;
 		qcom,hw-settle-time = <0>;
 		qcom,fast-avg-setup = <0>;
+	};
+
+	chan@13 {
+		label = "hs_remote_sensor_mpp4";
+		reg = <0x13>;
+		qcom,decimation = <0>;			//512 sampling rate
+		qcom,pre-div-channel-scaling = <0>;	//1:1 scaling
+		qcom,calibration-type = "absolute";	//Use 625mV & 1.25V reference voltage
+		qcom,scale-function = <0>;		//convert raw adc code to voltage
+		qcom,hw-settle-time = <2>;		//200us
+		qcom,fast-avg-setup = <0>;		//with only 1 average measurement
 	};
 
 	chan@73 {
@@ -158,6 +173,17 @@
 		qcom,calibration-type = "ratiometric";
 		qcom,scale-function = <2>;
 		qcom,hw-settle-time = <2>;
+		qcom,fast-avg-setup = <0>;
+	};
+
+	chan@7c {
+		label = "xo_therm";
+		reg = <0x7c>;
+		qcom,decimation = <0>;
+		qcom,pre-div-channel-scaling = <0>;
+		qcom,calibration-type = "ratiometric";
+		qcom,scale-function = <2>;
+		qcom,hw-settle-time = <5>;
 		qcom,fast-avg-setup = <0>;
 	};
 };
@@ -252,6 +278,28 @@
 		qcom,fast-avg-setup = <0>;
 	};
 
+	chan@10 {
+		label = "usb_id_mpp1_ch16";
+		reg = <0x10>;
+		qcom,decimation = <0>;
+		qcom,pre-div-channel-scaling = <0>;
+		qcom,calibration-type = "ratiometric";
+		qcom,scale-function = <0>;
+		qcom,hw-settle-time = <2>;
+		qcom,fast-avg-setup = <0>;
+	};
+
+	chan@20 {
+		label = "usb_id_mpp1";
+		reg = <0x20>;
+		qcom,decimation = <0>;
+		qcom,pre-div-channel-scaling = <1>;
+		qcom,calibration-type = "ratiometric";
+		qcom,scale-function = <0>;
+		qcom,hw-settle-time = <2>;
+		qcom,fast-avg-setup = <0>;
+	};
+
 	chan@43 {
 		label = "usb_dp";
 		reg = <0x43>;
@@ -274,6 +322,10 @@
 		qcom,fast-avg-setup = <0>;
 	};
 };
+
+// htc display ++
+/* Mark QCT mtp dsi panel related of setting */
+/*
 
 #include "dsi-panel-sharp-dualmipi0-wqxga-video.dtsi"
 #include "dsi-panel-sharp-dualmipi1-wqxga-video.dtsi"
@@ -346,6 +398,9 @@
 	qcom,mdss-dsi-min-refresh-rate = <30>;
 };
 
+*/
+// htc display --
+
 &pmx_hdmi_cec {
 	qcom,num-grp-pins = <1>;
 	qcom,pins = <&gp 31>;
@@ -366,109 +421,63 @@
 				"hdmi_cec_active", "hdmi_active",
 				"hdmi_sleep";
 	pinctrl-0 = <&mdss_hdmi_hpd_active &mdss_hdmi_ddc_suspend
-						&mdss_hdmi_cec_suspend>;
+						>;
 	pinctrl-1 = <&mdss_hdmi_hpd_active &mdss_hdmi_ddc_active
-						&mdss_hdmi_cec_suspend>;
-	pinctrl-2 = <&mdss_hdmi_hpd_active &mdss_hdmi_cec_active
+						>;
+	pinctrl-2 = <&mdss_hdmi_hpd_active
 						&mdss_hdmi_ddc_suspend>;
 	pinctrl-3 = <&mdss_hdmi_hpd_active &mdss_hdmi_ddc_active
-						&mdss_hdmi_cec_active>;
+						>;
 	pinctrl-4 = <&mdss_hdmi_hpd_suspend &mdss_hdmi_ddc_suspend
-						&mdss_hdmi_cec_suspend>;
+						>;
 };
 
 &soc {
 	i2c@f9924000 {
-		synaptics@20 {
-			compatible = "synaptics,dsx";
-			reg = <0x20>;
-			interrupt-parent = <&msm_gpio>;
-			interrupts = <61 0x2008>;
-			vdd-supply = <&pm8994_l14>;
-			avdd-supply = <&pm8994_l22>;
-			pinctrl-names = "pmx_ts_active", "pmx_ts_suspend";
-			pinctrl-0 = <&ts_active>;
-			pinctrl-1 = <&ts_suspend>;
-			synaptics,display-coords = <0 0 1599 2559>;
-			synaptics,panel-coords = <0 0 1599 2703>;
-			synaptics,reset-gpio = <&msm_gpio 60 0x00>;
-			synaptics,irq-gpio = <&msm_gpio 61 0x2008>;
-			synaptics,disable-gpios;
-			/* Underlying clocks used by secure touch */
-			clock-names = "iface_clk", "core_clk";
-			clocks = <&clock_gcc clk_gcc_blsp1_ahb_clk>,
-				 <&clock_gcc clk_gcc_blsp1_qup2_i2c_apps_clk>;
-		};
-	};
-
-	gen-vkeys {
-		compatible = "qcom,gen-vkeys";
-		label = "synaptics_dsx";
-		qcom,disp-maxx = <1599>;
-		qcom,disp-maxy = <2559>;
-		qcom,panel-maxx = <1599>;
-		qcom,panel-maxy = <2703>;
-		qcom,key-codes = <158 139 102 217>;
-	};
-
-	i2c@f9928000 { /* BLSP1 QUP6 */
 		status = "ok";
-		nfc-nci@e {
-			compatible = "qcom,nfc-nci";
-			reg = <0x0e>;
-			qcom,irq-gpio = <&msm_gpio 29 0x00>;
-			qcom,dis-gpio = <&msm_gpio 30 0x00>;
-			qcom,clk-src = "BBCLK2";
-			interrupt-parent = <&msm_gpio>;
-			interrupts = <29 0>;
-			interrupt-names = "nfc_irq";
-			pinctrl-names = "nfc_active","nfc_suspend";
-			pinctrl-0 = <&nfc_int_active &nfc_disable_active>;
-			pinctrl-1 = <&nfc_int_suspend &nfc_disable_suspend>;
-			qcom,clk-gpio = <&pm8994_gpios 10 0>;
-			qcom,pwr-req-gpio = <&pm8994_gpios 7 0>;
-			clocks = <&clock_rpm clk_bb_clk2_pin>;
-			clock-names = "ref_clk";
-		};
 	};
 
-	gpio_keys {
-		compatible = "gpio-keys";
-		input-name = "gpio-keys";
-
-		vol_up {
-			label = "volume_up";
-			gpios = <&pm8994_gpios 3 0x1>;
-			linux,input-type = <1>;
-			linux,code = <115>;
-			gpio-key,wakeup;
-			debounce-interval = <15>;
+	i2c@f9927000 {
+		nxp_pn544_nfc@28 {
+			compatible = "nxp,pn544-nfc";
+			reg = <0x28>;
+			interrupt-parent = <&msm_gpio>;
+			interrupts = <29 0x4>;
+			nxp,ven-gpio = <&msm_gpio 30 0x00>;
+			nxp,irq-gpio = <&msm_gpio 29 0x00>;
+			nxp,fwdl-gpio = <&msm_gpio 38 0x00>;
+			nxp,ven_isinvert = <0>;
+			nxp,isalive = <1>;
 		};
 
-		cam_snapshot {
-			label = "cam_snapshot";
-			gpios = <&pm8994_gpios 4 0x1>;
-			linux,input-type = <1>;
-			linux,code = <766>;
-			gpio-key,wakeup;
-			debounce-interval = <15>;
+                tps_65132@3E {
+                        compatible = "disp-tps-65132";
+                        reg = <0x3E>;
+                };
+	};
+
+	i2c@f9928000 { 	/*BLSP6, namely BLSP2 QUP0 */
+		status = "ok";
+		mhl_sii8620: sii8620@72 {
+			compatible = "mhl-sii8620";
+			reg = <0x72>;
+			interrupt-parent = <&msm_gpio>;
+			interrupts = <26 0x8>;
+			mhl-intr-gpio = <&msm_gpio 26 0>;
+			mhl-rst-gpio = <&msm_gpio 25 0>;
+			mhl-fw-wake-gpio = <&msm_gpio 93 0>;
+			mhl-dpdn-gpio = <&msm_gpio 57 0>;
+			mhl-dpdn-gpio_ = <&msm_gpio 57 0>;
+			avcc_1v-supply = <&pm8994_l25>;
+			vbus_dwc3-supply = <&pmi8994_otg_supply>;
+			qcom,hdmi-tx-map = <&mdss_hdmi_tx>;
 		};
-
-		cam_focus {
-			label = "cam_focus";
-			gpios = <&pm8994_gpios 5 0x1>;
-			linux,input-type = <1>;
-			linux,code = <528>;
-			gpio-key,wakeup;
-			debounce-interval = <15>;
-		};
-
-
 	};
 
 	sound {
 		qcom,model = "msm8994-tomtom-mtp-snd-card";
-
+//htc audio ++
+/*
 		qcom,audio-routing =
 			"AIF4 VI", "MCLK",
 			"RX_BIAS", "MCLK",
@@ -502,9 +511,11 @@
 			"MIC BIAS4 External", "Digital Mic6";
 
 		qcom,us-euro-gpios = <&pm8994_mpps 2 0>;
-		qcom,cdc-micbias2-headset-only;
 		qcom,mbhc-audio-jack-type = "6-pole-jack";
 		qcom,ext-ult-spk-amp-gpio = <&pmi8994_gpios 1 0>;
+*/
+//htc audio --
+		qcom,cdc-micbias2-headset-only;
 		qcom,hdmi-audio-rx;
 		asoc-codec = <&stub_codec>, <&hdmi_audio>;
 		asoc-codec-names = "msm-stub-codec.1", "msm-hdmi-audio-codec-rx";
@@ -521,10 +532,14 @@
 	};
 
 	gpio@c300 { /* GPIO 4 */
-		qcom,mode = <0>;
-		qcom,pull = <0>;
-		qcom,vin-sel = <2>;
-		qcom,src-sel = <0>;
+		/* HTC AUD_1V8_HPH_EN for headset amp power */
+		qcom,mode = <1>;		/* Digital Output */
+		qcom,pull = <5>;		/* No Pull */
+		qcom,invert = <0>;              /* Output Low */
+		qcom,output-type = <0>;         /* CMOS logic */
+		qcom,vin-sel = <2>;		/* Logical 1 voltage value 1.8v */
+		qcom,src-sel = <0>;		/* Constant */
+		qcom,master-en = <1>;           /* Enable GPIO */
 		status = "okay";
 	};
 
@@ -546,19 +561,10 @@
 		status = "okay";
 	};
 
-	gpio@c900 { /* GPIO 10 */
-		/* NFC clk request */
-		qcom,mode = <0>;                /* QPNP_PIN_MODE_DIG_IN */
-		qcom,pull = <5>;                /* QPNP_PIN_PULL_NO */
-		qcom,vin-sel = <2>;             /* QPNP_PIN_VIN2 */
-		qcom,src-sel = <2>;             /* QPNP_PIN_SEL_FUNC_1 */
-		qcom,master-en = <1>;
-		status = "okay";
-	};
-
 	gpio@c700 { /* GPIO 8 */
-		qcom,mode = <0>;                /* Digital in */
-		qcom,pull = <0>;                /* PULL up 30uA */
+		/* HTC AUD_RECEIVER_SEL */
+		qcom,mode = <1>;                /* Digital Out */
+		qcom,pull = <5>;                /* No Pull */
 		qcom,output-type = <0>;         /* CMOS logic */
 		qcom,invert = <0>;              /* Output high */
 		qcom,vin-sel = <2>;             /* Logical 1 voltage value 1.8v */
@@ -569,28 +575,49 @@
 	};
 
 	gpio@c800 { /* GPIO 9 */
+		/* HTC AUD_RT5506_EN for headset amp enable */
 		qcom,mode = <1>;		/* Digital output */
+		qcom,pull = <5>;		/* No Pull */
 		qcom,output-type = <0>;		/* CMOS logic */
 		qcom,invert = <1>;		/* Output high */
-		qcom,vin-sel = <0>;		/* VPH_PWR */
+		qcom,vin-sel = <2>;		/* VPH_PWR */
 		qcom,src-sel = <0>;		/* Constant */
 		qcom,out-strength = <1>;	/* High drive strength */
-		qcom,master-en = <1>;		/* Enable GPIO */
+		qcom,master-en = <0>;		/* Disable GPIO */
+		status = "okay";
+	};
+
+	gpio@c900 { /* GPIO 10 */
+		/* HTC AUD: reserved, AUD_AK4375_PDN */
+		qcom,mode = <0>;                /* Digital input */
+		qcom,pull = <4>;                /* Pull down */
+		qcom,vin-sel = <2>;             /* VREG_S4 1.8V */
+		qcom,src-sel = <0>;
+		qcom,master-en = <0>;           /* Disable GPIO */
 		status = "okay";
 	};
 
 	gpio@cd00 { /* GPIO 14 */
+		/* HTC AUD: AUD_RECEIVER_EN */
+		qcom,mode = <1>;                /* Digital Output */
+		qcom,pull = <5>;                /* No Pull */
+		qcom,output-type = <0>;         /* CMOS logic */
+		qcom,vin-sel = <2>;             /* VREG_S4 1.8V */
+		qcom,src-sel = <0>;             /* Constant */
+		qcom,out-strength = <1>;        /* High drive strength */
+		qcom,master-en = <1>;           /* Enable GPIO */
 		status = "okay";
 	};
 
 	gpio@ce00 { /* GPIO 15 */
-		qcom,mode = <1>;
-		qcom,output-type = <0>;
-		qcom,pull = <5>;
-		qcom,vin-sel = <2>;
-		qcom,out-strength = <1>;
-		qcom,src-sel = <2>;
-		qcom,master-en = <1>;
+		/* HTC AUD: AUD_PMIC_MCLK */
+		qcom,mode = <1>;                /* Digital Output */
+		qcom,pull = <5>;                /* No Pull */
+		qcom,output-type = <0>;         /* CMOS logic */
+		qcom,vin-sel = <2>;             /* VREG_S4 1.8V */
+		qcom,src-sel = <2>;             /* Constant */
+		qcom,out-strength = <1>;        /* High drive strength */
+		qcom,master-en = <1>;           /* Enable GPIO */
 		status = "okay";
 	};
 
@@ -611,8 +638,23 @@
 		qcom,vin-sel = <2>;      /* VIN2 */
 		qcom,src-sel = <0>;      /* GPIO */
 		qcom,invert = <0>;       /* Invert */
-		qcom,master-en = <1>;    /* Enable GPIO */
+		qcom,master-en = <0>;    /* Enable GPIO */
 		status = "okay";
+	};
+
+	gpio@c000 { /* GPIO 1 */
+		qcom,mode = <0>;                /* QPNP_PIN_MODE_DIG_IN */
+		qcom,pull = <5>;                /* QPNP_PIN_NO_PULL*/
+		qcom,vin-sel = <2>;             /* QPNP_PIN_VIN2 */
+		qcom,src-sel = <0>;             /* GPIO */
+		qcom,master-en = <0>;
+	};
+
+	gpio@d000 { /* GPIO 17 */
+		qcom,mode = <0>;
+		qcom,pull = <0>;
+		qcom,vin-sel = <2>;
+		qcom,src-sel = <0>;
 	};
 };
 
@@ -622,18 +664,25 @@
 		qcom,output-type = <0>;		/* CMOS logic */
 		qcom,vin-sel = <2>;		/* S4 1.8V */
 		qcom,src-sel = <0>;		/* Constant */
-		qcom,master-en = <1>;		/* Enable GPIO */
+		qcom,master-en = <0>;		/* Disable GPIO */
 		status = "okay";
 	};
 
 	mpp@a300 { /* MPP 4 */
-		/* HDMI_5v_vreg regulator enable */
+		/* Headset Remote Sensor used*/
+		qcom,mode      = <4>;  //QPNP_PIN_MODE_AIN
+		qcom,src-sel   = <0>;  //QPNP_PIN_SEL_FUNC_CONSTANT
+		qcom,ain-route = <3>;  //QPNP_PIN_AIN_AMUX_CH
+		qcom,master-en = <1>;  //ENABLE FEATURE
+		qcom,invert = <1>;
+		status = "okay";
+	};
+
+	mpp@a700 { /* MPP 8 */
 		qcom,mode = <1>;		/* Digital output */
 		qcom,output-type = <0>;		/* CMOS logic */
-		qcom,vin-sel = <2>;		/* S4 1.8V */
-		qcom,src-sel = <0>;		/* Constant */
+		qcom,src-sel = <0>;		/* Consant */
 		qcom,master-en = <1>;		/* Enable GPIO */
-		qcom,invert = <0>;
 		status = "okay";
 	};
 };
@@ -666,21 +715,91 @@
 		status = "okay";
 	};
 
-	gpio@c400 {	/* GPIO 5  OTG SWITCH EN */
+	gpio@c200 {	/* GPIO 3, NC, reserved for AUD_ALC5512_MCLK_EN */
+		qcom,mode = <0>;	/* DIGITAL IN */
+		qcom,pull = <4>;	/* Pull Down */
+		qcom,vin-sel = <2>;	/* 1.8 */
+		qcom,src-sel = <0>;	/* CONSTANT */
+		qcom,master-en = <0>;	/* ENABLE GPIO */
+		status = "okay";
+	};
+
+	gpio@c300 {	/* GPIO 4  AUD_HSMIC_2V85_EN */
 		qcom,mode = <1>;	/* DIGITAL OUT */
 		qcom,pull = <5>;	/* No Pull */
 		qcom,vin-sel = <2>;	/* 1.8 */
-		qcom,src-sel = <0>;	/* GPIO */
+		qcom,src-sel = <0>;	/* CONSTANT */
 		qcom,master-en = <1>;	/* ENABLE GPIO */
 		status = "okay";
+	};
+
+	gpio@c400 {	/* GPIO 5  AUD_HPH_1V8_EN */
+		qcom,mode = <1>;	/* DIGITAL OUT */
+		qcom,pull = <5>;	/* No Pull */
+		qcom,vin-sel = <2>;	/* 1.8 */
+		qcom,src-sel = <0>;	/* CONSTANT */
+		qcom,master-en = <1>;	/* ENABLE GPIO */
+	};
+
+	gpio@c500 { /* GPIO 6 */
+		qcom,mode = <0>;                /* QPNP_PIN_MODE_DIG_IN */
+		qcom,pull = <5>;                /* QPNP_PIN_NO_PULL*/
+		qcom,vin-sel = <2>;             /* QPNP_PIN_VIN2 */
+		qcom,src-sel = <0>;             /* GPIO */
+		qcom,master-en = <1>;
+	};
+
+	gpio@c600 { /* GPIO 7 */
+		/* HTC AUDIO reserved */
+		qcom,mode = <0>;                /* Digital Input */
+		qcom,pull = <4>;                /* Pull Down*/
+		qcom,vin-sel = <2>;             /* 1.8 */
+		qcom,src-sel = <0>;             /* CONSTANT */
+		qcom,master-en = <0>;           /* Disable GPIO */
+	};
+
+	gpio@c700 { /* GPIO 8 */
+		/* HTC AUDIO reserved */
+		qcom,mode = <0>;                /* Digital Input */
+		qcom,pull = <4>;                /* Pull Down*/
+		qcom,vin-sel = <2>;             /* 1.8 */
+		qcom,src-sel = <0>;             /* CONSTANT */
+		qcom,master-en = <0>;           /* Disable GPIO */
+	};
+
+	gpio@c800 { /* GPIO 9 */
+		/* HTC AUDIO reserved */
+		qcom,mode = <0>;                /* Digital Input */
+		qcom,pull = <4>;                /* Pull Down*/
+		qcom,vin-sel = <2>;             /* 1.8 */
+		qcom,src-sel = <0>;             /* CONSTANT */
+		qcom,master-en = <0>;           /* Disable GPIO */
+	};
+
+	gpio@c900 { /* GPIO 10 */
+		/* HTC AUDIO reserved */
+		qcom,mode = <0>;                /* Digital Input */
+		qcom,pull = <4>;                /* Pull Down*/
+		qcom,vin-sel = <2>;             /* 1.8 */
+		qcom,src-sel = <0>;             /* CONSTANT */
+		qcom,master-en = <0>;           /* Disable GPIO */
 	};
 };
 
 &pmi8994_mpps {
+	mpp@a000 { /* MPP 1 */
+		qcom,mode = <4>; /* AIN input */
+		qcom,invert = <1>; /* Enable MPP */
+		qcom,ain-route = <0>; /*AMUX*/
+		qcom,master-en = <1>;
+		qcom,src-sel = <0>; /* Funcion constant */
+		status = "okay";
+	};
+
 	mpp@a300 { /* MPP 4 */
 		/* WLED FET */
 		qcom,mode = <1>;	/* DIGITAL OUT */
-		qcom,vin-sel = <0>;	/* VIN0 */
+		qcom,vin-sel = <2>;	/* VIN0 */
 		qcom,master-en = <1>;
 		status = "okay";
 	};
@@ -744,9 +863,9 @@
 		pinctrl-names = "pmx_fm_active","pmx_fm_suspend";
 		pinctrl-0 = <&fm_int_active &fm_status_int_active &fm_rst_active>;
 		pinctrl-1 = <&fm_int_suspend &fm_status_int_suspend &fm_rst_suspend>;
-		silabs,reset-gpio = <&msm_gpio 62 0>;
-		silabs,int-gpio = <&msm_gpio 9 0>;
-		silabs,status-gpio = <&msm_gpio 11 0>;
+		//silabs,reset-gpio = <&msm_gpio 62 0>;
+		//silabs,int-gpio = <&msm_gpio 9 0>;
+		//silabs,status-gpio = <&msm_gpio 11 0>;
 		#address-cells = <0>;
 		interrupts = <0 1>;
 		#interrupt-cells = <1>;
@@ -762,7 +881,9 @@
 /{
 	mtp_batterydata: qcom,battery-data {
 		qcom,batt-id-range-pct = <15>;
-		#include "batterydata-itech-3000mah.dtsi"
+		#include "batterydata-hima-id1.dtsi"
+		#include "batterydata-hima-id2.dtsi"
+		#include "batterydata-hima-unknown.dtsi"
 	};
 };
 
@@ -773,6 +894,7 @@
 
 &pmi8994_haptics {
 	status = "okay";
+	qcom,vmax-mv = <3100>;
 };
 
 &pmi8994_charger {
@@ -803,13 +925,4 @@
 		qcom,float-voltage-mv = <4400>;
 		qcom,recharge-thresh-mv = <100>;
 	};
-};
-
-&usb_ehci {
-	status = "ok";
-	qcom,usb2-enable-uicc;
-};
-
-&qusb_phy {
-	status = "ok";
 };

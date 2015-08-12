@@ -32,7 +32,6 @@
 #include <linux/platform_device.h>
 #include <linux/thermal.h>
 
-/* QPNP VADC register definition */
 #define QPNP_VADC_REVISION1				0x0
 #define QPNP_VADC_REVISION2				0x1
 #define QPNP_VADC_REVISION3				0x2
@@ -1368,25 +1367,22 @@ static int32_t qpnp_vadc_wait_for_req_sts_check(struct qpnp_vadc_chip *vadc)
 	u8 status1 = 0;
 	int rc, count = 0;
 
-	/* Re-enable the peripheral */
+	
 	rc = qpnp_vadc_enable(vadc, true);
 	if (rc) {
 		pr_err("vadc re-enable peripheral failed with %d\n", rc);
 		return rc;
 	}
 
-	/* The VADC_TM bank needs to be disabled for new conversion request */
+	
 	rc = qpnp_vadc_read_reg(vadc, QPNP_VADC_STATUS1, &status1);
 	if (rc) {
 		pr_err("vadc read status1 failed with %d\n", rc);
 		return rc;
 	}
 
-	/* Disable the bank if a conversion is occuring */
+	
 	while ((status1 & QPNP_VADC_STATUS1_REQ_STS) && (count < QPNP_RETRY)) {
-		/* Wait time is based on the optimum sampling rate
-		 * and adding enough time buffer to account for ADC conversions
-		 * occuring on different peripheral banks */
 		usleep_range(QPNP_MIN_TIME, QPNP_MAX_TIME);
 		rc = qpnp_vadc_read_reg(vadc, QPNP_VADC_STATUS1, &status1);
 		if (rc < 0) {
@@ -2133,8 +2129,61 @@ hwmon_err_sens:
 	return rc;
 }
 
+#ifdef CONFIG_HTC_POWER_DEBUG
+int vadc_channel_num = 0;
+
+static int htc_vadc_set(void *data, u64 val)
+{
+
+       if (val < 0) {
+               pr_err("invalid value\n");
+               return -1;
+       }
+       else
+               vadc_channel_num = val;
+
+       return 0;
+
+}
+static int htc_vadc_get(void *data, u64 *val)
+{
+       struct qpnp_vadc_chip *vadc = data;
+       struct qpnp_vadc_result read_result;
+       int rc = 0;
+
+       rc = qpnp_vadc_read(vadc, vadc_channel_num, &read_result);
+
+       if (rc) {
+               pr_err("VADC read error with %d\n", rc);
+               return 0;
+       }
+
+       *val = read_result.physical;
+
+       return 0;
+}
+
+DEFINE_SIMPLE_ATTRIBUTE(qpnp_vadc_ops, htc_vadc_get,
+                       htc_vadc_set, "%lld\n");
+
+int htc_read_vadc_debugfs_init(struct qpnp_vadc_chip *vadc)
+{
+       int err = 0;
+       static struct dentry *debugfs_vadc_base;
+
+       debugfs_vadc_base = debugfs_create_dir("htc_read_vadc", NULL);
+       if (!debugfs_vadc_base)
+               return -ENOMEM;
+
+       if (!debugfs_create_file("read_vadc", S_IRUGO, debugfs_vadc_base,
+                                vadc, &qpnp_vadc_ops))
+               return -ENOMEM;
+
+       return err;
+}
+#endif
 static int qpnp_vadc_get_temp(struct thermal_zone_device *thermal,
-			     unsigned long *temp)
+			     long *temp)
 {
 	struct qpnp_vadc_thermal_data *vadc_therm = thermal->devdata;
 	struct qpnp_vadc_chip *vadc = vadc_therm->vadc_dev;
@@ -2365,6 +2414,9 @@ static int qpnp_vadc_probe(struct spmi_device *spmi)
 	vadc->vadc_iadc_sync_lock = false;
 	dev_set_drvdata(&spmi->dev, vadc);
 	list_add(&vadc->list, &qpnp_vadc_device_list);
+#ifdef CONFIG_HTC_POWER_DEBUG
+        htc_read_vadc_debugfs_init(vadc);
+#endif
 
 	return 0;
 

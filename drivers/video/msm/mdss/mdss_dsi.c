@@ -23,6 +23,7 @@
 #include <linux/regulator/consumer.h>
 #include <linux/leds-qpnp-wled.h>
 #include <linux/clk.h>
+#include <linux/debug_display.h>
 
 #include "mdss.h"
 #include "mdss_panel.h"
@@ -31,6 +32,7 @@
 
 #define XO_CLK_RATE	19200000
 
+struct mdss_dsi_pwrctrl pwrctrl_pdata;
 static struct dsi_drv_cm_data shared_ctrl_data;
 
 static int mdss_dsi_pinctrl_set_state(struct mdss_dsi_ctrl_pdata *ctrl_pdata,
@@ -135,6 +137,12 @@ static int mdss_dsi_regulator_init(struct platform_device *pdev)
 		return -EINVAL;
 	}
 
+	
+	if (pwrctrl_pdata.dsi_regulator_init)
+		pwrctrl_pdata.dsi_regulator_init(pdev);
+	else
+		PR_DISP_INFO("%s: not use HTC pwrctrl hook\n", __func__);
+
 	for (i = 0; !rc && (i < DSI_MAX_PM); i++) {
 		rc = msm_dss_config_vreg(&pdev->dev,
 			ctrl_pdata->power_data[i].vreg_config,
@@ -164,10 +172,22 @@ static int mdss_dsi_panel_power_off(struct mdss_panel_data *pdata)
 	ctrl_pdata = container_of(pdata, struct mdss_dsi_ctrl_pdata,
 				panel_data);
 
+	
+	if (ctrl_pdata->ndx) {
+		pr_debug("%s: Skip DSI1 power control\n", __func__);
+		return 0;
+	}
+
 	ret = mdss_dsi_panel_reset(pdata, 0);
 	if (ret) {
 		pr_warn("%s: Panel reset failed. rc=%d\n", __func__, ret);
 		ret = 0;
+	}
+
+	if (pwrctrl_pdata.dsi_power_off) {
+		ret = pwrctrl_pdata.dsi_power_off(pdata);
+		if (ret)
+			PR_DISP_ERR("power off sequence with Error");
 	}
 
 	if (mdss_dsi_pinctrl_set_state(ctrl_pdata, false))
@@ -178,15 +198,11 @@ static int mdss_dsi_panel_power_off(struct mdss_panel_data *pdata)
 		       __func__, ctrl_pdata->ndx);
 		if (mdss_dsi_labibb_vreg_ctrl(ctrl_pdata, false))
 			pr_err("Unable to disable bias vreg\n");
-		/* Add delay recommended by panel specs */
+		
 		udelay(2000);
 	}
 
 	for (i = DSI_MAX_PM - 1; i >= 0; i--) {
-		/*
-		 * Core power module will be disabled when the
-		 * clocks are disabled
-		 */
 		if (DSI_CORE_PM == i)
 			continue;
 		ret = msm_dss_enable_vreg(
@@ -206,6 +222,7 @@ static int mdss_dsi_panel_power_on(struct mdss_panel_data *pdata)
 	int ret = 0;
 	struct mdss_dsi_ctrl_pdata *ctrl_pdata = NULL;
 	int i = 0;
+	int rc = 0;
 
 	if (pdata == NULL) {
 		pr_err("%s: Invalid input data\n", __func__);
@@ -215,11 +232,13 @@ static int mdss_dsi_panel_power_on(struct mdss_panel_data *pdata)
 	ctrl_pdata = container_of(pdata, struct mdss_dsi_ctrl_pdata,
 				panel_data);
 
+	
+	if (ctrl_pdata->ndx) {
+		pr_debug("%s: Skip DSI1 power control\n", __func__);
+		return 0;
+	}
+
 	for (i = 0; i < DSI_MAX_PM; i++) {
-		/*
-		 * Core power module will be enabled when the
-		 * clocks are enabled
-		 */
 		if (DSI_CORE_PM == i)
 			continue;
 		ret = msm_dss_enable_vreg(
@@ -236,20 +255,14 @@ static int mdss_dsi_panel_power_on(struct mdss_panel_data *pdata)
 		       __func__, ctrl_pdata->ndx);
 		if (mdss_dsi_labibb_vreg_ctrl(ctrl_pdata, true))
 			pr_err("Unable to configure bias vreg\n");
-		/* Add delay recommended by panel specs */
+		
 		udelay(2000);
 	}
-
 	i--;
 
-	/*
-	 * If continuous splash screen feature is enabled, then we need to
-	 * request all the GPIOs that have already been configured in the
-	 * bootloader. This needs to be done irresepective of whether
-	 * the lp11_init flag is set or not.
-	 */
-	if (pdata->panel_info.cont_splash_enabled ||
-		!pdata->panel_info.mipi.lp11_init) {
+	if (!pdata->panel_info.skip_first_pinctl &&
+		(pdata->panel_info.cont_splash_enabled ||
+		!pdata->panel_info.mipi.lp11_init)) {
 		if (mdss_dsi_pinctrl_set_state(ctrl_pdata, true))
 			pr_debug("reset enable: pinctrl not enabled\n");
 
@@ -258,6 +271,17 @@ static int mdss_dsi_panel_power_on(struct mdss_panel_data *pdata)
 			pr_err("%s: Panel reset failed. rc=%d\n",
 					__func__, ret);
 	}
+
+	
+	if (pwrctrl_pdata.dsi_power_on) {
+		rc = pwrctrl_pdata.dsi_power_on(pdata);
+		if (rc)
+			PR_DISP_ERR("turn on power sequence with Error\n")
+	} else
+		PR_DISP_INFO("%s: not use HTC pwrctrl hook\n", __func__);
+
+	if (pdata->panel_info.skip_first_pinctl)
+		pdata->panel_info.skip_first_pinctl = false;
 
 error:
 	if (ret) {
@@ -295,10 +319,6 @@ static int mdss_dsi_panel_power_ctrl(struct mdss_panel_data *pdata,
 		return 0;
 	}
 
-	/*
-	 * If a dynamic mode switch is pending, the regulators should not
-	 * be turned off or on.
-	 */
 	if (pdata->panel_info.dynamic_switch_pending)
 		return 0;
 
@@ -585,6 +605,9 @@ panel_power_ctrl:
 		goto end;
 	}
 
+	if (pdata->panel_info.first_power_on == 1)
+		pdata->panel_info.first_power_on = 0;
+
 	if (panel_info->dynamic_fps
 	    && (panel_info->dfps_update == DFPS_SUSPEND_RESUME_MODE)
 	    && (panel_info->new_fps != panel_info->mipi.frame_rate))
@@ -713,12 +736,6 @@ int mdss_dsi_on(struct mdss_panel_data *pdata)
 	mipi = &pdata->panel_info.mipi;
 
 	if (mdss_dsi_is_panel_on_interactive(pdata)) {
-		/*
-		 * all interrupts are disabled at LK
-		 * for cont_splash case, intr mask bits need
-		 * to be restored to allow dcs command be
-		 * sent to panel
-		 */
 		mdss_dsi_restore_intr_mask(ctrl_pdata);
 		pr_debug("%s: panel already on\n", __func__);
 		goto end;
@@ -735,34 +752,18 @@ int mdss_dsi_on(struct mdss_panel_data *pdata)
 		goto end;
 	}
 
-	/*
-	 * Enable DSI bus clocks prior to resetting and initializing DSI
-	 * Phy. Phy and ctrl setup need to be done before enabling the link
-	 * clocks.
-	 */
 	mdss_dsi_clk_ctrl(ctrl_pdata, DSI_BUS_CLKS, 1);
 
-	/*
-	 * If ULPS during suspend feature is enabled, then DSI PHY was
-	 * left on during suspend. In this case, we do not need to reset/init
-	 * PHY. This would have already been done when the BUS clocks are
-	 * turned on. However, if cont splash is disabled, the first time DSI
-	 * is powered on, phy init needs to be done unconditionally.
-	 */
 	if (!pdata->panel_info.ulps_suspend_enabled || !ctrl_pdata->ulps) {
 		mdss_dsi_phy_sw_reset(ctrl_pdata);
 		mdss_dsi_phy_init(ctrl_pdata);
 		mdss_dsi_ctrl_setup(ctrl_pdata);
 	}
 
-	/* DSI link clocks need to be on prior to ctrl sw reset */
+	
 	mdss_dsi_clk_ctrl(ctrl_pdata, DSI_LINK_CLKS, 1);
 	mdss_dsi_sw_reset(ctrl_pdata, true);
 
-	/*
-	 * Issue hardware reset line after enabling the DSI clocks and data
-	 * data lanes for LP11 init
-	 */
 	if (mipi->lp11_init) {
 		if (mdss_dsi_pinctrl_set_state(ctrl_pdata, true))
 			pr_debug("reset enable: pinctrl not enabled\n");
@@ -1233,18 +1234,13 @@ static int mdss_dsi_dfps_config(struct mdss_panel_data *pdata, int new_fps)
 		return -EINVAL;
 	}
 
-	/*
-	 * at split display case, DFPS registers were already programmed
-	 * while programming the left ctrl(DSI0). Ignore right ctrl (DSI1)
-	 * reguest.
-	 */
 	pinfo = &pdata->panel_info;
 	if (pinfo->is_split_display) {
 		if (mdss_dsi_is_right_ctrl(ctrl_pdata)) {
 			pr_debug("%s DFPS already updated.\n", __func__);
 			return rc;
 		}
-		/* left ctrl to get right ctrl */
+		
 		sctrl_pdata = mdss_dsi_get_other_ctrl(ctrl_pdata);
 	}
 
@@ -1518,26 +1514,12 @@ static struct device_node *mdss_dsi_pref_prim_panel(
 	return dsi_pan_node;
 }
 
-/**
- * mdss_dsi_find_panel_of_node(): find device node of dsi panel
- * @pdev: platform_device of the dsi ctrl node
- * @panel_cfg: string containing intf specific config data
- *
- * Function finds the panel device node using the interface
- * specific configuration data. This configuration data is
- * could be derived from the result of bootloader's GCDB
- * panel detection mechanism. If such config data doesn't
- * exist then this panel returns the default panel configured
- * in the device tree.
- *
- * returns pointer to panel node on success, NULL on error.
- */
 static struct device_node *mdss_dsi_find_panel_of_node(
 		struct platform_device *pdev, char *panel_cfg)
 {
 	int len, i;
 	int ctrl_id = pdev->id - 1;
-	char panel_name[MDSS_MAX_PANEL_LEN];
+	char panel_name[MDSS_MAX_PANEL_LEN] = "";
 	char ctrl_id_stream[3] =  "0:";
 	char *stream = NULL, *pan = NULL;
 	struct device_node *dsi_pan_node = NULL, *mdss_node = NULL;
@@ -1693,22 +1675,17 @@ static int mdss_dsi_ctrl_probe(struct platform_device *pdev)
 		}
 	}
 
-	/*
-	 * Currently, the Bias vreg is controlled by wled driver.
-	 * Once we have support from pmic driver, implement the
-	 * bias vreg control using the existing vreg apis.
-	 */
 	ctrl_pdata->panel_bias_vreg = of_property_read_bool(
 			pdev->dev.of_node, "qcom,dsi-panel-bias-vreg");
 
-	/* DSI panels can be different between controllers */
+	
 	rc = mdss_dsi_get_panel_cfg(panel_cfg, ctrl_pdata);
 	if (!rc)
-		/* dsi panel cfg not present */
+		
 		pr_warn("%s:%d:dsi specific cfg not present\n",
 			__func__, __LINE__);
 
-	/* find panel device node */
+	
 	dsi_pan_node = mdss_dsi_find_panel_of_node(pdev, panel_cfg);
 	if (!dsi_pan_node) {
 		pr_err("%s: can't find panel node %s\n", __func__, panel_cfg);
@@ -2005,10 +1982,6 @@ int dsi_panel_device_register(struct device_node *pan_node,
 	pinfo->panel_max_fps = mdss_panel_get_framerate(pinfo);
 	pinfo->panel_max_vtotal = mdss_panel_get_vtotal(pinfo);
 
-	/*
-	 * If disp_en_gpio has been set previously (disp_en_gpio > 0)
-	 *  while parsing the panel node, then do not override it
-	 */
 	if (ctrl_pdata->disp_en_gpio <= 0) {
 		ctrl_pdata->disp_en_gpio = of_get_named_gpio(
 			ctrl_pdev->dev.of_node,
@@ -2115,12 +2088,6 @@ int dsi_panel_device_register(struct device_node *pan_node,
 
 	ctrl_pdata->ctrl_state = CTRL_STATE_UNKNOWN;
 
-	/*
-	 * If ULPS during suspend is enabled, add an extra vote for the
-	 * DSI CTRL power module. This keeps the regulator always enabled.
-	 * This is needed for the DSI PHY to maintain ULPS state during
-	 * suspend also.
-	 */
 	if (pinfo->ulps_suspend_enabled) {
 		rc = msm_dss_enable_vreg(
 			ctrl_pdata->power_data[DSI_CTRL_PM].vreg_config,
@@ -2202,7 +2169,7 @@ static int __init mdss_dsi_driver_init(void)
 
 	ret = mdss_dsi_register_driver();
 	if (ret) {
-		pr_err("mdss_dsi_register_driver() failed!\n");
+		PR_DISP_ERR("mdss_dsi_register_driver() failed!\n");
 		return ret;
 	}
 

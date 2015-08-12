@@ -27,12 +27,17 @@
 #define SCM_SVC_HDCP			0x11
 #define SCM_SVC_LMH			0x13
 #define SCM_SVC_TZSCHEDULER		0xFC
+#define SCM_SVC_HTC			0xFA
 
 #define SCM_FUSE_READ			0x7
 #define SCM_CMD_HDCP			0x01
 
-/* SCM Features */
 #define SCM_SVC_SEC_CAMERA		0xD
+
+#define TZ_HTC_SVC_GET_SECURITY_LEVEL   0x10
+#define TZ_HTC_SVC_LOG_OPERATOR         0x16
+#define TZ_HTC_SVC_WP_MAGIC_WRITE       0x82
+#define TZ_HTC_SVC_WP_MAGIC_READ        0x83
 
 #define DEFINE_SCM_BUFFER(__n) \
 static char __n[PAGE_SIZE] __aligned(PAGE_SIZE);
@@ -44,6 +49,7 @@ static char __n[PAGE_SIZE] __aligned(PAGE_SIZE);
 #define SCM_SIP_FNID(s, c) (((((s) & 0xFF) << 8) | ((c) & 0xFF)) | 0x02000000)
 #define SCM_QSEEOS_FNID(s, c) (((((s) & 0xFF) << 8) | ((c) & 0xFF)) | \
 			      0x32000000)
+#define SCM_OEM_FNID(s, c) (((((s) & 0xFF) << 8) | ((c) & 0xFF)) | 0x03000000)
 
 #define MAX_SCM_ARGS 10
 #define MAX_SCM_RETS 3
@@ -70,22 +76,12 @@ enum scm_arg_types {
 
 #define SCM_ARGS(...) SCM_ARGS_IMPL(__VA_ARGS__, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)
 
-/**
- * struct scm_desc
- * @arginfo: Metadata describing the arguments in args[]
- * @args: The array of arguments for the secure syscall
- * @ret: The values returned by the secure syscall
- * @extra_arg_buf: The buffer containing extra arguments
-		   (that don't fit in available registers)
- * @x5: The 4rd argument to the secure syscall or physical address of
-	extra_arg_buf
- */
 struct scm_desc {
 	u32 arginfo;
 	u64 args[MAX_SCM_ARGS];
 	u64 ret[MAX_SCM_RETS];
 
-	/* private */
+	
 	void *extra_arg_buf;
 	u64 x5;
 };
@@ -129,6 +125,12 @@ struct scm_hdcp_req {
 	u32 val;
 };
 
+#ifdef CONFIG_HTC_SCM
+extern int secure_get_security_level(uint32_t *level);
+extern int secure_log_operation(unsigned int address, unsigned int size,
+		unsigned int buf_addr, unsigned int buf_len, int revert);
+extern int secure_get_msm_serial(uint32_t *serial);
+#endif
 #else
 
 static inline int scm_call(u32 svc_id, u32 cmd_id, const void *cmd_buf,

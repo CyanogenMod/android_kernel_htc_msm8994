@@ -11,10 +11,6 @@
  * GNU General Public License for more details.
  *
  */
-/*
- * SOC Info Routines
- *
- */
 
 #include <linux/export.h>
 #include <linux/module.h>
@@ -120,7 +116,6 @@ const char *hw_platform_subtype[] = {
 	[PLATFORM_SUBTYPE_STRANGE_2A] = "strange_2a,"
 };
 
-/* Used to parse shared memory.  Must match the modem. */
 struct socinfo_v1 {
 	uint32_t format;
 	uint32_t id;
@@ -482,41 +477,38 @@ static struct msm_soc_info cpu_of_id[] = {
 	[261] = {MSM_CPU_8909, "MDMFERRUM"},
 	[262] = {MSM_CPU_8909, "MDMFERRUM"},
 
-	/* 9640 IDs */
+	
 	[234] = {MSM_CPU_9640, "MDM9640"},
 	[235] = {MSM_CPU_9640, "MDM9640"},
 	[236] = {MSM_CPU_9640, "MDM9640"},
 	[237] = {MSM_CPU_9640, "MDM9640"},
 	[238] = {MSM_CPU_9640, "MDM9640"},
 
-	/* 8994 ID */
+	
 	[207] = {MSM_CPU_8994, "MSM8994"},
 	[253] = {MSM_CPU_8994, "APQ8094"},
 
-	/* 8992 ID */
+	
 	[251] = {MSM_CPU_8992, "MSM8992"},
 
-	/* FSM9010 ID */
+	
 	[254] = {FSM_CPU_9010, "FSM9010"},
 	[255] = {FSM_CPU_9010, "FSM9010"},
 	[256] = {FSM_CPU_9010, "FSM9010"},
 	[257] = {FSM_CPU_9010, "FSM9010"},
 
-	/* Tellurium ID */
+	
 	[264] = {MSM_CPU_TELLURIUM, "MSMTELLURIUM"},
 
-	/* Terbium ID */
+	
 	[266] = {MSM_CPU_TERBIUM, "MSMTERBIUM"},
 
-	/* 8929 IDs */
+	
 	[268] = {MSM_CPU_8929, "MSM8929"},
 	[269] = {MSM_CPU_8929, "MSM8629"},
 	[270] = {MSM_CPU_8929, "MSM8229"},
 	[271] = {MSM_CPU_8929, "APQ8029"},
 
-	/* Uninitialized IDs are not known to run Linux.
-	   MSM_CPU_UNKNOWN is set to 0 to ensure these IDs are
-	   considered as unknown CPU. */
 };
 
 static enum msm_cpu cur_cpu;
@@ -596,8 +588,6 @@ uint32_t socinfo_get_platform_version(void)
 		: 0;
 }
 
-/* This information is directly encoded by the machine id */
-/* Thus no external callers rely on this information at the moment */
 static uint32_t socinfo_get_accessory_chip(void)
 {
 	return socinfo ?
@@ -951,9 +941,6 @@ static struct device_attribute msm_soc_attr_platform_subtype =
 	__ATTR(platform_subtype, S_IRUGO,
 			msm_get_platform_subtype, NULL);
 
-/* Platform Subtype String is being deprecated. Use Platform
- * Subtype ID instead.
- */
 static struct device_attribute msm_soc_attr_platform_subtype_id =
 	__ATTR(platform_subtype_id, S_IRUGO,
 			msm_get_platform_subtype_id, NULL);

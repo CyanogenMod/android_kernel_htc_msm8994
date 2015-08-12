@@ -23,9 +23,8 @@
 
 #include "usb_gadget_xport.h"
 
-/* from cdc-acm.h */
-#define ACM_CTRL_RTS		(1 << 1)	/* unused with full duplex */
-#define ACM_CTRL_DTR		(1 << 0)	/* host is ready for data r/w */
+#define ACM_CTRL_RTS		(1 << 1)	
+#define ACM_CTRL_DTR		(1 << 0)	
 #define ACM_CTRL_OVERRUN	(1 << 6)
 #define ACM_CTRL_PARITY		(1 << 5)
 #define ACM_CTRL_FRAMING	(1 << 4)
@@ -138,6 +137,8 @@ ghsic_send_cpkt_tomodem(u8 portno, void *buf, size_t len)
 	ctrl_bridge_write(port->brdg.ch_id, cbuf, len);
 
 	port->to_modem++;
+
+	kfree(cbuf);
 
 	return 0;
 }
@@ -456,6 +457,7 @@ static int gctrl_port_alloc(int portno, enum gadget_type gtype)
 	port->wq = create_singlethread_workqueue(name);
 	if (!port->wq) {
 		pr_err("%s: Unable to create workqueue:%s\n", __func__, name);
+		kfree(port);
 		return -ENOMEM;
 	}
 
@@ -487,7 +489,6 @@ static int gctrl_port_alloc(int portno, enum gadget_type gtype)
 	return 0;
 }
 
-/*portname will be used to find the bridge channel index*/
 void ghsic_ctrl_set_port_name(const char *name, const char *xport_type)
 {
 	static unsigned int port_num;

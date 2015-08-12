@@ -36,17 +36,21 @@ struct android_usb_platform_data {
 	u8 usb_core_id;
 	char streaming_func[MAX_STREAMING_FUNCS][FUNC_NAME_LEN];
 	int  streaming_func_count;
+	const char *fserial_init_string;
+	const char *diag_client_interface;
+	const char *rmnet_transports_interface;
+
 	u8 uicc_nluns;
+	u32 nluns;
 	bool cdrom;
+
+	char *product_name;
+	char *manufacturer_name;
 };
 
 #ifndef CONFIG_TARGET_CORE
 static inline int f_tcm_init(int (*connect_cb)(bool connect))
 {
-	/*
-	 * Fail bind() not init(). If a function init() returns error
-	 * android composite registration would fail.
-	 */
 	return 0;
 }
 static inline void f_tcm_exit(void)

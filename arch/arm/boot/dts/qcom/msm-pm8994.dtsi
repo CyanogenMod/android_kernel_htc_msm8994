@@ -37,6 +37,15 @@
 			qcom,temp_alarm-vadc = <&pm8994_vadc>;
 		};
 
+		qcom,pmic-dog@0 {
+			compatible = "qcom,qpnp-pmic-dog";
+			reg = <0x800 0x100>;
+			qcom,pmic-wd-reset-type = <7>;
+			qcom,pmic-wd-bark-time = <8>;
+			qcom,pmic-wd-bite-time = <2>;
+			qcom,pmic-wd-disable-start = <5>;
+		};
+
 		qcom,power-on@800 {
 			compatible = "qcom,qpnp-power-on";
 			reg = <0x800 0x100>;
@@ -64,12 +73,11 @@
 			qcom,pon_2 {
 				qcom,pon-type = <1>;
 				qcom,pull-up = <1>;
-				linux,code = <114>;
+				//linux,code = <114>;
 			};
 
 			qcom,pon_3 {
 				qcom,pon-type = <3>;
-				qcom,support-reset = <1>;
 				qcom,pull-up = <1>;
 				qcom,s1-timer = <6720>;
 				qcom,s2-timer = <2000>;
@@ -90,127 +98,127 @@
 			gpio@c000 {
 				reg = <0xc000 0x100>;
 				qcom,pin-num = <1>;
-				status = "disabled";
+				qcom,vin-sel = <2>;
 			};
 
 			gpio@c100 {
 				reg = <0xc100 0x100>;
 				qcom,pin-num = <2>;
-				status = "disabled";
+				qcom,vin-sel = <2>;
 			};
 
 			gpio@c200 {
 				reg = <0xc200 0x100>;
 				qcom,pin-num = <3>;
-				status = "disabled";
+				qcom,vin-sel = <2>;
 			};
 
 			gpio@c300 {
 				reg = <0xc300 0x100>;
 				qcom,pin-num = <4>;
-				status = "disabled";
+				qcom,vin-sel = <2>;
 			};
 
 			gpio@c400 {
 				reg = <0xc400 0x100>;
 				qcom,pin-num = <5>;
-				status = "disabled";
+				qcom,vin-sel = <2>;
 			};
 
 			gpio@c500 {
 				reg = <0xc500 0x100>;
 				qcom,pin-num = <6>;
-				status = "disabled";
+				qcom,vin-sel = <2>;
 			};
 
 			gpio@c600 {
 				reg = <0xc600 0x100>;
 				qcom,pin-num = <7>;
-				status = "disabled";
+				qcom,vin-sel = <2>;
 			};
 
 			gpio@c700 {
 				reg = <0xc700 0x100>;
 				qcom,pin-num = <8>;
-				status = "disabled";
+				qcom,vin-sel = <2>;
 			};
 
 			gpio@c800 {
 				reg = <0xc800 0x100>;
 				qcom,pin-num = <9>;
-				status = "disabled";
+				qcom,vin-sel = <2>;
 			};
 
 			gpio@c900 {
 				reg = <0xc900 0x100>;
 				qcom,pin-num = <10>;
-				status = "disabled";
+				qcom,vin-sel = <2>;
 			};
 
 			gpio@ca00 {
 				reg = <0xca00 0x100>;
 				qcom,pin-num = <11>;
-				status = "disabled";
+				qcom,vin-sel = <2>;
 			};
 
 			gpio@cb00 {
 				reg = <0xcb00 0x100>;
 				qcom,pin-num = <12>;
-				status = "disabled";
+				qcom,vin-sel = <2>;
 			};
 
 			gpio@cc00 {
 				reg = <0xcc00 0x100>;
 				qcom,pin-num = <13>;
-				status = "disabled";
+				qcom,vin-sel = <2>;
 			};
 
 			gpio@cd00 {
 				reg = <0xcd00 0x100>;
 				qcom,pin-num = <14>;
-				status = "disabled";
+				qcom,vin-sel = <2>;
 			};
 
 			gpio@ce00 {
 				reg = <0xce00 0x100>;
 				qcom,pin-num = <15>;
-				status = "disabled";
+				qcom,vin-sel = <2>;
 			};
 
 			gpio@cf00 {
 				reg = <0xcf00 0x100>;
 				qcom,pin-num = <16>;
-				status = "disabled";
+				qcom,vin-sel = <0>;
 			};
 
 			gpio@d000 {
 				reg = <0xd000 0x100>;
 				qcom,pin-num = <17>;
-				status = "disabled";
+				qcom,vin-sel = <2>;
 			};
 
 			gpio@d100 {
 				reg = <0xd100 0x100>;
 				qcom,pin-num = <18>;
-				status = "disabled";
+				qcom,vin-sel = <2>;
 			};
 
 			gpio@d200 {
 				reg = <0xd200 0x100>;
 				qcom,pin-num = <19>;
-				status = "disabled";
+				qcom,vin-sel = <2>;
 			};
 
 			gpio@d300 {
 				reg = <0xd300 0x100>;
 				qcom,pin-num = <20>;
-				status = "disabled";
+				qcom,vin-sel = <0>;
 			};
 
 			gpio@d500 {
 				reg = <0xd500 0x100>;
 				qcom,pin-num = <22>;
-				status = "disabled";
+				qcom,vin-sel = <2>;
 			};
 		};
 
@@ -226,49 +234,49 @@
 			mpp@a000 {
 				reg = <0xa000 0x100>;
 				qcom,pin-num = <1>;
-				status = "disabled";
+				qcom,vin-sel = <2>;
 			};
 
 			mpp@a100 {
 				reg = <0xa100 0x100>;
 				qcom,pin-num = <2>;
-				status = "disabled";
+				qcom,vin-sel = <2>;
 			};
 
 			mpp@a200 {
 				reg = <0xa200 0x100>;
 				qcom,pin-num = <3>;
-				status = "disabled";
+				qcom,vin-sel = <2>;
 			};
 
 			mpp@a300 {
 				reg = <0xa300 0x100>;
 				qcom,pin-num = <4>;
-				status = "disabled";
+				qcom,vin-sel = <2>;
 			};
 
 			mpp@a400 {
 				reg = <0xa400 0x100>;
 				qcom,pin-num = <5>;
-				status = "disabled";
+				qcom,vin-sel = <2>;
 			};
 
 			mpp@a500 {
 				reg = <0xa500 0x100>;
 				qcom,pin-num = <6>;
-				status = "disabled";
+				qcom,vin-sel = <2>;
 			};
 
 			mpp@a600 {
 				reg = <0xa600 0x100>;
 				qcom,pin-num = <7>;
-				status = "disabled";
+				qcom,vin-sel = <2>;
 			};
 
 			mpp@a700 {
 				reg = <0xa700 0x100>;
 				qcom,pin-num = <8>;
-				status = "disabled";
+				qcom,vin-sel = <2>;
 			};
 		};
 
@@ -315,6 +323,28 @@
 				qcom,hw-settle-time = <0>;
 				qcom,fast-avg-setup = <0>;
 			};
+
+			chan@4 {
+				label = "usb_id_mv";
+				reg = <4>;
+				qcom,decimation = <0>;
+				qcom,pre-div-channel-scaling = <1>;
+				qcom,calibration-type = "absolute";
+				qcom,scale-function = <0>;
+				qcom,hw-settle-time = <0>;
+				qcom,fast-avg-setup = <0>;
+			};
+
+			chan@39 {
+				label = "usb_id_nopull";
+				reg = <0x39>;
+				qcom,decimation = <0>;
+				qcom,pre-div-channel-scaling = <0>;
+				qcom,calibration-type = "ratiometric";
+				qcom,scale-function = <0>;
+				qcom,hw-settle-time = <2>;
+				qcom,fast-avg-setup = <0>;
+			};
 		};
 
 		pm8994_adc_tm: vadc@3400 {
@@ -343,8 +373,8 @@
 			compatible = "qcom,qpnp-rtc";
 			#address-cells = <1>;
 			#size-cells = <1>;
-			qcom,qpnp-rtc-write = <0>;
-			qcom,qpnp-rtc-alarm-pwrup = <0>;
+			qcom,qpnp-rtc-write = <1>;
+			qcom,qpnp-rtc-alarm-pwrup = <1>;
 
 			qcom,pm8994_rtc_rw@6000 {
 				reg = <0x6000 0x100>;

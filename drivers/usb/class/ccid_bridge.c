@@ -124,12 +124,6 @@ static void ccid_bridge_int_cb(struct urb *urb)
 		goto out;
 	}
 
-	/*
-	 * Don't wakeup the event ioctl process during suspend.
-	 * The suspend state is not visible to user space.
-	 * we wake up the process after resume to send RESUME
-	 * event if the device supports remote wakeup.
-	 */
 	if (urb->status == -ENOENT && !urb->actual_length) {
 		ccid->event_result = -ENOENT;
 		wakeup = false;
@@ -166,14 +160,6 @@ static int ccid_bridge_submit_inturb(struct ccid_bridge *ccid)
 {
 	int ret = 0;
 
-	/*
-	 * Don't resume the bus to submit an interrupt URB.
-	 * We submit the URB in resume path.  This is important.
-	 * Because the device will be in suspend state during
-	 * multiple system suspend/resume cycles.  The user space
-	 * process comes here during system resume after it is
-	 * unfrozen.
-	 */
 	if (!ccid->int_pipe || ccid->is_suspended)
 		goto out;
 
@@ -196,11 +182,6 @@ static int ccid_bridge_get_event(struct ccid_bridge *ccid)
 {
 	int ret = 0;
 
-	/*
-	 * The first event returned after the device resume
-	 * will be RESUME event.  This event is set by
-	 * the resume.
-	 */
 	if (ccid->cur_event.event)
 		goto out;
 
@@ -210,18 +191,12 @@ static int ccid_bridge_get_event(struct ccid_bridge *ccid)
 	if (ret < 0)
 		goto out;
 
-	/*
-	 * Wait for the notification on interrupt endpoint
-	 * or remote wakeup event from the resume.  The
-	 * int urb completion handler and resume callback
-	 * take care of setting the current event.
-	 */
 	mutex_unlock(&ccid->event_mutex);
 	ret = wait_event_interruptible(ccid->event_wq,
 			(ccid->event_result != -EINPROGRESS));
 	mutex_lock(&ccid->event_mutex);
 
-	if (ret == -ERESTARTSYS) /* interrupted */
+	if (ret == -ERESTARTSYS) 
 		usb_kill_urb(ccid->inturb);
 	else
 		ret = ccid->event_result;
@@ -498,6 +473,7 @@ ccid_bridge_ioctl(struct file *fp, unsigned int cmd, unsigned long arg)
 		}
 		ret = usb_autopm_get_interface(ccid->intf);
 		if (ret < 0) {
+			kfree(buf);
 			pr_debug("fail to get autopm with %d", ret);
 			break;
 		}
@@ -788,11 +764,6 @@ static void ccid_bridge_disconnect(struct usb_interface *intf)
 	ccid->event_result = -ENODEV;
 	wake_up(&ccid->event_wq);
 
-	/*
-	 * This would synchronize any ongoing read/write/ioctl.
-	 * After acquiring the mutex, we can safely set
-	 * intf to NULL.
-	 */
 	mutex_lock(&ccid->open_mutex);
 	mutex_lock(&ccid->write_mutex);
 	mutex_lock(&ccid->read_mutex);

@@ -21,6 +21,7 @@
 #include "vidc_hfi_api.h"
 #include "msm_vidc_debug.h"
 #include "msm_vidc_dcvs.h"
+#include "venus_hfi.h"
 
 #define IS_ALREADY_IN_STATE(__p, __d) ({\
 	int __rc = (__p >= __d);\
@@ -526,7 +527,7 @@ static int wait_for_sess_signal_receipt(struct msm_vidc_inst *inst,
 		&inst->completions[SESSION_MSG_INDEX(cmd)],
 		msecs_to_jiffies(msm_vidc_hw_rsp_timeout));
 	if (!rc) {
-		dprintk(VIDC_ERR, "Wait interrupted or timedout: %d\n", rc);
+		dprintk(VIDC_ERR, "Wait interrupted or timedout: %d, cmd: %d\n", rc, cmd);
 		msm_comm_kill_session(inst);
 		rc = -EIO;
 	} else {
@@ -667,14 +668,6 @@ static void handle_event_change(enum command_response cmd, void *data)
 				__func__, inst, &event_notify->packet_buffer,
 				&event_notify->extra_data_buffer);
 
-			/*
-			* If buffer release event is received with inst->state
-			* greater than STOP means client called STOP directly
-			* without FLUSH. This also means that they don't expect
-			* these buffers back. Processing these commands will not
-			* add any value. This can also results deadlocks between
-			* try_state and event_notify due to inst->sync_lock.
-			*/
 
 			mutex_lock(&inst->lock);
 			if (inst->state >= MSM_VIDC_STOP ||
@@ -686,10 +679,6 @@ static void handle_event_change(enum command_response cmd, void *data)
 			}
 			mutex_unlock(&inst->lock);
 
-			/*
-			* Get the buffer_info entry for the
-			* device address.
-			*/
 			binfo = device_to_uvaddr(&inst->registeredbufs,
 				event_notify->packet_buffer);
 			if (!binfo) {
@@ -711,7 +700,7 @@ static void handle_event_change(enum command_response cmd, void *data)
 
 			mutex_lock(&inst->sync_lock);
 
-			/* Decrement buffer reference count*/
+			
 			mutex_lock(&inst->registeredbufs.lock);
 			list_for_each_entry(temp, &inst->registeredbufs.list,
 					list) {
@@ -722,16 +711,12 @@ static void handle_event_change(enum command_response cmd, void *data)
 			}
 			mutex_unlock(&inst->registeredbufs.lock);
 
-			/*
-			* Release buffer and remove from list
-			* if reference goes to zero.
-			*/
 			if (unmap_and_deregister_buf(inst, binfo))
 				dprintk(VIDC_ERR,
 				"%s: buffer unmap failed\n", __func__);
 			mutex_unlock(&inst->sync_lock);
 
-			/*send event to client*/
+			
 			v4l2_event_queue_fh(&inst->event_handler, &buf_event);
 			wake_up(&inst->kernel_event_queue);
 			return;
@@ -1317,14 +1302,6 @@ int buf_ref_put(struct msm_vidc_inst *inst, struct buffer_info *binfo)
 		return rc;
 
 	if (release_buf) {
-		/*
-		* We can not delete binfo here as we need to set the user
-		* virtual address saved in binfo->uvaddr to the dequeued v4l2
-		* buffer.
-		*
-		* We will set the pending_deletion flag to true here and delete
-		* binfo from registered list in dqbuf after setting the uvaddr.
-		*/
 		dprintk(VIDC_DBG, "fd[0] = %d -> pending_deletion = true\n",
 			binfo->fd[0]);
 		binfo->pending_deletion = true;
@@ -1341,10 +1318,6 @@ static void handle_dynamic_buffer(struct msm_vidc_inst *inst,
 {
 	struct buffer_info *binfo = NULL, *temp = NULL;
 
-	/*
-	 * Update reference count and release OR queue back the buffer,
-	 * only when firmware is not holding a reference.
-	 */
 	if (inst->buffer_mode_set[CAPTURE_PORT] == HAL_BUFFER_MODE_DYNAMIC) {
 		binfo = device_to_uvaddr(&inst->registeredbufs, device_addr);
 		if (!binfo) {
@@ -1652,8 +1625,6 @@ void handle_cmd_response(enum command_response cmd, void *data)
 		handle_seq_hdr_done(cmd, data);
 		break;
 	case SYS_WATCHDOG_TIMEOUT:
-		handle_sys_error(cmd, data);
-		break;
 	case SYS_ERROR:
 		handle_sys_error(cmd, data);
 		break;
@@ -1729,13 +1700,6 @@ int msm_comm_scale_clocks_load(struct msm_vidc_core *core, int num_mbs_per_sec)
 		u32 low_freq = table[table_size - 1].freq;
 		int i;
 
-		/*
-		* Parse the load frequency table from highest index and
-		* whenever there is a change in frequency detected, it is
-		* assumed as nominal frequency  Check the current load
-		* against the load corresponding to nominal frequency and
-		* update num_mbs_per_sec accordingly.
-		*/
 		for (i = table_size - 1; i >= 0; i--) {
 			if (table[i].freq > low_freq) {
 				if (num_mbs_per_sec < table[i].load) {
@@ -2062,9 +2026,16 @@ fail_vote_bus:
 static int msm_comm_init_core(struct msm_vidc_inst *inst)
 {
 	int rc = 0;
+        struct hfi_device *hdev;
+        struct venus_hfi_device *vhdev;
 
 	if (!inst || !inst->core)
 		return -EINVAL;
+
+        hdev = inst->core->device;
+        vhdev = hdev->hfi_device_data;
+        vhdev->inst = inst;
+        
 
 	rc = msm_comm_load_fw(inst->core);
 	if (rc) {
@@ -2101,10 +2072,6 @@ static int msm_vidc_deinit_core(struct msm_vidc_inst *inst)
 
 	mutex_lock(&core->lock);
 
-	/*
-	 * If firmware is configured to be always loaded in memory,
-	 * then unload it only if the core has gone in to bad state.
-	 */
 	if (core->resources.early_fw_load &&
 		core->state != VIDC_CORE_INVALID) {
 			goto core_already_uninited;
@@ -2113,12 +2080,6 @@ static int msm_vidc_deinit_core(struct msm_vidc_inst *inst)
 	if (list_empty(&core->instances)) {
 		cancel_delayed_work(&core->fw_unload_work);
 
-		/*
-		 * Delay unloading of firmware. This is useful
-		 * in avoiding firmware download delays in cases where we
-		 * will have a burst of back to back video playback sessions
-		 * e.g. thumbnail generation.
-		 */
 		schedule_delayed_work(&core->fw_unload_work,
 			msecs_to_jiffies(core->state == VIDC_CORE_INVALID ?
 					0 : msm_vidc_firmware_unload_delay));
@@ -2631,6 +2592,7 @@ static bool reuse_internal_buffers(struct msm_vidc_inst *inst,
 	struct internal_buf *buf;
 	int rc = 0;
 	bool reused = false;
+	struct smem_client *mem_client  = inst->mem_client;
 
 	if (!inst || !buf_list) {
 		dprintk(VIDC_ERR, "%s: invalid params\n", __func__);
@@ -2647,19 +2609,13 @@ static bool reuse_internal_buffers(struct msm_vidc_inst *inst,
 		if (buf->buffer_type != buffer_type)
 			continue;
 
-		/*
-		 * Persist buffer size won't change with resolution. If they
-		 * are in queue means that they are already allocated and
-		 * given to HW. HW can use them without reallocation. These
-		 * buffers are not released as part of port reconfig. So
-		 * driver no need to set them again.
-		*/
 
 		if (buffer_type != HAL_BUFFER_INTERNAL_PERSIST
 			&& buffer_type != HAL_BUFFER_INTERNAL_PERSIST_1) {
-
+			mem_client->clnt = mem_client->clnt_alloc;
 			rc = set_internal_buf_on_fw(inst, buffer_type,
 					buf->handle, true);
+			mem_client->clnt = mem_client->clnt_import;
 			if (rc) {
 				dprintk(VIDC_ERR,
 					"%s: session_set_buffers failed\n",
@@ -2683,6 +2639,7 @@ static int allocate_and_set_internal_bufs(struct msm_vidc_inst *inst,
 	u32 smem_flags = 0;
 	int rc = 0;
 	int i = 0;
+        struct smem_client *mem_client  = inst->mem_client;
 
 	if (!inst || !internal_bufreq || !buf_list)
 		return -EINVAL;
@@ -2694,6 +2651,7 @@ static int allocate_and_set_internal_bufs(struct msm_vidc_inst *inst,
 		smem_flags |= SMEM_SECURE;
 
 	for (i = 0; i < internal_bufreq->buffer_count_actual; i++) {
+                mem_client->clnt = mem_client->clnt_alloc;
 		handle = msm_comm_smem_alloc(inst, internal_bufreq->buffer_size,
 				1, smem_flags, internal_bufreq->buffer_type, 0);
 		if (!handle) {
@@ -2718,6 +2676,7 @@ static int allocate_and_set_internal_bufs(struct msm_vidc_inst *inst,
 		if (rc)
 			goto fail_set_buffers;
 
+                mem_client->clnt = mem_client->clnt_import;
 		mutex_lock(&buf_list->lock);
 		list_add_tail(&binfo->list, &buf_list->list);
 		mutex_unlock(&buf_list->lock);
@@ -2750,10 +2709,6 @@ static int set_internal_buffers(struct msm_vidc_inst *inst,
 		get_internal_buffer_name(buffer_type),
 		internal_buf->buffer_count_actual, internal_buf->buffer_size);
 
-	/*
-	* Try reusing existing internal buffers first.
-	* If it's not possible to reuse, allocate new buffers.
-	*/
 	if (reuse_internal_buffers(inst, buffer_type, buf_list))
 		return 0;
 
@@ -3663,26 +3618,6 @@ void msm_comm_flush_dynamic_buffers(struct msm_vidc_inst *inst)
 	if (inst->buffer_mode_set[CAPTURE_PORT] != HAL_BUFFER_MODE_DYNAMIC)
 		return;
 
-	/*
-	* dynamic buffer mode:- if flush is called during seek
-	* driver should not queue any new buffer it has been holding.
-	*
-	* Each dynamic o/p buffer can have one of following ref_count:
-	* ref_count : 0 - f/w has released reference and sent fbd back.
-	*		  The buffer has been returned back to client.
-	*
-	* ref_count : 1 - f/w is holding reference. f/w may have released
-	*                 fbd as read_only OR fbd is pending. f/w will
-	*		  release reference before sending flush_done.
-	*
-	* ref_count : 2 - f/w is holding reference, f/w has released fbd as
-	*                 read_only, which client has queued back to driver.
-	*                 driver holds this buffer and will queue back
-	*                 only when f/w releases the reference. During
-	*		  flush_done, f/w will release the reference but driver
-	*		  should not queue back the buffer to f/w.
-	*		  Flush all buffers with ref_count 2.
-	*/
 	mutex_lock(&inst->registeredbufs.lock);
 	if (!list_empty(&inst->registeredbufs.list)) {
 		struct v4l2_event buf_event = {0};
@@ -3730,12 +3665,6 @@ void msm_comm_flush_pending_dynamic_buffers(struct msm_vidc_inst *inst)
 		list_empty(&inst->registeredbufs.list))
 		return;
 
-	/*
-	* Dynamic Buffer mode - Since pendingq is not empty
-	* no output buffers have been sent to firmware yet.
-	* Hence remove reference to all pendingq o/p buffers
-	* before flushing them.
-	*/
 
 	mutex_lock(&inst->registeredbufs.lock);
 	list_for_each_entry(binfo, &inst->registeredbufs.list, list) {
@@ -3798,12 +3727,6 @@ int msm_comm_flush(struct msm_vidc_inst *inst, u32 flags)
 	if (inst->in_reconfig && !ip_flush && op_flush) {
 		mutex_lock(&inst->pendingq.lock);
 		if (!list_empty(&inst->pendingq.list)) {
-			/*
-			 * Execution can never reach here since port reconfig
-			 * wont happen unless pendingq is emptied out
-			 * (both pendingq and flush being secured with same
-			 * lock). Printing a message here incase this breaks.
-			 */
 			dprintk(VIDC_WARN,
 			"FLUSH BUG: Pending q not empty! It should be empty\n");
 		}
@@ -3817,10 +3740,6 @@ int msm_comm_flush(struct msm_vidc_inst *inst, u32 flags)
 
 	} else {
 		msm_comm_flush_pending_dynamic_buffers(inst);
-		/*
-		 * If flush is called after queueing buffers but before
-		 * streamon driver should flush the pending queue
-		 */
 		mutex_lock(&inst->pendingq.lock);
 		list_for_each_safe(ptr, next, &inst->pendingq.list) {
 			temp =
@@ -3955,13 +3874,6 @@ int msm_comm_get_domain_partition(struct msm_vidc_inst *inst, u32 flags,
 
 	hdev = inst->core->device;
 
-	/*
-	 * TODO: Due to the way in which the underlying smem mechanism
-	 * maps buffer types to corresponding IOMMU domains, we need to
-	 * pass in HAL_BUFFER_OUTPUT for input buffers (and vice versa)
-	 * so that buffers are mapped into the correct domains. In the
-	 * future, we should try to remove this workaround.
-	 */
 	switch (buf_type) {
 	case V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE:
 		hal_buffer_type = (inst->session_type == MSM_VIDC_ENCODER) ?
@@ -4204,15 +4116,10 @@ int msm_comm_kill_session(struct msm_vidc_inst *inst)
 		dprintk(VIDC_ERR, "%s: invalid input parameters\n", __func__);
 		return -EINVAL;
 	} else if (!inst->session) {
-		/* There's no hfi session to kill */
+		
 		return 0;
 	}
 
-	/*
-	 * We're internally forcibly killing the session, if fw is aware of
-	 * the session send session_abort to firmware to clean up and release
-	 * the session, else just kill the session inside the driver.
-	 */
 	if ((inst->state >= MSM_VIDC_OPEN_DONE &&
 			inst->state < MSM_VIDC_CLOSE_DONE) ||
 			inst->state == MSM_VIDC_CORE_INVALID) {

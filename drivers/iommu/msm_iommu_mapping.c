@@ -31,23 +31,6 @@ enum {
 #define iommu_map_domain(__m)           ((__m)->domain_info[1])
 #define iommu_map_partition(__m)        ((__m)->domain_info[0])
 
-/**
- * struct msm_iommu_map - represents a mapping of an ion buffer to an iommu
- * @iova_addr - iommu virtual address
- * @node - rb node to exist in the buffer's tree of iommu mappings
- * @domain_info - contains the partition number and domain number
- *		domain_info[1] = domain number
- *		domain_info[0] = partition number
- * @ref - for reference counting this mapping
- * @mapped_size - size of the iova space mapped
- *		(may not be the same as the buffer size)
- * @flags - iommu domain/partition specific flags.
- *
- * Represents a mapping of one ion buffer to a particular iommu domain
- * and address range. There may exist other mappings of this buffer in
- * different domains or address ranges. All mappings will have the same
- * cacheability and security.
- */
 struct msm_iommu_map {
 	unsigned long iova_addr;
 	struct rb_node node;
@@ -202,11 +185,6 @@ static int msm_iommu_map_iommu(struct msm_iommu_meta *meta,
 	extra = iova_length - size;
 	table = meta->table;
 
-	/* Use the biggest alignment to allow bigger IOMMU mappings.
-	 * Use the first entry since the first entry will always be the
-	 * biggest entry. To take advantage of bigger mapping sizes both the
-	 * VA and PA addresses have to be aligned to the biggest size.
-	 */
 	if (table->sgl->length > align)
 		align = table->sgl->length;
 
@@ -335,10 +313,6 @@ static struct msm_iommu_meta *msm_iommu_meta_create(struct dma_buf *dma_buf,
 
 	meta->table = table;
 	meta->size = size;
-	/*
-	 * The caller is expected to have taken a reference to this dma_buf
-	 * before calling this function
-	 */
 	meta->dbuf = dma_buf;
 	kref_init(&meta->ref);
 	mutex_init(&meta->lock);
@@ -360,9 +334,6 @@ static void msm_iommu_meta_destroy(struct kref *kref)
 
 static void msm_iommu_meta_put(struct msm_iommu_meta *meta)
 {
-	/*
-	 * Need to lock here to prevent race against map/unmap
-	 */
 	mutex_lock(&msm_iommu_map_mutex);
 	kref_put(&meta->ref, msm_iommu_meta_destroy);
 	mutex_unlock(&msm_iommu_map_mutex);
@@ -394,10 +365,6 @@ static int __msm_map_iommu_common(
 		*iova = pa;
 		*buffer_size = size;
 	}
-	/*
-	 * If clients don't want a custom iova length, just use whatever
-	 * the buffer size is
-	 */
 	if (!iova_length)
 		iova_length = size;
 
@@ -428,18 +395,14 @@ static int __msm_map_iommu_common(
 
 	if (!iommu_meta) {
 		iommu_meta = msm_iommu_meta_create(dma_buf, table, size);
-
 		if (IS_ERR(iommu_meta)) {
 			mutex_unlock(&msm_iommu_map_mutex);
+			pr_err("%s: fail to create meta\n", __func__);
+
 			ret = PTR_ERR(iommu_meta);
 			goto out;
 		}
 	} else {
-		/*
-		 * Drop the dma_buf reference here. We took the reference
-		 * during meta creation so we need to drop it if we are
-		 * just taking a reference to the meta itself.
-		 */
 		dma_buf_put(dma_buf);
 		kref_get(&iommu_meta->ref);
 	}

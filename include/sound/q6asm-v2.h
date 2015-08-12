@@ -58,19 +58,16 @@
 #define CMD_OUT_FLUSH      0x0005
 #define CMD_SUSPEND        0x0006
 
-/* bit 0:1 represents priority of stream */
 #define STREAM_PRIORITY_NORMAL	0x0000
 #define STREAM_PRIORITY_LOW	0x0001
 #define STREAM_PRIORITY_HIGH	0x0002
 
-/* bit 4 represents META enable of encoded data buffer */
 #define BUFFER_META_ENABLE	0x0010
 
-/* Enable Sample_Rate/Channel_Mode notification event from Decoder */
 #define SR_CM_NOTIFY_ENABLE	0x0004
 
-#define TUN_WRITE_IO_MODE 0x0008 /* tunnel read write mode */
-#define TUN_READ_IO_MODE  0x0004 /* tunnel read write mode */
+#define TUN_WRITE_IO_MODE 0x0008 
+#define TUN_READ_IO_MODE  0x0004 
 #define SYNC_IO_MODE	0x0001
 #define ASYNC_IO_MODE	0x0002
 #define COMPRESSED_IO	0x0040
@@ -89,7 +86,6 @@
 #define ASM_SHIFT_GAPLESS_MODE_FLAG	31
 #define ASM_SHIFT_LAST_BUFFER_FLAG	30
 
-/* payload structure bytes */
 #define READDONE_IDX_STATUS 0
 #define READDONE_IDX_BUFADD_LSW 1
 #define READDONE_IDX_BUFADD_MSW 2
@@ -298,7 +294,6 @@ void *q6asm_is_cpu_buf_avail_nolock(int dir, struct audio_client *ac,
 
 int q6asm_is_dsp_buf_avail(int dir, struct audio_client *ac);
 
-/* File format specific configurations to be added below */
 
 int q6asm_enc_cfg_blk_aac(struct audio_client *ac,
 			 uint32_t frames_per_buf,
@@ -387,41 +382,31 @@ int q6asm_stream_media_format_block_flac(struct audio_client *ac,
 int q6asm_ds1_set_endp_params(struct audio_client *ac,
 				int param_id, int param_value);
 
-/* Send stream based end params */
 int q6asm_ds1_set_stream_endp_params(struct audio_client *ac, int param_id,
 				     int param_value, int stream_id);
 
-/* PP specific */
 int q6asm_equalizer(struct audio_client *ac, void *eq);
 
-/* Send Volume Command */
 int q6asm_set_volume(struct audio_client *ac, int volume);
 
-/* Send Volume Command */
 int q6asm_set_volume_v2(struct audio_client *ac, int volume, int instance);
 
-/* DTS Eagle Params */
 int q6asm_dts_eagle_set(struct audio_client *ac, int param_id, uint32_t size,
 			void *data, struct param_outband *po, int m_id);
 int q6asm_dts_eagle_get(struct audio_client *ac, int param_id, uint32_t size,
 			void *data, struct param_outband *po, int m_id);
 
-/* Set SoftPause Params */
 int q6asm_set_softpause(struct audio_client *ac,
 			struct asm_softpause_params *param);
 
-/* Set Softvolume Params */
 int q6asm_set_softvolume(struct audio_client *ac,
 			struct asm_softvolume_params *param);
 
-/* Set Softvolume Params */
 int q6asm_set_softvolume_v2(struct audio_client *ac,
 			    struct asm_softvolume_params *param, int instance);
 
-/* Send left-right channel gain */
 int q6asm_set_lrgain(struct audio_client *ac, int left_gain, int right_gain);
 
-/* Enable Mute/unmute flag */
 int q6asm_set_mute(struct audio_client *ac, int muteflag);
 
 int q6asm_get_session_time(struct audio_client *ac, uint64_t *tstamp);
@@ -429,25 +414,25 @@ int q6asm_get_session_time(struct audio_client *ac, uint64_t *tstamp);
 int q6asm_send_audio_effects_params(struct audio_client *ac, char *params,
 				    uint32_t params_length);
 
-/* Client can set the IO mode to either AIO/SIO mode */
 int q6asm_set_io_mode(struct audio_client *ac, uint32_t mode);
 
-/* Get Service ID for APR communication */
 int q6asm_get_apr_service_id(int session_id);
 
-/* Common format block without any payload
-*/
 int q6asm_media_format_block(struct audio_client *ac, uint32_t format);
 
-/* Send the meta data to remove initial and trailing silence */
+int q6asm_stream_sample_rate_to_htc_misc_effect(struct audio_client *ac, uint32_t stream_id,
+		uint32_t module_id, uint32_t param_id, uint32_t sample_rate);
+int q6asm_enable_effect(struct audio_client *ac, uint32_t module_id,
+			uint32_t param_id, uint32_t payload_size,
+			void *payload);
+int q6asm_stream_sample_rate_to_geq(struct audio_client *ac, uint32_t stream_id,
+			uint32_t module_id, uint32_t param_id, uint32_t sample_rate);
 int q6asm_send_meta_data(struct audio_client *ac, uint32_t initial_samples,
 		uint32_t trailing_samples);
 
-/* Send the stream meta data to remove initial and trailing silence */
 int q6asm_stream_send_meta_data(struct audio_client *ac, uint32_t stream_id,
 		uint32_t initial_samples, uint32_t trailing_samples);
 
-/* Get current ASM topology */
 int q6asm_get_asm_topology(void);
 
 int q6asm_send_mtmx_strtr_window(struct audio_client *ac,

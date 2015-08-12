@@ -173,14 +173,13 @@ static struct usb_descriptor_header *qdss_ss_data_only_desc[] = {
 	NULL,
 };
 
-/* string descriptors: */
 #define QDSS_DATA_IDX	0
 #define QDSS_CTRL_IDX	1
 
 static struct usb_string qdss_string_defs[] = {
 	[QDSS_DATA_IDX].s = "QDSS DATA",
 	[QDSS_CTRL_IDX].s = "QDSS CTRL",
-	{}, /* end of list */
+	{}, 
 };
 
 static struct usb_gadget_strings qdss_string_table = {
@@ -198,7 +197,6 @@ static inline struct f_qdss *func_to_qdss(struct usb_function *f)
 	return container_of(f, struct f_qdss, port.function);
 }
 
-/*----------------------------------------------------------------------*/
 
 static void qdss_ctrl_write_complete(struct usb_ep *ep,
 	struct usb_request *req)
@@ -520,10 +518,6 @@ static void usb_qdss_disconnect_work(struct work_struct *work)
 
 	switch (dxport) {
 	case USB_GADGET_XPORT_BAM:
-		/*
-		 * Uninitialized init data i.e. ep specific operation.
-		 * Notify qdss to cancel all active transfers.
-		 */
 		if (qdss->ch.app_conn) {
 			status = uninit_data(qdss->port.data);
 			if (status)
@@ -609,7 +603,7 @@ static void qdss_disable(struct usb_function *f)
 static int qdss_dpl_ipa_connect(int port_num)
 {
 	int ret;
-	u8 dst_connection_idx;
+	int dst_connection_idx;
 	struct f_qdss *qdss;
 	struct gqdss *g_qdss;
 	struct gadget_ipa_port *gp;
@@ -639,7 +633,7 @@ static int qdss_dpl_ipa_connect(int port_num)
 		return ret;
 	}
 
-	ret = ipa_data_connect(gp, port_num, 0, dst_connection_idx);
+	ret = ipa_data_connect(gp, port_num, 0, (u8)dst_connection_idx);
 	if (ret) {
 		pr_err("ipa_data_connect failed: err:%d\n", ret);
 		return ret;

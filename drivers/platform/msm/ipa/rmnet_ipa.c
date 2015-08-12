@@ -10,9 +10,6 @@
  * GNU General Public License for more details.
  */
 
-/*
- * WWAN Transport Network Driver.
- */
 
 #include <linux/completion.h>
 #include <linux/errno.h>
@@ -34,10 +31,10 @@
 #define WWAN_METADATA_SHFT 24
 #define WWAN_METADATA_MASK 0xFF000000
 #define WWAN_DATA_LEN 2000
-#define IPA_RM_INACTIVITY_TIMER 1000 /* IPA_RM */
-#define HEADROOM_FOR_QMAP   8 /* for mux header */
-#define TAILROOM            0 /* for padding by mux layer */
-#define MAX_NUM_OF_MUX_CHANNEL  10 /* max mux channels */
+#define IPA_RM_INACTIVITY_TIMER 100 
+#define HEADROOM_FOR_QMAP   8 
+#define TAILROOM            0 
+#define MAX_NUM_OF_MUX_CHANNEL  10 
 #define UL_FILTER_RULE_HANDLE_START 69
 #define DEFAULT_OUTSTANDING_HIGH 64
 #define DEFAULT_OUTSTANDING_LOW 32
@@ -73,19 +70,6 @@ struct ipa_rmnet_plat_drv_res {
 	bool ipa_loaduC;
 };
 
-/**
- * struct wwan_private - WWAN private data
- * @net: network interface struct implemented by this driver
- * @stats: iface statistics
- * @outstanding_pkts: number of packets sent to IPA without TX complete ACKed
- * @outstanding_high: number of outstanding packets allowed
- * @outstanding_low: number of outstanding packets which shall cause
- * @ch_id: channel id
- * @lock: spinlock for mutual exclusion
- * @device_status: holds device status
- *
- * WWAN private - holds all relevant info about WWAN driver
- */
 struct wwan_private {
 	struct net_device *net;
 	struct net_device_stats stats;
@@ -98,14 +82,6 @@ struct wwan_private {
 	enum wwan_device_status device_status;
 };
 
-/**
-* ipa_setup_a7_qmap_hdr() - Setup default a7 qmap hdr
-*
-* Return codes:
-* 0: success
-* -ENOMEM: failed to allocate memory
-* -EPERM: failed to add the tables
-*/
 static int ipa_setup_a7_qmap_hdr(void)
 {
 	struct ipa_ioc_add_hdr *hdr;
@@ -272,14 +248,6 @@ bail:
 	return ret;
 }
 
-/**
-* ipa_setup_dflt_wan_rt_tables() - Setup default wan routing tables
-*
-* Return codes:
-* 0: success
-* -ENOMEM: failed to allocate memory
-* -EPERM: failed to add the tables
-*/
 static int ipa_setup_dflt_wan_rt_tables(void)
 {
 	struct ipa_ioc_add_rt_rule *rt_rule;
@@ -851,16 +819,6 @@ static int __ipa_wwan_open(struct net_device *dev)
 	return 0;
 }
 
-/**
- * wwan_open() - Opens the wwan network interface. Opens logical
- * channel on A2 MUX driver and starts the network stack queue
- *
- * @dev: network device
- *
- * Return codes:
- * 0: success
- * -ENODEV: Error while opening logical channel on A2 MUX driver
- */
 static int ipa_wwan_open(struct net_device *dev)
 {
 	int rc = 0;
@@ -879,8 +837,6 @@ static int __ipa_wwan_close(struct net_device *dev)
 
 	if (wwan_ptr->device_status == WWAN_DEVICE_ACTIVE) {
 		wwan_ptr->device_status = WWAN_DEVICE_INACTIVE;
-		/* do not close wwan port once up,  this causes
-			remote side to hang if tried to open again */
 		INIT_COMPLETION(wwan_ptr->resource_granted_completion);
 		rc = ipa_deregister_intf(dev->name);
 		if (rc) {
@@ -894,17 +850,6 @@ static int __ipa_wwan_close(struct net_device *dev)
 	}
 }
 
-/**
- * ipa_wwan_stop() - Stops the wwan network interface. Closes
- * logical channel on A2 MUX driver and stops the network stack
- * queue
- *
- * @dev: network device
- *
- * Return codes:
- * 0: success
- * -ENODEV: Error while opening logical channel on A2 MUX driver
- */
 static int ipa_wwan_stop(struct net_device *dev)
 {
 	IPAWANDBG("[%s] ipa_wwan_stop()\n", dev->name);
@@ -923,18 +868,6 @@ static int ipa_wwan_change_mtu(struct net_device *dev, int new_mtu)
 	return 0;
 }
 
-/**
- * ipa_wwan_xmit() - Transmits an skb.
- *
- * @skb: skb to be transmitted
- * @dev: network device
- *
- * Return codes:
- * 0: success
- * NETDEV_TX_BUSY: Error while transmitting the skb. Try again
- * later
- * -EFAULT: Error while transmitting the skb
- */
 static int ipa_wwan_xmit(struct sk_buff *skb, struct net_device *dev)
 {
 	int ret = 0;
@@ -997,16 +930,6 @@ static void ipa_wwan_tx_timeout(struct net_device *dev)
 	IPAWANERR("[%s] ipa_wwan_tx_timeout(), data stall in UL\n", dev->name);
 }
 
-/**
- * apps_ipa_tx_complete_notify() - Rx notify
- *
- * @priv: driver context
- * @evt: event type
- * @data: data provided with event
- *
- * Check that the packet is the one we sent and release it
- * This function will be called in defered context in IPA wq.
- */
 static void apps_ipa_tx_complete_notify(void *priv,
 		enum ipa_dp_evt_type evt,
 		unsigned long data)
@@ -1034,15 +957,6 @@ static void apps_ipa_tx_complete_notify(void *priv,
 	return;
 }
 
-/**
- * apps_ipa_packet_receive_notify() - Rx notify
- *
- * @priv: driver context
- * @evt: event type
- * @data: data provided with event
- *
- * IPA will pass a packet to the Linux network stack with skb->data
- */
 static void apps_ipa_packet_receive_notify(void *priv,
 		enum ipa_dp_evt_type evt,
 		unsigned long data)
@@ -1071,21 +985,6 @@ static void apps_ipa_packet_receive_notify(void *priv,
 	return;
 }
 
-/**
- * ipa_wwan_ioctl() - I/O control for wwan network driver.
- *
- * @dev: network device
- * @ifr: ignored
- * @cmd: cmd to be excecuded. can be one of the following:
- * IPA_WWAN_IOCTL_OPEN - Open the network interface
- * IPA_WWAN_IOCTL_CLOSE - Close the network interface
- *
- * Return codes:
- * 0: success
- * NETDEV_TX_BUSY: Error while transmitting the skb. Try again
- * later
- * -EFAULT: Error while transmitting the skb
- */
 static int ipa_wwan_ioctl(struct net_device *dev, struct ifreq *ifr, int cmd)
 {
 	int rc = 0;
@@ -1424,21 +1323,13 @@ static const struct net_device_ops ipa_wwan_ops_ip = {
 	.ndo_validate_addr = 0,
 };
 
-/**
- * wwan_setup() - Setups the wwan network driver.
- *
- * @dev: network device
- *
- * Return codes:
- * None
- */
 
 static void ipa_wwan_setup(struct net_device *dev)
 {
 	dev->netdev_ops = &ipa_wwan_ops_ip;
 	ether_setup(dev);
-	/* set this after calling ether_setup */
-	dev->header_ops = 0;  /* No header */
+	
+	dev->header_ops = 0;  
 	dev->type = ARPHRD_RAWIP;
 	dev->hard_header_len = 0;
 	dev->mtu = WWAN_DATA_LEN;
@@ -1449,7 +1340,6 @@ static void ipa_wwan_setup(struct net_device *dev)
 	dev->watchdog_timeo = 1000;
 }
 
-/* IPA_RM related functions start*/
 static void q6_prod_rm_request_resource(struct work_struct *work);
 static DECLARE_DELAYED_WORK(q6_con_rm_request, q6_prod_rm_request_resource);
 static void q6_prod_rm_release_resource(struct work_struct *work);
@@ -1599,34 +1489,12 @@ static void wake_tx_queue(struct work_struct *work)
 	}
 }
 
-/**
- * ipa_rm_resource_granted() - Called upon
- * IPA_RM_RESOURCE_GRANTED event. Wakes up queue is was stopped.
- *
- * @work: work object supplied ny workqueue
- *
- * Return codes:
- * None
- */
 static void ipa_rm_resource_granted(void *dev)
 {
 	IPAWANDBG("Resource Granted - starting queue\n");
 	schedule_work(&ipa_tx_wakequeue_work);
 }
 
-/**
- * ipa_rm_notify() - Callback function for RM events. Handles
- * IPA_RM_RESOURCE_GRANTED and IPA_RM_RESOURCE_RELEASED events.
- * IPA_RM_RESOURCE_GRANTED is handled in the context of shared
- * workqueue.
- *
- * @dev: network device
- * @event: IPA RM event
- * @data: Additional data provided by IPA RM
- *
- * Return codes:
- * None
- */
 static void ipa_rm_notify(void *dev, enum ipa_rm_event event,
 			  unsigned long data)
 {
@@ -1649,7 +1517,6 @@ static void ipa_rm_notify(void *dev, enum ipa_rm_event event,
 	}
 }
 
-/* IPA_RM related functions end*/
 
 static int ssr_notifier_cb(struct notifier_block *this,
 			   unsigned long code,
@@ -1680,23 +1547,14 @@ static int get_ipa_rmnet_dts_configuration(struct platform_device *pdev,
 
 struct ipa_rmnet_context ipa_rmnet_ctx;
 
-/**
- * ipa_wwan_probe() - Initialized the module and registers as a
- * network interface to the network stack
- *
- * Return codes:
- * 0: success
- * -ENOMEM: No memory available
- * -EFAULT: Internal error
- * -ENODEV: IPA driver not loaded
- */
 static int ipa_wwan_probe(struct platform_device *pdev)
 {
 	int ret, i;
 	struct net_device *dev;
 	struct wwan_private *wwan_ptr;
-	struct ipa_rm_create_params ipa_rm_params;	/* IPA_RM */
-	struct ipa_rm_perf_profile profile;			/* IPA_RM */
+	struct ipa_rm_create_params ipa_rm_params;	
+	struct ipa_rm_perf_profile profile;			
+	int uc_loading_condition;
 
 	pr_info("rmnet_ipa started initialization\n");
 
@@ -1731,11 +1589,14 @@ static int ipa_wwan_probe(struct platform_device *pdev)
 
 	/* start A7 QMI service/client */
 	if (ipa_rmnet_res.ipa_loaduC) {
-		/* Android platform loads uC */
-		ipa_qmi_service_init(atomic_read(&is_ssr) ? false : true,
+		
+		uc_loading_condition = atomic_read(&is_ssr) &
+				       atomic_read(&ipa_ctx->uc_ctx.uc_loaded);
+	/* Android platform loads uC */
+		ipa_qmi_service_init(uc_loading_condition ? false : true,
 			QMI_IPA_PLATFORM_TYPE_MSM_ANDROID_V01);
 	} else {
-		/* LE platform not loads uC */
+		/* LE platform not loads uC */	
 		ipa_qmi_service_init(atomic_read(&is_ssr) ? false : true,
 			QMI_IPA_PLATFORM_TYPE_LE_V01);
 	}
@@ -1926,34 +1787,19 @@ static int ipa_wwan_remove(struct platform_device *pdev)
 	return 0;
 }
 
-/**
-* rmnet_ipa_ap_suspend() - suspend callback for runtime_pm
-* @dev: pointer to device
-*
-* This callback will be invoked by the runtime_pm framework when an AP suspend
-* operation is invoked, usually by pressing a suspend button.
-*
-* Returns -EAGAIN to runtime_pm framework in case there are pending packets
-* in the Tx queue. This will postpone the suspend operation until all the
-* pending packets will be transmitted.
-*
-* In case there are no packets to send, releases the WWAN0_PROD entity.
-* As an outcome, the number of IPA active clients should be decremented
-* until IPA clocks can be gated.
-*/
 static int rmnet_ipa_ap_suspend(struct device *dev)
 {
 	struct net_device *netdev = ipa_netdevs[0];
 	struct wwan_private *wwan_ptr = netdev_priv(netdev);
 
 	IPAWANDBG("Enter...\n");
-	/* Do not allow A7 to suspend in case there are oustanding packets */
+	
 	if (atomic_read(&wwan_ptr->outstanding_pkts) != 0) {
 		IPAWANDBG("Outstanding packets, postponing AP suspend.\n");
 		return -EAGAIN;
 	}
 
-	/* Make sure that there is no Tx operation ongoing */
+	
 	netif_tx_lock_bh(netdev);
 	ipa_rm_release_resource(IPA_RM_RESOURCE_WWAN_0_PROD);
 	netif_tx_unlock_bh(netdev);
@@ -1962,16 +1808,6 @@ static int rmnet_ipa_ap_suspend(struct device *dev)
 	return 0;
 }
 
-/**
-* rmnet_ipa_ap_resume() - resume callback for runtime_pm
-* @dev: pointer to device
-*
-* This callback will be invoked by the runtime_pm framework when an AP resume
-* operation is invoked.
-*
-* Enables the network interface queue and returns success to the
-* runtime_pm framwork.
-*/
 static int rmnet_ipa_ap_resume(struct device *dev)
 {
 	struct net_device *netdev = ipa_netdevs[0];
@@ -2013,6 +1849,7 @@ static int ssr_notifier_cb(struct notifier_block *this,
 		if (SUBSYS_BEFORE_SHUTDOWN == code) {
 			pr_info("IPA received MPSS BEFORE_SHUTDOWN\n");
 			ipa_q6_cleanup();
+			ipa_qmi_stop_workqueues();
 			wan_ioctl_stop_qmi_messages();
 			atomic_set(&is_ssr, 1);
 			if (atomic_read(&is_initialized))

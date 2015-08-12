@@ -22,6 +22,7 @@
 #include <linux/delay.h>
 #include <linux/msm-bus.h>
 #include <linux/msm-bus-board.h>
+#include <linux/msm_mdp.h>
 
 struct mdp_csc_cfg mdp_csc_convert[MDSS_MDP_MAX_CSC] = {
 	[MDSS_MDP_CSC_RGB2RGB] = {
@@ -36,7 +37,20 @@ struct mdp_csc_cfg mdp_csc_convert[MDSS_MDP_MAX_CSC] = {
 		{ 0x0, 0xff, 0x0, 0xff, 0x0, 0xff,},
 		{ 0x0, 0xff, 0x0, 0xff, 0x0, 0xff,},
 	},
-	[MDSS_MDP_CSC_YUV2RGB] = {
+	
+	[MDSS_MDP_CSC_YUV2RGB_601_FR] = {
+		0,
+		{
+			0x0200, 0x0000, 0x02cd,
+			0x0200, 0xff50, 0xfe94,
+			0x0200, 0x0388, 0x0000,
+		},
+		{ 0x0, 0xff80, 0xff80,},
+		{ 0x0, 0x0, 0x0,},
+		{ 0x0, 0xff, 0x0, 0xff, 0x0, 0xff,},
+		{ 0x0, 0xff, 0x0, 0xff, 0x0, 0xff,},
+	},
+	[MDSS_MDP_CSC_YUV2RGB_601] = {
 		0,
 		{
 			0x0254, 0x0000, 0x0331,
@@ -48,7 +62,20 @@ struct mdp_csc_cfg mdp_csc_convert[MDSS_MDP_MAX_CSC] = {
 		{ 0x0, 0xff, 0x0, 0xff, 0x0, 0xff,},
 		{ 0x0, 0xff, 0x0, 0xff, 0x0, 0xff,},
 	},
-	[MDSS_MDP_CSC_RGB2YUV] = {
+	
+	[MDSS_MDP_CSC_RGB2YUV_601_FR] = {
+		0,
+		{
+			0x0099, 0x012d, 0x0100,
+			0x1fa9, 0x1f57, 0x1f00,
+			0x1f00, 0x1f29, 0x1fd7
+		},
+		{ 0x0, 0x0, 0x0,},
+		{ 0x0000, 0x0080, 0x0080,},
+		{ 0x0, 0xff, 0x0, 0xff, 0x0, 0xff,},
+		{ 0x0000, 0x00ff, 0x0000, 0x00ff, 0x0000, 0x00ff,},
+	},
+	[MDSS_MDP_CSC_RGB2YUV_601] = {
 		0,
 		{
 			0x0083, 0x0102, 0x0032,
@@ -74,13 +101,6 @@ struct mdp_csc_cfg mdp_csc_convert[MDSS_MDP_MAX_CSC] = {
 	},
 };
 
-/*
- * To program a linear LUT we need to make the slope to be 1/16 to enable
- * conversion from 12bit to 8bit. Also in cases where post blend values might
- * cross 255, we need to cap them now to 255. The offset of the final segment
- * would be programmed in such a case and we set the value to 32460 which is
- * 255 in U8.7.
- */
 static struct mdp_ar_gc_lut_data lin_gc_data[GC_LUT_SEGMENTS] = {
 	{   0, 256, 0}, {4095, 0,     0},
 	{4095,   0, 0}, {4095, 0,     0},
@@ -107,7 +127,6 @@ static struct mdp_ar_gc_lut_data lin_gc_data[GC_LUT_SEGMENTS] = {
 #define HIST_WAIT_TIMEOUT(frame) ((75 * HZ * (frame)) / 1000)
 #define HIST_KICKOFF_WAIT_FRACTION 4
 
-/* hist collect state */
 enum {
 	HIST_UNKNOWN,
 	HIST_IDLE,
@@ -240,7 +259,6 @@ static int mdss_mdp_hscl_filter[] = {
 #define PP_FLAGS_DIRTY_HIST_COL	0x80
 #define PP_FLAGS_DIRTY_PGC	0x100
 #define PP_FLAGS_DIRTY_SHARP	0x200
-/* Leave space for future features */
 #define PP_FLAGS_RESUME_COMMIT	0x10000000
 
 #define IS_PP_RESUME_COMMIT(x)	((x) & PP_FLAGS_RESUME_COMMIT)
@@ -298,14 +316,8 @@ static int mdss_mdp_hscl_filter[] = {
 #define PP_AD_STS_IS_DIRTY(sts) (((sts) & PP_AD_STS_DIRTY_INIT) ||\
 					((sts) & PP_AD_STS_DIRTY_CFG))
 
-/* Bits 0 and 1 */
 #define MDSS_AD_INPUT_AMBIENT	(0x03)
-/* Bits 3 and 7 */
 #define MDSS_AD_INPUT_STRENGTH	(0x88)
-/*
- * Check data by shifting by mode to see if it matches to the
- * MDSS_AD_INPUT_* bitfields
- */
 #define MDSS_AD_MODE_DATA_MATCH(mode, data) ((1 << (mode)) & (data))
 #define MDSS_AD_RUNNING_AUTO_BL(ad) (((ad)->state & PP_AD_STATE_RUN) &&\
 				((ad)->cfg.mode == MDSS_AD_MODE_AUTO_BL))
@@ -826,7 +838,6 @@ static void pp_enhist_config(unsigned long flags, char __iomem *addr,
 	}
 }
 
-/*the below function doesn't do error checking on the input params*/
 static void pp_sharp_config(char __iomem *addr,
 				struct pp_sts_type *pp_sts,
 				struct mdp_sharp_cfg *sharp_config)
@@ -870,30 +881,29 @@ static int pp_vig_pipe_setup(struct mdss_mdp_pipe *pipe, u32 *op)
 						MDP_CSC_FLAG_YUV_IN) << 18;
 			opmode |= !!(pipe->pp_cfg.csc_cfg.flags &
 						MDP_CSC_FLAG_YUV_OUT) << 19;
-			/*
-			 * TODO: Allow pipe to be programmed whenever new CSC is
-			 * applied (i.e. dirty bit)
-			 */
 			mdss_mdp_csc_setup_data(MDSS_MDP_BLOCK_SSPP, pipe->num,
 					&pipe->pp_cfg.csc_cfg);
 	} else {
 		if (pipe->src_fmt->is_yuv) {
-			opmode |= (0 << 19) |	/* DST_DATA=RGB */
-				  (1 << 18) |	/* SRC_DATA=YCBCR */
-				  (1 << 17);	/* CSC_1_EN */
-			/*
-			 * TODO: Needs to be part of dirty bit logic: if there
-			 * is a previously configured pipe need to re-configure
-			 * CSC matrix
-			 */
-			mdss_mdp_csc_setup(MDSS_MDP_BLOCK_SSPP, pipe->num,
-					   MDSS_MDP_CSC_YUV2RGB);
+			opmode |= (0 << 19) |	
+				  (1 << 18) |	
+				  (1 << 17);	
+			switch(pipe->color_space) {
+			case MDP_CSC_ITU_R_601_FR:
+				mdss_mdp_csc_setup(MDSS_MDP_BLOCK_SSPP, pipe->num,
+						   MDSS_MDP_CSC_YUV2RGB_601_FR);
+				break;
+			default:
+				mdss_mdp_csc_setup(MDSS_MDP_BLOCK_SSPP, pipe->num,
+						   MDSS_MDP_CSC_YUV2RGB_601);
+				break;
+			}
 		}
 	}
 
-	/* Update CSC state only if tuning mode is enable */
+	
 	if (dcm_state == DTM_ENTER) {
-		/* Reset bit 16 to 19 for CSC_STATE in VIG_OP_MODE */
+		
 		csc_reset = 0xFFF0FFFF;
 		current_opmode = readl_relaxed(pipe->base +
 						MDSS_MDP_REG_VIG_OP_MODE);
@@ -1468,15 +1478,10 @@ static int pp_mixer_setup(u32 disp_num,
 
 	flags = mdss_pp_res->pp_disp_flags[disp_num];
 	pp_sts = &mdss_pp_res->pp_disp_sts[disp_num];
-	/* GC_LUT is in layer mixer */
+	
 	if (flags & PP_FLAGS_DIRTY_ARGC) {
 		pgc_config = &mdss_pp_res->argc_disp_cfg[disp_num];
 		addr = mixer->base + MDSS_MDP_REG_LM_GC_LUT_BASE;
-		/*
-		 * ARGC will always be enabled. When user setting is
-		 * disabled we program the linear ARGC data to enable
-		 * rounding in HW.
-		 */
 		pp_sts->argc_sts |= PP_STS_ENABLE;
 		if (pgc_config->flags & MDP_PP_OPS_WRITE)
 			pp_update_argc_lut(addr, pgc_config);
@@ -1530,7 +1535,6 @@ static char __iomem *mdss_mdp_get_dspp_addr_off(u32 dspp_num)
 	return mixer->dspp_base;
 }
 
-/* Assumes that function will be called from within clock enabled space*/
 static int pp_hist_setup(u32 *op, u32 block, struct mdss_mdp_mixer *mix)
 {
 	int ret = -EINVAL;
@@ -1830,8 +1834,6 @@ int mdss_mdp_pp_setup(struct mdss_mdp_ctl *ctl)
 	if ((!ctl->mfd) || (!mdss_pp_res))
 		return -EINVAL;
 
-	/* TODO: have some sort of reader/writer lock to prevent unclocked
-	 * access while display power is toggled */
 	mutex_lock(&ctl->lock);
 	if (!mdss_mdp_ctl_is_power_on(ctl)) {
 		ret = -EPERM;
@@ -1907,11 +1909,6 @@ int mdss_mdp_pp_setup_locked(struct mdss_mdp_ctl *ctl)
 	else
 		pa_v2_flags = 0;
 
-	/*
-	 * If a LUT based PP feature needs to be reprogrammed during resume,
-	 * increase the register bus bandwidth to maximum frequency
-	 * in order to speed up the register reprogramming.
-	 */
 	max_bw_needed = (IS_PP_RESUME_COMMIT(flags) &&
 				(IS_PP_LUT_DIRTY(flags) ||
 				IS_SIX_ZONE_DIRTY(flags, pa_v2_flags)));
@@ -1951,10 +1948,6 @@ exit:
 	return ret;
 }
 
-/*
- * Set dirty and write bits on features that were enabled so they will be
- * reconfigured
- */
 int mdss_mdp_pp_resume(struct mdss_mdp_ctl *ctl, u32 dspp_num)
 {
 	u32 flags = 0, disp_num, bl, ret = 0;
@@ -2129,10 +2122,6 @@ int mdss_mdp_pp_init(struct device *dev)
 
 			mdss_pp_res->dspp_hist = hist;
 
-			/*
-			 * Set LM ARGC flags to disable. This would program
-			 * default GC which would allow for rounding in HW.
-			 */
 			for (i = 0; i < MDSS_MAX_MIXER_DISP_NUM; i++) {
 				gc_cfg = &mdss_pp_res->argc_disp_cfg[i];
 				gc_cfg->flags = MDP_PP_OPS_DISABLE;
@@ -3009,14 +2998,13 @@ static int pp_read_argc_lut_cached(struct mdp_pgc_lut_data *config)
 	return 0;
 }
 
-/* Note: Assumes that its inputs have been checked by calling function */
 static void pp_update_hist_lut(char __iomem *addr,
 				struct mdp_hist_lut_data *cfg)
 {
 	int i;
 	for (i = 0; i < ENHIST_LUT_ENTRIES; i++)
 		writel_relaxed(cfg->data[i], addr);
-	/* swap */
+	
 	if (PP_LOCAT(cfg->block) == MDSS_PP_DSPP_CFG)
 		writel_relaxed(1, addr + 4);
 	else
@@ -3422,7 +3410,6 @@ static u32 pp_hist_read(char __iomem *v_addr,
 	return sum;
 }
 
-/* Assumes that relevant clocks are enabled */
 static int pp_hist_enable(struct pp_hist_col_info *hist_info,
 				struct mdp_histogram_start_req *req)
 {
@@ -3680,19 +3667,6 @@ hist_stop_exit:
 	return ret;
 }
 
-/**
- * mdss_mdp_hist_intr_req() - Request changes the histogram interupts
- * @intr: structure containting state of interrupt register
- * @bits: the bits on interrupt register that should be changed
- * @en: true if bits should be set, false if bits should be cleared
- *
- * Adds or removes the bits from the interrupt request.
- *
- * Does not store reference count for each bit. I.e. a bit with multiple
- * enable requests can be disabled with a single disable request.
- *
- * Return: 0 if uneventful, errno on invalid input
- */
 int mdss_mdp_hist_intr_req(struct mdss_intr *intr, u32 bits, bool en)
 {
 	unsigned long flag;
@@ -3719,39 +3693,6 @@ int mdss_mdp_hist_intr_req(struct mdss_intr *intr, u32 bits, bool en)
 #define MDSS_INTR_STATE_NULL	0
 #define MDSS_INTR_STATE_SUSPEND	-1
 
-/**
- * mdss_mdp_hist_intr_setup() - Manage intr and clk depending on requests.
- * @intr: structure containting state of intr reg
- * @state: MDSS_IRQ_SUSPEND if suspend is needed,
- *         MDSS_IRQ_RESUME if resume is needed,
- *         MDSS_IRQ_REQ if neither (i.e. requesting an interrupt)
- *
- * This function acts as a gatekeeper for the interrupt, making sure that the
- * MDP clocks are enabled while the interrupts are enabled to prevent
- * unclocked accesses.
- *
- * To reduce code repetition, 4 state transitions have been encoded here. Each
- * transition updates the interrupt's state structure (mdss_intr) to reflect
- * the which bits have been requested (intr->req), are currently enabled
- * (intr->curr), as well as defines which interrupt bits need to be enabled or
- * disabled ('en' and 'dis' respectively). The 4th state is not explicity
- * coded in the if/else chain, but is for MDSS_IRQ_REQ's when the interrupt
- * is in suspend, in which case, the only change required (intr->req being
- * updated) has already occured in the calling function.
- *
- * To control the clock, which can't be requested while holding the spinlock,
- * the inital state is compared with the exit state to detect when the
- * interrupt needs a clock.
- *
- * The clock requests surrounding the majority of this function serve to
- * enable the register writes to change the interrupt register, as well as to
- * prevent a race condition that could keep the clocks on (due to mdp_clk_cnt
- * never being decremented below 0) when a enable/disable occurs but the
- * disable requests the clocks disabled before the enable is able to request
- * the clocks enabled.
- *
- * Return: 0 if uneventful, errno on repeated action or invalid input
- */
 int mdss_mdp_hist_intr_setup(struct mdss_intr *intr, int type)
 {
 	unsigned long flag;
@@ -3884,16 +3825,6 @@ static int pp_hist_collect(struct mdp_histogram_data *hist,
 			ret = -ETIMEDOUT;
 			pr_debug("bin collection timedout, state %d\n",
 					hist_info->col_state);
-			/*
-			 * When the histogram has timed out (usually
-			 * underrun) change the SW state back to idle
-			 * since histogram hardware will have done the
-			 * same. Histogram data also needs to be
-			 * cleared in this case, which is done by the
-			 * histogram being read (triggered by READY
-			 * state, which also moves the histogram SW back
-			 * to IDLE).
-			 */
 			hist_info->hist_cnt_time++;
 			hist_info->col_state = HIST_READY;
 		} else if (wait_ret < 0) {
@@ -4239,15 +4170,6 @@ static inline struct pp_hist_col_info *get_hist_info_from_isr(u32 *isr)
 	return hist_info;
 }
 
-/**
- * mdss_mdp_hist_intr_done - Handle histogram interrupts.
- * @isr: incoming histogram interrupts as bit mask
- *
- * This function takes the histogram interrupts received by the
- * MDP interrupt handler, and handles each of the interrupts by
- * progressing the histogram state if necessary and then clearing
- * the interrupt.
- */
 void mdss_mdp_hist_intr_done(u32 isr)
 {
 	u32 isr_blk, is_hist_done, is_hist_reset_done, isr_tmp;
@@ -4287,13 +4209,9 @@ void mdss_mdp_hist_intr_done(u32 isr)
 				complete(&hist_info->comp);
 		} else if (hist_info && is_hist_done &&
 				!(hist_info->col_en)) {
-			/*
-			 * Histogram collection is disabled yet we got an
-			 * interrupt somehow.
-			 */
 			pr_err("hist Done interrupt, col_en=false!\n");
 		}
-		/* Histogram Reset Done Interrupt */
+		
 		if (hist_info && is_hist_reset_done && (hist_info->col_en)) {
 			spin_lock(&hist_info->hist_lock);
 			hist_info->col_state = HIST_IDLE;
@@ -4351,13 +4269,6 @@ static inline void pp_sts_set_split_bits(u32 *sts, u32 bits)
 static inline bool pp_sts_is_enabled(u32 sts, int side)
 {
 	bool ret = false;
-	/*
-	 * If there are no sides, or if there are no split mode bits set, the
-	 * side can't be disabled via split mode.
-	 *
-	 * Otherwise, if the side being checked opposes the split mode
-	 * configuration, the side is disabled.
-	 */
 	if ((side == MDSS_SIDE_NONE) || !(sts & MDSS_PP_SPLIT_MASK))
 		ret = true;
 	else if ((sts & MDSS_PP_SPLIT_RIGHT_ONLY) && (side == MDSS_SIDE_RIGHT))
@@ -4432,7 +4343,6 @@ static int mdss_mdp_get_ad(struct msm_fb_data_type *mfd,
 	return ret;
 }
 
-/* must call this function from within ad->lock */
 static int pp_ad_invalidate_input(struct msm_fb_data_type *mfd)
 {
 	int ret;
@@ -4643,8 +4553,9 @@ int mdss_mdp_ad_input(struct msm_fb_data_type *mfd,
 			}
 			mutex_unlock(&ad->lock);
 			mutex_lock(&mfd->bl_lock);
-			MDSS_BRIGHT_TO_BL(bl, bl, mfd->panel_info->bl_max,
-					mfd->panel_info->brightness_max);
+			if (!mfd->panel_info->act_brt)
+				MDSS_BRIGHT_TO_BL(bl, bl, mfd->panel_info->bl_max,
+						mfd->panel_info->brightness_max);
 			mdss_fb_set_backlight(mfd, bl);
 			mutex_unlock(&mfd->bl_lock);
 			mutex_lock(&ad->lock);
@@ -4937,11 +4848,6 @@ static int mdss_mdp_ad_setup(struct msm_fb_data_type *mfd)
 	}
 	if (!PP_AD_STS_IS_DIRTY(ad->sts) &&
 		(ad->sts & PP_AD_STS_DIRTY_DATA)) {
-		/*
-		 * Write inputs to regs when the data has been updated or
-		 * Assertive Display is up and running as long as there are
-		 * no updates to AD init or cfg
-		 */
 		ad->sts &= ~PP_AD_STS_DIRTY_DATA;
 		ad->state |= PP_AD_STATE_DATA;
 		pr_debug("dirty data, last_bl = %d\n", ad->last_bl);
@@ -5151,7 +5057,6 @@ static void pp_ad_cfg_lut(char __iomem *addr, u32 *data)
 			addr + ((PP_AD_LUT_LEN - 1) * 2));
 }
 
-/* must call this function from within ad->lock */
 static int  pp_ad_attenuate_bl(struct mdss_ad_info *ad, u32 bl, u32 *bl_out)
 {
 	u32 shift = 0, ratio_temp = 0;
@@ -5199,7 +5104,6 @@ static int  pp_ad_attenuate_bl(struct mdss_ad_info *ad, u32 bl, u32 *bl_out)
 	return 0;
 }
 
-/* must call this function from within ad->lock */
 static int pp_ad_linearize_bl(struct mdss_ad_info *ad, u32 bl, u32 *bl_out,
 	int inv)
 {

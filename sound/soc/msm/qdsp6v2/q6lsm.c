@@ -61,11 +61,6 @@ struct lsm_common {
 };
 
 static struct lsm_common lsm_common;
-/*
- * mmap_handle_p can point either client->sound_model.mem_map_handle or
- * lsm_common.mmap_handle_for_cal.
- * mmap_lock must be held while accessing this.
- */
 static spinlock_t mmap_lock;
 static uint32_t *mmap_handle_p;
 
@@ -287,12 +282,6 @@ void q6lsm_client_free(struct lsm_client *client)
 	kfree(client);
 }
 
-/*
- * q6lsm_apr_send_pkt : If wait == true, hold mutex to prevent from preempting
- *			other thread's wait.
- *			If mmap_handle_p != NULL, disable irq and spin lock to
- *			protect mmap_handle_p
- */
 static int q6lsm_apr_send_pkt(struct lsm_client *client, void *handle,
 			      void *data, bool wait, uint32_t *mmap_p)
 {
@@ -642,11 +631,6 @@ int q6lsm_set_data(struct lsm_client *client,
 	int rc = 0;
 
 	if (!client->confidence_levels) {
-		/*
-		 * It is possible that confidence levels are
-		 * not provided. This is not a error condition.
-		 * Return gracefully without any error
-		 */
 		pr_debug("%s: no conf levels to set\n",
 			__func__);
 		return rc;
@@ -947,9 +931,6 @@ static struct lsm_client *q6lsm_get_lsm_client(int session_id)
 	return client;
 }
 
-/*
- * q6lsm_mmapcallback : atomic context
- */
 static int q6lsm_mmapcallback(struct apr_client_data *data, void *priv)
 {
 	unsigned long flags;

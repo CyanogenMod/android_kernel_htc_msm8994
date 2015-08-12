@@ -60,10 +60,6 @@ int diag_mux_init()
 	md_logger.log_ops = &md_log_ops;
 	diag_md_init();
 
-	/*
-	 * Set USB logging as the default logger. This is the mode
-	 * Diag should be in when it initializes.
-	 */
 	logger = &usb_logger;
 	return 0;
 }
@@ -128,9 +124,15 @@ int diag_mux_switch_logging(int new_mode)
 
 	switch (new_mode) {
 	case DIAG_USB_MODE:
+		DIAG_INFO("sdlogging disable\n");
+		driver->qxdm2sd_drop = 1;	
+
 		new_logger = &usb_logger;
 		break;
 	case DIAG_MEMORY_DEVICE_MODE:
+		DIAG_INFO("sdlogging enable\n");
+		driver->qxdm2sd_drop = 0;	
+
 		new_logger = &md_logger;
 		break;
 	default:

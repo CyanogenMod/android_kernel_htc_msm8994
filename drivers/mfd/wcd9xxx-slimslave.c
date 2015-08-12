@@ -162,10 +162,6 @@ static int wcd9xxx_alloc_slim_sh_ch(struct wcd9xxx *wcd9xxx,
 	int ret = 0;
 	u32 ch_idx ;
 
-	/* The slimbus channel allocation seem take longer time
-	 * so do the allocation up front to avoid delay in start of
-	 * playback
-	 */
 	pr_debug("%s: pgd_la[%d]\n", __func__, wcd9xxx_pgd_la);
 	for (ch_idx = 0; ch_idx < cnt; ch_idx++) {
 		ret = slim_get_slaveport(wcd9xxx_pgd_la,
@@ -211,7 +207,6 @@ static int wcd9xxx_dealloc_slim_sh_ch(struct slim_device *slim,
 	return ret;
 }
 
-/* Enable slimbus slave device for RX path */
 int wcd9xxx_cfg_slim_sch_rx(struct wcd9xxx *wcd9xxx,
 			    struct list_head *wcd9xxx_ch_list,
 			    unsigned int rate, unsigned int bit_width,
@@ -273,10 +268,7 @@ int wcd9xxx_cfg_slim_sch_rx(struct wcd9xxx *wcd9xxx,
 			 sh_ch.rx_port_ch_reg_base,
 			sh_ch.port_rx_cfg_reg_base);
 
-		/* look for the valid port range and chose the
-		 * payload accordingly
-		 */
-		/* write to interface device */
+		
 		ret = wcd9xxx_interface_reg_write(wcd9xxx,
 				SB_PGD_RX_PORT_MULTI_CHANNEL_0(
 				sh_ch.rx_port_ch_reg_base, codec_port),
@@ -318,14 +310,13 @@ int wcd9xxx_cfg_slim_sch_rx(struct wcd9xxx *wcd9xxx,
 	return 0;
 
 err_close_slim_sch:
-	/*  release all acquired handles */
+	
 	wcd9xxx_close_slim_sch_rx(wcd9xxx, wcd9xxx_ch_list, *grph);
 err:
 	return ret;
 }
 EXPORT_SYMBOL_GPL(wcd9xxx_cfg_slim_sch_rx);
 
-/* Enable slimbus slave device for RX path */
 int wcd9xxx_cfg_slim_sch_tx(struct wcd9xxx *wcd9xxx,
 			    struct list_head *wcd9xxx_ch_list,
 			    unsigned int rate, unsigned int bit_width,
@@ -521,7 +512,6 @@ int wcd9xxx_disconnect_port(struct wcd9xxx *wcd9xxx,
 }
 EXPORT_SYMBOL_GPL(wcd9xxx_disconnect_port);
 
-/* This function is called with mutex acquired */
 int wcd9xxx_rx_vport_validation(u32 port_id,
 				struct list_head *codec_dai_list)
 {
@@ -541,7 +531,6 @@ int wcd9xxx_rx_vport_validation(u32 port_id,
 	return ret;
 }
 EXPORT_SYMBOL_GPL(wcd9xxx_rx_vport_validation);
-
 
 /* This function is called with mutex acquired */
 int wcd9xxx_tx_vport_validation(u32 table, u32 port_id,
@@ -674,8 +663,8 @@ int wcd9xxx_slim_ch_master_open(struct wcd9xxx *wcd9xxx,
 	return 0;
 fail:
 	mutex_unlock(&tx_master->lock);
-	kfree(slim_cfg);
 	slim_control_ch(wcd9xxx->slim, slim_cfg->grph, SLIM_CH_REMOVE, true);
+	kfree(slim_cfg);
 return rc;
 }
 EXPORT_SYMBOL(wcd9xxx_slim_ch_master_open);
@@ -768,12 +757,6 @@ int wcd9xxx_slim_ch_master_status(struct wcd9xxx *wcd9xxx, void *handle,
 	}
 
 	if (!rc && *len == 0) {
-		/*
-		 * If timeout occurred and the length of
-		 * buffer returned is 0, then there is a
-		 * error on the bus, return error to caller
-		 * to avoid queuing more buffers.
-		 */
 		pr_err("%s: no buffer returned after timeout\n",
 			__func__);
 		rc = -EIO;

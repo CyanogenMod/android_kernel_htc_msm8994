@@ -38,23 +38,19 @@
 
 #define Q_NUM_CTL_REGS			0xD
 
-/* revision registers base address offsets */
 #define Q_REG_DIG_MINOR_REV		0x0
 #define Q_REG_DIG_MAJOR_REV		0x1
 #define Q_REG_ANA_MINOR_REV		0x2
 
-/* type registers base address offsets */
 #define Q_REG_TYPE			0x4
 #define Q_REG_SUBTYPE			0x5
 
-/* gpio peripheral type and subtype values */
 #define Q_GPIO_TYPE			0x10
 #define Q_GPIO_SUBTYPE_GPIO_4CH		0x1
 #define Q_GPIO_SUBTYPE_GPIOC_4CH	0x5
 #define Q_GPIO_SUBTYPE_GPIO_8CH		0x9
 #define Q_GPIO_SUBTYPE_GPIOC_8CH	0xD
 
-/* mpp peripheral type and subtype values */
 #define Q_MPP_TYPE				0x11
 #define Q_MPP_SUBTYPE_4CH_NO_ANA_OUT		0x3
 #define Q_MPP_SUBTYPE_ULT_4CH_NO_ANA_OUT	0x4
@@ -63,7 +59,6 @@
 #define Q_MPP_SUBTYPE_4CH_FULL_FUNC		0x7
 #define Q_MPP_SUBTYPE_8CH_FULL_FUNC		0xF
 
-/* control register base address offsets */
 #define Q_REG_MODE_CTL			0x40
 #define Q_REG_DIG_VIN_CTL		0x41
 #define Q_REG_DIG_PULL_CTL		0x42
@@ -74,7 +69,6 @@
 #define Q_REG_AIN_CTL			0x4A
 #define Q_REG_SINK_CTL			0x4C
 
-/* control register regs array indices */
 #define Q_REG_I_MODE_CTL		0
 #define Q_REG_I_DIG_VIN_CTL		1
 #define Q_REG_I_DIG_PULL_CTL		2
@@ -85,7 +79,6 @@
 #define Q_REG_I_AIN_CTL			10
 #define Q_REG_I_SINK_CTL		12
 
-/* control reg: mode */
 #define Q_REG_OUT_INVERT_SHIFT		0
 #define Q_REG_OUT_INVERT_MASK		0x1
 #define Q_REG_SRC_SEL_SHIFT		1
@@ -93,33 +86,26 @@
 #define Q_REG_MODE_SEL_SHIFT		4
 #define Q_REG_MODE_SEL_MASK		0x70
 
-/* control reg: dig_vin */
 #define Q_REG_VIN_SHIFT			0
 #define Q_REG_VIN_MASK			0x7
 
-/* control reg: dig_pull */
 #define Q_REG_PULL_SHIFT		0
 #define Q_REG_PULL_MASK			0x7
 
-/* control reg: dig_out */
 #define Q_REG_OUT_STRENGTH_SHIFT	0
 #define Q_REG_OUT_STRENGTH_MASK		0x3
 #define Q_REG_OUT_TYPE_SHIFT		4
 #define Q_REG_OUT_TYPE_MASK		0x30
 
-/* control reg: en */
 #define Q_REG_MASTER_EN_SHIFT		7
 #define Q_REG_MASTER_EN_MASK		0x80
 
-/* control reg: ana_out */
 #define Q_REG_AOUT_REF_SHIFT		0
 #define Q_REG_AOUT_REF_MASK		0x7
 
-/* control reg: ana_in */
 #define Q_REG_AIN_ROUTE_SHIFT		0
 #define Q_REG_AIN_ROUTE_MASK		0x7
 
-/* control reg: sink */
 #define Q_REG_CS_OUT_SHIFT		0
 #define Q_REG_CS_OUT_MASK		0x7
 
@@ -140,7 +126,6 @@ enum qpnp_pin_param_type {
 
 #define Q_NUM_PARAMS			Q_PIN_CFG_INVALID
 
-/* param error checking */
 #define QPNP_PIN_GPIO_MODE_INVALID	3
 #define QPNP_PIN_MPP_MODE_INVALID	7
 #define QPNP_PIN_INVERT_INVALID		2
@@ -223,18 +208,6 @@ static inline void qpnp_chip_gpio_set_spec(struct qpnp_pin_chip *q_chip,
 	q_chip->chip_gpios[chip_gpio] = spec;
 }
 
-/*
- * Determines whether a specified param's configuration is correct.
- * This check is two tier. First a check is done whether the hardware
- * supports this param and value requested. The second check validates
- * that the configuration is correct, given the fact that the hardware
- * supports it.
- *
- * Returns
- *	-ENXIO is the hardware does not support this param.
- *	-EINVAL if the the hardware does support this param, but the
- *	requested value is outside the supported range.
- */
 static int qpnp_pin_check_config(enum qpnp_pin_param_type idx,
 				 struct qpnp_pin_spec *q_spec, uint32_t val)
 {
@@ -1119,11 +1092,6 @@ static int qpnp_pin_debugfs_create(struct qpnp_pin_chip *q_chip)
 			type = dfs_args[j].type;
 			filename = dfs_args[j].filename;
 
-			/*
-			 * Use a value of '0' to see if the pin has even basic
-			 * support for a function. Do not create a file if
-			 * it doesn't.
-			 */
 			rc = qpnp_pin_check_config(type, q_spec, 0);
 			if (rc == -ENXIO)
 				continue;
@@ -1176,6 +1144,72 @@ static int qpnp_pin_is_valid_pin(struct qpnp_pin_spec *q_spec)
 
 	return 0;
 }
+
+#ifdef CONFIG_HTC_POWER_DEBUG
+int qpnp_pin_dump(struct seq_file *m, int curr_len, char *gpio_buffer)
+{
+        int i, j, rc;
+        u64 value;
+        enum qpnp_pin_param_type type;
+        const char *filename;
+        int len;
+        char read_buf[256];
+        char *title_msg = "---------- QPNP PIN ---------";
+        struct qpnp_pin_chip *q_chip;
+        struct qpnp_pin_spec *q_spec;
+
+        if (m)
+                seq_printf(m, "%s\n", title_msg);
+        else {
+                pr_info("%s\n", title_msg);
+                curr_len += sprintf(gpio_buffer + curr_len,
+                "%s\n", title_msg);
+        }
+        list_for_each_entry(q_chip, &qpnp_pin_chips, chip_list) {
+                if (m)
+                        seq_printf(m, "%s\n", q_chip->gpio_chip.label);
+                else {
+                        pr_info("%s\n", q_chip->gpio_chip.label);
+                        curr_len += sprintf(gpio_buffer + curr_len,
+                        "%s\n", q_chip->gpio_chip.label);
+                }
+
+                for (i = 0; i < q_chip->gpio_chip.ngpio; i++) {
+                        memset(read_buf, 0, sizeof(read_buf));
+                        len = 0;
+                        q_spec = qpnp_chip_gpio_get_spec(q_chip, i);
+                        if (q_spec->type == Q_GPIO_TYPE)
+                                len += sprintf(read_buf + len, "GPIO[%2d]: ", q_spec->pmic_pin);
+                        else
+                                len += sprintf(read_buf + len, "MPP[%2d]: ", q_spec->pmic_pin);
+
+                        for (j = 0; j < Q_NUM_PARAMS; j++) {
+                                type = dfs_args[j].type;
+                                filename = dfs_args[j].filename;
+
+                                rc = qpnp_pin_check_config(type, q_spec, 0);
+                                if (rc == -ENXIO)
+                                        continue;
+
+                                qpnp_pin_debugfs_get(&q_spec->params[type], &value);
+                                len += sprintf(read_buf + len, "[%s]%llu ", filename, value);
+                        }
+
+                        read_buf[255] = '\0';
+                        if (m)
+                                seq_printf(m, "%s\n", read_buf);
+                        else {
+                                pr_info("%s\n", read_buf);
+                                curr_len += sprintf(gpio_buffer +
+                                curr_len, "%s\n", read_buf);
+                        }
+                }
+        }
+
+        return curr_len;
+}
+EXPORT_SYMBOL_GPL(qpnp_pin_dump);
+#endif
 
 static int qpnp_pin_probe(struct spmi_device *spmi)
 {

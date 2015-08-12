@@ -53,7 +53,6 @@ static bool probe_done;
 
 #define CLIENT_NAME_MAX 10
 
-/* Must be in sync with enum ocmem_client */
 static const char *client_names[OCMEM_CLIENT_MAX] = {
 	"graphics",
 	"video",
@@ -65,7 +64,6 @@ static const char *client_names[OCMEM_CLIENT_MAX] = {
 	"other_os",
 };
 
-/* Must be in sync with enum ocmem_zstat_item */
 static const char *zstat_names[NR_OCMEM_ZSTAT_ITEMS] = {
 	"Allocation requests",
 	"Synchronous allocations",
@@ -97,9 +95,8 @@ struct ocmem_quota_table {
 	unsigned int tail;
 };
 
-/* This static table will go away with device tree support */
 static struct ocmem_quota_table qt[OCMEM_CLIENT_MAX] = {
-	/* name,        id,     start,  size,   min, tail */
+	
 	{ "graphics", OCMEM_GRAPHICS, 0x0, 0x100000, 0x80000, 0},
 	{ "video", OCMEM_VIDEO, 0x100000, 0x80000, 0x55000, 1},
 	{ "camera", OCMEM_CAMERA, 0x0, 0x0, 0x0, 0},
@@ -341,9 +338,8 @@ static int parse_power_ctrl_config(struct ocmem_plat_data *pdata,
 	return 0;
 
 }
-#endif /* CONFIG_MSM_OCMEM_LOCAL_POWER_CTRL */
+#endif 
 
-/* Core Clock Operations */
 int ocmem_enable_core_clock(void)
 {
 	int ret;
@@ -362,7 +358,6 @@ void ocmem_disable_core_clock(void)
 	pr_debug("ocmem: Disabled core clock\n");
 }
 
-/* Branch Clock Operations */
 int ocmem_enable_iface_clock(void)
 {
 	int ret;
@@ -562,7 +557,7 @@ static const struct file_operations zones_show_fops = {
 	.open = ocmem_zones_open,
 	.read = seq_read,
 	.llseek = seq_lseek,
-	.release = seq_release,
+	.release = single_release,
 };
 
 static int ocmem_stats_show(struct seq_file *f, void *dummy)
@@ -591,7 +586,7 @@ static const struct file_operations stats_show_fops = {
 	.open = ocmem_stats_open,
 	.read = seq_read,
 	.llseek = seq_lseek,
-	.release = seq_release,
+	.release = single_release,
 };
 
 static int ocmem_timing_show(struct seq_file *f, void *dummy)
@@ -619,7 +614,7 @@ static const struct file_operations timing_show_fops = {
 	.open = ocmem_timing_open,
 	.read = seq_read,
 	.llseek = seq_lseek,
-	.release = seq_release,
+	.release = single_release,
 };
 
 static int ocmem_zone_init(struct platform_device *pdev)
@@ -745,7 +740,6 @@ static int ocmem_zone_init(struct platform_device *pdev)
 	return 0;
 }
 
-/* Enable the ocmem graphics mpU as a workaround */
 #ifdef CONFIG_MSM_OCMEM_NONSECURE
 static int ocmem_init_gfx_mpu(struct platform_device *pdev)
 {

@@ -68,10 +68,8 @@
 #define QSEECOM_MAX_SG_ENTRY	512
 #define QSEECOM_INVALID_KEY_ID  0xff
 
-/* Save partition image hash for authentication check */
 #define	SCM_SAVE_PARTITION_HASH_ID	0x01
 
-/* Check if enterprise security is activate */
 #define	SCM_IS_ACTIVATED_ID		0x02
 
 #define RPMB_SERVICE			0x2000
@@ -247,7 +245,6 @@ static struct qseecom_key_id_usage_desc key_id_array[] = {
 	},
 };
 
-/* Function proto types */
 static int qsee_vote_for_clock(struct qseecom_dev_handle *, int32_t);
 static void qsee_disable_clock_vote(struct qseecom_dev_handle *, int32_t);
 static int __qseecom_enable_clk(enum qseecom_ce_hw_instance ce);
@@ -1042,10 +1039,6 @@ static int qseecom_scale_bus_bandwidth(struct qseecom_dev_handle *data,
 		return -EINVAL;
 	}
 
-	/*
-	* Register bus bandwidth needs if bus scaling feature is enabled;
-	* otherwise, qseecom enable/disable clocks for the client directly.
-	*/
 	if (qseecom.support_bus_scaling) {
 		mutex_lock(&qsee_bw_mutex);
 		ret = __qseecom_register_bus_bandwidth_needs(data, req_mode);
@@ -1179,9 +1172,6 @@ static int __qseecom_process_incomplete_cmd(struct qseecom_dev_handle *data,
 
 	while (resp->result == QSEOS_RESULT_INCOMPLETE) {
 		lstnr = resp->data;
-		/*
-		 * Wake up blocking lsitener service with the lstnr id
-		 */
 		spin_lock_irqsave(&qseecom.registered_listener_list_lock,
 					flags);
 		list_for_each_entry(ptr_svc,
@@ -2971,12 +2961,6 @@ int qseecom_send_command(struct qseecom_handle *handle, void *send_buf,
 			return ret;
 		}
 	}
-	/*
-	* On targets where crypto clock is handled by HLOS,
-	* if clk_access_cnt is zero and perf_enabled is false,
-	* then the crypto clock was not enabled before sending cmd
-	* to tz, qseecom will enable the clock to avoid service failure.
-	*/
 	if (!qseecom.no_clock_support &&
 		!qseecom.qsee.clk_access_cnt && !data->perf_enabled) {
 		pr_debug("ce clock is not enabled!\n");
@@ -4661,12 +4645,6 @@ long qseecom_ioctl(struct file *file, unsigned cmd, unsigned long arg)
 				break;
 			}
 		}
-		/*
-		* On targets where crypto clock is handled by HLOS,
-		* if clk_access_cnt is zero and perf_enabled is false,
-		* then the crypto clock was not enabled before sending cmd
-		* to tz, qseecom will enable the clock to avoid service failure.
-		*/
 		if (!qseecom.no_clock_support &&
 			!qseecom.qsee.clk_access_cnt && !data->perf_enabled) {
 			pr_debug("ce clock is not enabled!\n");
@@ -4721,12 +4699,6 @@ long qseecom_ioctl(struct file *file, unsigned cmd, unsigned long arg)
 				break;
 			}
 		}
-		/*
-		* On targets where crypto clock is handled by HLOS,
-		* if clk_access_cnt is zero and perf_enabled is false,
-		* then the crypto clock was not enabled before sending cmd
-		* to tz, qseecom will enable the clock to avoid service failure.
-		*/
 		if (!qseecom.no_clock_support &&
 			!qseecom.qsee.clk_access_cnt && !data->perf_enabled) {
 			pr_debug("ce clock is not enabled!\n");
@@ -5650,10 +5622,6 @@ static int qseecom_probe(struct platform_device *pdev)
 			pr_info("no-clock-support=0x%x",
 			qseecom.no_clock_support);
 		}
-		/*
-		 * The qseecom bus scaling flag can not be enabled when
-		 * crypto clock is not handled by HLOS.
-		 */
 		if (qseecom.no_clock_support && qseecom.support_bus_scaling) {
 			pr_err("support_bus_scaling flag can not be enabled.\n");
 			rc = -EINVAL;

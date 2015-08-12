@@ -38,7 +38,7 @@
 const struct dma_map_ops *dma_ops;
 EXPORT_SYMBOL(dma_ops);
 
-#define DEFAULT_DMA_COHERENT_POOL_SIZE  SZ_256K
+#define DEFAULT_DMA_COHERENT_POOL_SIZE  SZ_2M
 #define NO_KERNEL_MAPPING_DUMMY 0x2222
 
 struct dma_pool {

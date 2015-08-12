@@ -34,7 +34,6 @@
 #include <linux/thermal.h>
 #include <linux/platform_device.h>
 
-/* QPNP VADC TM register definition */
 #define QPNP_REVISION3					0x2
 #define QPNP_PERPH_SUBTYPE				0x5
 #define QPNP_PERPH_TYPE2				0x2
@@ -437,30 +436,27 @@ static int32_t qpnp_adc_tm_req_sts_check(struct qpnp_adc_tm_chip *chip)
 	u8 status1 = 0, mode_ctl = 0;
 	int rc, count = 0;
 
-	/* Re-enable the peripheral */
+	
 	rc = qpnp_adc_tm_enable(chip);
 	if (rc) {
 		pr_err("adc-tm re-enable peripheral failed\n");
 		return rc;
 	}
 
-	/* The VADC_TM bank needs to be disabled for new conversion request */
+	
 	rc = qpnp_adc_tm_read_reg(chip, QPNP_ADC_TM_STATUS1, &status1);
 	if (rc) {
 		pr_err("adc-tm read status1 failed\n");
 		return rc;
 	}
 
-	/* Disable the bank if a conversion is occuring */
+	
 	while (status1 & QPNP_STATUS1_REQ_STS) {
 		if (count > QPNP_RETRY) {
 			pr_err("adc-tm conversion not completed in retry=%d\n",
 							count);
 			break;
 		}
-		/* Wait time is based on the optimum sampling rate
-		 * and adding enough time buffer to account for ADC conversions
-		 * occuring on different peripheral banks */
 		usleep_range(QPNP_MIN_TIME, QPNP_MAX_TIME);
 		rc = qpnp_adc_tm_read_reg(chip, QPNP_ADC_TM_STATUS1, &status1);
 		if (rc < 0) {
@@ -826,9 +822,6 @@ static int32_t qpnp_adc_tm_manage_thresholds(struct qpnp_adc_tm_chip *chip,
 	int high_thr = 0, low_thr = 0, rc = 0;
 
 
-	/* high_thr/low_thr starting point and reset the high_thr_set and
-		low_thr_set back to reset since the thresholds will be
-		recomputed */
 	list_for_each(thr_list,
 			&chip->sensor[dt_index].thr_list) {
 		client_info = list_entry(thr_list,
@@ -841,7 +834,9 @@ static int32_t qpnp_adc_tm_manage_thresholds(struct qpnp_adc_tm_chip *chip,
 
 	pr_debug("init threshold is high:%d and low:%d\n", high_thr, low_thr);
 
-	/* Find the min of high_thr and max of low_thr */
+	/* high_thr/low_thr starting point and reset the high_thr_set and
+		low_thr_set back to reset since the thresholds will be
+		recomputed */
 	list_for_each(thr_list,
 			&chip->sensor[dt_index].thr_list) {
 		client_info = list_entry(thr_list,
@@ -865,7 +860,7 @@ static int32_t qpnp_adc_tm_manage_thresholds(struct qpnp_adc_tm_chip *chip,
 							high_thr, low_thr);
 	}
 
-	/* Check which of the high_thr and low_thr got set */
+	/* Find the min of high_thr and max of low_thr */
 	list_for_each(thr_list,
 			&chip->sensor[dt_index].thr_list) {
 		client_info = list_entry(thr_list,
@@ -1200,7 +1195,7 @@ static int qpnp_adc_tm_get_trip_type(struct thermal_zone_device *thermal,
 }
 
 static int qpnp_adc_tm_get_trip_temp(struct thermal_zone_device *thermal,
-				   int trip, unsigned long *temp)
+				   int trip, long *temp)
 {
 	struct qpnp_adc_tm_sensor *adc_tm_sensor = thermal->devdata;
 	struct qpnp_adc_tm_chip *chip = adc_tm_sensor->chip;
@@ -1692,8 +1687,6 @@ static int qpnp_adc_tm_read_status(struct qpnp_adc_tm_chip *chip)
 		goto fail;
 	}
 
-	/* Check which interrupt threshold is lower and measure against the
-	 * enabled channel */
 	rc = qpnp_adc_tm_read_reg(chip, QPNP_ADC_TM_MULTI_MEAS_EN,
 							&qpnp_adc_tm_meas_en);
 	if (rc) {
@@ -1720,8 +1713,6 @@ static int qpnp_adc_tm_read_status(struct qpnp_adc_tm_chip *chip)
 			sensor_num, adc_tm_high_enable, adc_tm_low_enable,
 			qpnp_adc_tm_meas_en);
 		if (!chip->sensor[sensor_num].thermal_node) {
-			/* For non thermal registered clients
-				such as usb_id, vbatt, pmic_therm */
 			sensor_mask = 1 << sensor_num;
 			pr_debug("non thermal node - mask:%x\n", sensor_mask);
 			rc = qpnp_adc_tm_recalib_request_check(chip,
@@ -1739,9 +1730,6 @@ static int qpnp_adc_tm_read_status(struct qpnp_adc_tm_chip *chip)
 				goto fail;
 			}
 		} else {
-			/* Uses the thermal sysfs registered device to disable
-				the corresponding high voltage threshold which
-				 is triggered by low temp */
 			pr_debug("thermal node with mask:%x\n", sensor_mask);
 			rc = qpnp_adc_tm_activate_trip_type(
 				chip->sensor[sensor_num].tz_dev,
@@ -1784,8 +1772,6 @@ static int qpnp_adc_tm_read_status(struct qpnp_adc_tm_chip *chip)
 			sensor_num, adc_tm_high_enable, adc_tm_low_enable,
 			qpnp_adc_tm_meas_en);
 		if (!chip->sensor[sensor_num].thermal_node) {
-			/* For non thermal registered clients
-				such as usb_id, vbatt, pmic_therm */
 			pr_debug("non thermal node - mask:%x\n", sensor_mask);
 			rc = qpnp_adc_tm_recalib_request_check(chip,
 					sensor_num, false, &notify_check);
@@ -1803,9 +1789,6 @@ static int qpnp_adc_tm_read_status(struct qpnp_adc_tm_chip *chip)
 				goto fail;
 			}
 		} else {
-			/* Uses the thermal sysfs registered device to disable
-				the corresponding low voltage threshold which
-				 is triggered by high temp */
 			pr_debug("thermal node with mask:%x\n", sensor_mask);
 			rc = qpnp_adc_tm_activate_trip_type(
 				chip->sensor[sensor_num].tz_dev,
@@ -1820,8 +1803,6 @@ static int qpnp_adc_tm_read_status(struct qpnp_adc_tm_chip *chip)
 			client_info = list_entry(thr_list,
 					struct qpnp_adc_thr_client_info, list);
 			if (client_info->low_thr_set) {
-				/* mark the corresponding clients threshold
-					as not set */
 				client_info->low_thr_set = false;
 				client_info->notify_low_thr = true;
 				if (client_info->state_req_copy ==
@@ -1927,7 +1908,7 @@ static irqreturn_t qpnp_adc_tm_low_thr_isr(int irq, void *data)
 }
 
 static int qpnp_adc_read_temp(struct thermal_zone_device *thermal,
-			     unsigned long *temp)
+			     long *temp)
 {
 	struct qpnp_adc_tm_sensor *adc_tm_sensor = thermal->devdata;
 	struct qpnp_adc_tm_chip *chip = adc_tm_sensor->chip;

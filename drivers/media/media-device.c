@@ -30,9 +30,6 @@
 #include <media/media-devnode.h>
 #include <media/media-entity.h>
 
-/* -----------------------------------------------------------------------------
- * Userspace API
- */
 
 static int media_device_open(struct file *filp)
 {
@@ -50,6 +47,13 @@ static int media_device_get_info(struct media_device *dev,
 	struct media_device_info info;
 
 	memset(&info, 0, sizeof(info));
+
+	
+	if (!dev || !dev->dev || !dev->dev->driver) {
+		pr_err("%s: failed\n", __func__);
+		return -EFAULT;
+	}
+	
 
 	strlcpy(info.driver, dev->dev->driver->name, sizeof(info.driver));
 	strlcpy(info.model, dev->model, sizeof(info.model));
@@ -208,8 +212,6 @@ static long media_device_setup_link(struct media_device *mdev,
 	if (copy_from_user(&ulink, _ulink, sizeof(ulink)))
 		return -EFAULT;
 
-	/* Find the source and sink entities and link.
-	 */
 	source = find_entity(mdev, ulink.source.entity);
 	sink = find_entity(mdev, ulink.sink.entity);
 
@@ -337,13 +339,10 @@ static const struct media_file_operations media_device_fops = {
 	.ioctl = media_device_ioctl,
 #ifdef CONFIG_COMPAT
 	.compat_ioctl = media_device_compat_ioctl,
-#endif /* CONFIG_COMPAT */
+#endif 
 	.release = media_device_close,
 };
 
-/* -----------------------------------------------------------------------------
- * sysfs
- */
 
 static ssize_t show_model(struct device *cd,
 			  struct device_attribute *attr, char *buf)
@@ -355,24 +354,11 @@ static ssize_t show_model(struct device *cd,
 
 static DEVICE_ATTR(model, S_IRUGO, show_model, NULL);
 
-/* -----------------------------------------------------------------------------
- * Registration/unregistration
- */
 
 static void media_device_release(struct media_devnode *mdev)
 {
 }
 
-/**
- * media_device_register - register a media device
- * @mdev:	The media device
- *
- * The caller is responsible for initializing the media device before
- * registration. The following fields must be set:
- *
- * - dev must point to the parent device
- * - model must be filled with the device model name
- */
 int __must_check media_device_register(struct media_device *mdev)
 {
 	int ret;
@@ -403,11 +389,6 @@ int __must_check media_device_register(struct media_device *mdev)
 }
 EXPORT_SYMBOL_GPL(media_device_register);
 
-/**
- * media_device_unregister - unregister a media device
- * @mdev:	The media device
- *
- */
 void media_device_unregister(struct media_device *mdev)
 {
 	struct media_entity *entity;
@@ -421,15 +402,10 @@ void media_device_unregister(struct media_device *mdev)
 }
 EXPORT_SYMBOL_GPL(media_device_unregister);
 
-/**
- * media_device_register_entity - Register an entity with a media device
- * @mdev:	The media device
- * @entity:	The entity
- */
 int __must_check media_device_register_entity(struct media_device *mdev,
 					      struct media_entity *entity)
 {
-	/* Warn if we apparently re-register an entity */
+	
 	WARN_ON(entity->parent != NULL);
 	entity->parent = mdev;
 
@@ -445,13 +421,6 @@ int __must_check media_device_register_entity(struct media_device *mdev,
 }
 EXPORT_SYMBOL_GPL(media_device_register_entity);
 
-/**
- * media_device_unregister_entity - Unregister an entity
- * @entity:	The entity
- *
- * If the entity has never been registered this function will return
- * immediately.
- */
 void media_device_unregister_entity(struct media_entity *entity)
 {
 	struct media_device *mdev = entity->parent;

@@ -1126,10 +1126,6 @@ static inline struct mdss_mdp_misr_map *mdss_misr_get_map(u32 block_id,
 				value_reg = intf_base +
 					MDSS_MDP_INTF_MISR_SIGNATURE;
 			}
-			/*
-			 * For msm8916/8939, additional offset of 0x10
-			 * is required
-			 */
 			if ((mdata->mdp_rev == MDSS_MDP_HW_REV_106) ||
 				(mdata->mdp_rev == MDSS_MDP_HW_REV_108)) {
 				ctrl_reg += 0x10;
@@ -1153,15 +1149,6 @@ static inline struct mdss_mdp_misr_map *mdss_misr_get_map(u32 block_id,
 	return map;
 }
 
-/*
- * switch_mdp_misr_offset() - Update MDP MISR register offset for MDSS
- * Hardware Revision 103.
- * @map: mdss_mdp_misr_map
- * @mdp_rev: MDSS Hardware Revision
- * @block_id: Logical MISR Block ID
- *
- * Return: true when MDSS Revision is 103 else false.
- */
 static bool switch_mdp_misr_offset(struct mdss_mdp_misr_map *map, u32 mdp_rev,
 					u32 block_id)
 {
@@ -1368,7 +1355,6 @@ int mdss_misr_get(struct mdss_data_type *mdata,
 	return ret;
 }
 
-/* This function is expected to be called from interrupt context */
 void mdss_misr_crc_collect(struct mdss_data_type *mdata, int block_id)
 {
 	struct mdss_mdp_misr_map *map;
@@ -1447,4 +1433,128 @@ void mdss_misr_crc_collect(struct mdss_data_type *mdata, int block_id)
 	} else {
 		vsync_count += 1;
 	}
+}
+
+static struct debug_bus list[] = {
+	{ 0x298, 0x29c, 4, 0},
+	{ 0x298, 0x29c, 4, 1},
+	{ 0x298, 0x29c, 24, 0},
+	{ 0x298, 0x29c, 24, 1},
+	{ 0x298, 0x29c, 42, 0},
+	{ 0x298, 0x29c, 42, 1},
+	{ 0x298, 0x29c, 88, 0},
+	{ 0x298, 0x29c, 88, 1},
+	
+	{ 0x298, 0x29c, 12, 0},
+	{ 0x298, 0x29c, 12, 1},
+	{ 0x298, 0x29c, 34, 0},
+	{ 0x298, 0x29c, 34, 1},
+	{ 0x298, 0x29c, 52, 0},
+	{ 0x298, 0x29c, 52, 1},
+	{ 0x298, 0x29c, 96, 0},
+	{ 0x298, 0x29c, 96, 1},
+	
+	{ 0x298, 0x29c, 5, 0},
+	{ 0x298, 0x29c, 5, 1},
+	{ 0x298, 0x29c, 25, 0},
+	{ 0x298, 0x29c, 25, 1},
+	{ 0x298, 0x29c, 43, 0},
+	{ 0x298, 0x29c, 43, 1},
+	{ 0x298, 0x29c, 89, 0},
+	{ 0x298, 0x29c, 89, 1},
+	
+	{ 0x298, 0x29c, 6, 0},
+	{ 0x298, 0x29c, 26, 0},
+	{ 0x298, 0x29c, 44, 0},
+	{ 0x298, 0x29c, 90, 0},
+	
+	{ 0x348, 0x34c, 13, 0},
+	{ 0x348, 0x34c, 19, 0},
+	{ 0x348, 0x34c, 25, 0},
+	{ 0x348, 0x34c, 3, 0},
+	
+	{ 0x298, 0x29c, 7, 0},
+	{ 0x298, 0x29c, 7, 1},
+	{ 0x298, 0x29c, 7, 3},
+	{ 0x298, 0x29c, 27, 0},
+	{ 0x298, 0x29c, 27, 1},
+	{ 0x298, 0x29c, 27, 3},
+	{ 0x298, 0x29c, 45, 0},
+	{ 0x298, 0x29c, 45, 1},
+	{ 0x298, 0x29c, 45, 3},
+	{ 0x298, 0x29c, 91, 0},
+	{ 0x298, 0x29c, 91, 1},
+	{ 0x298, 0x29c, 91, 3},
+	
+	{ 0x298, 0x29c, 13, 0},
+	{ 0x298, 0x29c, 13, 1},
+	{ 0x298, 0x29c, 13, 3},
+	{ 0x298, 0x29c, 35, 0},
+	{ 0x298, 0x29c, 35, 1},
+	{ 0x298, 0x29c, 35, 3},
+	{ 0x298, 0x29c, 53, 0},
+	{ 0x298, 0x29c, 53, 1},
+	{ 0x298, 0x29c, 53, 3},
+	{ 0x298, 0x29c, 97, 0},
+	{ 0x298, 0x29c, 97, 1},
+	{ 0x298, 0x29c, 97, 3},
+	
+	{ 0x298, 0x29c, 58, 0},
+	{ 0x298, 0x29c, 58, 1},
+	{ 0x298, 0x29c, 58, 3},
+	{ 0x298, 0x29c, 65, 0},
+	{ 0x298, 0x29c, 65, 1},
+	{ 0x298, 0x29c, 65, 3},
+	
+	{ 0x348, 0x34c, 14, 0},
+	{ 0x348, 0x34c, 14, 1},
+	{ 0x348, 0x34c, 14, 3},
+	{ 0x348, 0x34c, 20, 0},
+	{ 0x348, 0x34c, 20, 1},
+	{ 0x348, 0x34c, 20, 3},
+	{ 0x348, 0x34c, 26, 0},
+	{ 0x348, 0x34c, 26, 1},
+	{ 0x348, 0x34c, 26, 3},
+	{ 0x348, 0x34c, 4, 0},
+	{ 0x348, 0x34c, 4, 1},
+	{ 0x348, 0x34c, 4, 3},
+	
+	{ 0x348, 0x34c, 18, 1},
+	{ 0x348, 0x34c, 24, 1},
+	{ 0x348, 0x34c, 30, 1},
+	{ 0x348, 0x34c, 8, 1},
+	
+	{ 0x348, 0x34c, 31, 0},
+	{ 0x348, 0x34c, 33, 0},
+	{ 0x348, 0x34c, 35, 0},
+	{ 0x348, 0x34c, 42, 0},
+	
+	{ 0x348, 0x34c, 32, 0},
+	{ 0x348, 0x34c, 34, 0},
+	{ 0x348, 0x34c, 36, 0},
+	{ 0x348, 0x34c, 43, 0},
+};
+
+void mdss_dump_debug_bus(void)
+{
+	u32 status = 0;
+	struct debug_bus *head;
+	int size = ARRAY_SIZE(list);
+	int i;
+	mdss_mdp_clk_ctrl(MDP_BLOCK_POWER_ON);
+
+	pr_err("========Dumping Debug bus=========\n");
+	for (i = 0; i < size; i++) {
+		head = list + i;
+		writel_relaxed(TEST_MASK(head->block_id, head->test_id),
+			mdss_res->mdp_base + head->wr_addr);
+		wmb();
+		status = readl_relaxed(mdss_res->mdp_base + head->read_addr);
+		pr_err("write_addr=0x%x read addr=0x%x block id=%d test_id=%d read_value=0x%x\n",
+		head->wr_addr, head->read_addr, head->block_id, head->test_id,
+		status);
+	}
+	pr_err("========End Dumping Debug bus=========\n");
+
+	mdss_mdp_clk_ctrl(MDP_BLOCK_POWER_OFF);
 }

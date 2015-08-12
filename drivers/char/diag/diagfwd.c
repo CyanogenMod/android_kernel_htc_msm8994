@@ -50,20 +50,24 @@
 #define STM_RSP_NUM_BYTES		9
 
 #define SMD_DRAIN_BUF_SIZE 4096
-
+extern unsigned diag7k_debug_mask;
+extern unsigned diag9k_debug_mask;
 int diag_debug_buf_idx;
 unsigned char diag_debug_buf[1024];
-/* Number of entries in table of buffers */
 struct diag_master_table entry;
 int wrap_enabled;
 uint16_t wrap_count;
+int sdio_diag_initialized;
+int smd_diag_initialized;
+#if DIAG_XPST
+static int diag_smd_function_mode;
+#endif
 
 #define DIAG_NUM_COMMON_CMD	1
 static uint8_t common_cmds[DIAG_NUM_COMMON_CMD] = {
 	DIAG_CMD_LOG_ON_DMND
 };
 
-/* Determine if this device uses a device tree */
 #ifdef CONFIG_OF
 static int has_device_tree(void)
 {
@@ -135,10 +139,6 @@ int chk_config_get_id(void)
 	}
 }
 
-/*
- * This will return TRUE for targets which support apps only mode and hence SSR.
- * This applies to 8960 and newer targets.
- */
 int chk_apps_only(void)
 {
 	if (driver->use_device_tree)
@@ -156,17 +156,13 @@ int chk_apps_only(void)
 	case MSM_CPU_8627:
 	case MSM_CPU_9615:
 	case MSM_CPU_8974:
+	case MSM_CPU_8994:
 		return 1;
 	default:
 		return 0;
 	}
 }
 
-/*
- * This will return TRUE for targets which support apps as master.
- * Thus, SW DLOAD and Mode Reset are supported on apps processor.
- * This applies to 8960 and newer targets.
- */
 int chk_apps_master(void)
 {
 	if (driver->use_device_tree)
@@ -181,51 +177,30 @@ int chk_apps_master(void)
 int chk_polling_response(void)
 {
 	if (!(driver->polling_reg_flag) && chk_apps_master())
-		/*
-		 * If the apps processor is master and no other processor
-		 * has registered to respond for polling
-		 */
 		return 1;
 	else if (!((driver->smd_data[MODEM_DATA].ch) &&
 		 (driver->rcvd_feature_mask[MODEM_DATA])) &&
 		 (chk_apps_master()))
-		/*
-		 * If the apps processor is not the master and the modem
-		 * is not up or we did not receive the feature masks from Modem
-		 */
 		return 1;
 	else
 		return 0;
 }
 
-/*
- * This function should be called if you feel that the logging process may
- * need to be woken up. For instance, if the logging mode is MEMORY_DEVICE MODE
- * and while trying to read data from a SMD data channel there are no buffers
- * available to read the data into, then this function should be called to
- * determine if the logging process needs to be woken up.
- */
 void chk_logging_wakeup(void)
 {
 	int i;
 
-	/* Find the index of the logging process */
+	
 	for (i = 0; i < driver->num_clients; i++)
 		if (driver->client_map[i].pid ==
 			driver->logging_process_id)
 			break;
 
 	if (i < driver->num_clients) {
-		/* At very high logging rates a race condition can
-		 * occur where the buffers containing the data from
-		 * an smd channel are all in use, but the data_ready
-		 * flag is cleared. In this case, the buffers never
-		 * have their data read/logged.  Detect and remedy this
-		 * situation.
-		 */
-		if ((driver->data_ready[i] & USER_SPACE_DATA_TYPE) == 0) {
-			driver->data_ready[i] |= USER_SPACE_DATA_TYPE;
-			pr_debug("diag: Force wakeup of logging process\n");
+		if ((driver->data_ready[i] & USERMODE_DIAGFWD) == 0) {
+			driver->data_ready[i] |= USERMODE_DIAGFWD;
+			if (diag7k_debug_mask)
+				DIAG_INFO("diag: Force wakeup of logging process\n");
 			wake_up_interruptible(&driver->wait_q);
 		}
 	}
@@ -353,7 +328,6 @@ static int check_bufsize_for_encoding(struct diag_smd_info *smd_info, void *buf,
 	return buf_size;
 }
 
-/* Process the data read from the smd data channel */
 int diag_process_smd_read_data(struct diag_smd_info *smd_info, void *buf,
 			       int total_recd)
 {
@@ -365,11 +339,9 @@ int diag_process_smd_read_data(struct diag_smd_info *smd_info, void *buf,
 	unsigned char *write_buf = NULL;
 
 	unsigned long flags;
+	int type;
 
-	/*
-	 * Do not process data on command channel if the
-	 * channel is not designated to do so
-	 */
+
 	if ((smd_info->type == SMD_CMD_TYPE) &&
 		!driver->separate_cmdrsp[smd_info->peripheral]) {
 		pr_debug("diag, In %s, received data on non-designated command channel: %d\n",
@@ -389,6 +361,18 @@ int diag_process_smd_read_data(struct diag_smd_info *smd_info, void *buf,
 			pr_err("diag: In %s, no match for in_busy_1, peripheral: %d\n",
 				__func__, smd_info->peripheral);
 			return -EIO;
+		}
+		if (smd_info->peripheral == MODEM_DATA) {
+			DIAGFWD_7K_RAWDATA(buf, "modem", DIAG_DBG_READ);
+#if DIAG_XPST && !defined(CONFIG_DIAGFWD_BRIDGE_CODE)
+			type = checkcmd_modem_epst(buf);
+			if (type) {
+				modem_to_userspace(buf, total_recd, type, 0);
+				return 0;
+			}
+			if (driver->qxdmusb_drop && driver->logging_mode == USB_MODE)
+				return 0;
+#endif
 		}
 		write_buf = buf;
 		success = 1;
@@ -467,12 +451,8 @@ static int diag_smd_resize_buf(struct diag_smd_info *smd_info, void **buf,
 	temp_buf = krealloc(*buf, new_buf_size, GFP_KERNEL);
 
 	if (temp_buf) {
-		/* Match the buffer and reset the pointer and size */
+		
 		if (smd_info->encode_hdlc) {
-			/*
-			 * This smd channel is supporting HDLC encoding
-			 * on the apps
-			 */
 			void *temp_hdlc = NULL;
 			if (*buf == smd_info->buf_in_1_raw) {
 				smd_info->buf_in_1_raw = temp_buf;
@@ -524,6 +504,7 @@ void diag_smd_send_req(struct diag_smd_info *smd_info)
 	int total_recd = 0, r = 0, pkt_len;
 	int loop_count = 0, total_recd_partial = 0;
 	int notify = 0;
+	int retry = 0;	
 	int buf_size = 0;
 	int resize_success = 0;
 	int buf_full = 0;
@@ -574,7 +555,7 @@ void diag_smd_send_req(struct diag_smd_info *smd_info)
 
 	if (!buf)
 		goto fail_return;
-
+drop:	
 	if (smd_info->ch && buf) {
 		int required_size = 0;
 		while ((pkt_len = smd_cur_packet_size(smd_info->ch)) != 0) {
@@ -629,19 +610,10 @@ void diag_smd_send_req(struct diag_smd_info *smd_info)
 				total_recd += r;
 				total_recd_partial += r;
 
-				/* Keep reading for complete packet */
+				
 				smd_read(smd_info->ch, temp_buf, r);
 				temp_buf += r;
 			} else {
-				/*
-				 * This block handles the very rare case of a
-				 * packet that is greater in length than what
-				 * we can support. In this case, we
-				 * incrementally drain the remaining portion
-				 * of the packet that will not fit in the
-				 * buffer, so that the entire packet is read
-				 * from the smd.
-				 */
 				int drain_bytes = (r > SMD_DRAIN_BUF_SIZE) ?
 							SMD_DRAIN_BUF_SIZE : r;
 				unsigned char *drain_buf = kzalloc(drain_bytes,
@@ -659,6 +631,30 @@ void diag_smd_send_req(struct diag_smd_info *smd_info)
 				}
 			}
 		}
+		
+		
+		if (smd_info->peripheral == MODEM_DATA &&
+			(buf && driver->qxdm2sd_drop && (driver->logging_mode == USB_MODE)
+				&& *((unsigned char *)buf) != 0xc8)) {
+			DIAG_DBUG("%s:Drop the diag payload :%d\n", __func__, retry);
+			DIAGFWD_7K_RAWDATA(buf, "modem", DIAG_DBG_DROP);
+			total_recd = 0;
+			
+			msleep(10);
+			r = smd_read_avail(smd_info->ch);
+			if (++retry > 20) {
+				driver->qxdm2sd_drop = 0;
+				return;
+			}
+			if (r)
+				goto drop;
+			else {
+				DIAG_INFO("Nothing pending in SMD buffer\n");
+				driver->qxdm2sd_drop = 0;
+				return;
+			}
+		}
+		
 
 		if ((smd_info->type != SMD_CNTL_TYPE &&
 				smd_info->type != SMD_CMD_TYPE)
@@ -672,16 +668,12 @@ void diag_smd_send_req(struct diag_smd_info *smd_info)
 				pr_err("diag: In %s, SMD peripheral: %d, Out of diagmem for Modem\n",
 					__func__, smd_info->peripheral);
 			} else if (smd_info->process_smd_read_data) {
-				/*
-				 * If the buffer was totally filled, reset
-				 * total_recd appropriately
-				 */
 				if (buf_full)
 					total_recd = buf_size;
 
 				notify = smd_info->process_smd_read_data(
 						smd_info, buf, total_recd);
-				/* Poll SMD channels to check for data */
+				
 				if (notify)
 					diag_smd_notify(smd_info,
 							SMD_EVENT_DATA);
@@ -728,27 +720,12 @@ void encode_rsp_and_send(int buf_length)
 		return;
 	}
 
-	/*
-	 * Keep trying till we get the buffer back. It should probably
-	 * take one or two iterations. When this loops till UINT_MAX, it
-	 * means we did not get a write complete for the previous
-	 * response.
-	 */
 	while (retry_count < UINT_MAX) {
 		if (!driver->rsp_buf_busy)
 			break;
-		/*
-		 * Wait for sometime and try again. The value 10000 was chosen
-		 * empirically as an optimum value for USB to complete a write
-		 */
 		usleep_range(10000, 10100);
 		retry_count++;
 
-		/*
-		 * There can be a race conditon that clears the data ready flag
-		 * for responses. Make sure we don't miss previous wakeups for
-		 * draining responses when we are in Memory Device Mode.
-		 */
 		if (driver->logging_mode == MEMORY_DEVICE_MODE)
 			chk_logging_wakeup();
 	}
@@ -932,13 +909,9 @@ int diag_process_stm_cmd(unsigned char *buf, unsigned char *dest_buf)
 	mask = *(buf + STM_CMD_MASK_OFFSET);
 	cmd = *(buf + STM_CMD_DATA_OFFSET);
 
-	/*
-	 * Check if command is valid. If the command is asking for
-	 * status, then the processor mask field is to be ignored.
-	 */
 	if ((version != 2) || (cmd > STATUS_STM) ||
 		((cmd != STATUS_STM) && ((mask == 0) || (0 != (mask >> 4))))) {
-		/* Command is invalid. Send bad param message response */
+		
 		dest_buf[0] = BAD_PARAM_RESPONSE_MESSAGE;
 		for (i = 0; i < STM_CMD_NUM_BYTES; i++)
 			dest_buf[i+1] = *(buf + i);
@@ -1130,11 +1103,13 @@ int diag_process_apps_pkt(unsigned char *buf, int len)
 						 cmd_code &&
 						 entry.
 						cmd_code_hi >= cmd_code) {
+#if(0)
 					if (cmd_code == MODE_CMD &&
 							subsys_id == RESET_ID &&
 							entry.process_id ==
 							NON_APPS_PROC)
 						continue;
+#endif
 					status = diag_send_data(entry, buf, len,
 								 data_type);
 					if (status)
@@ -1227,18 +1202,11 @@ int diag_process_apps_pkt(unsigned char *buf, int len)
 			return 0;
 		}
 	}
-	 /*
-	  * If the apps processor is master and no other
-	  * processor has registered for polling command.
-	  * If modem is not up and we have not received feature
-	  * mask update from modem, in that case APPS should
-	  * respond for 0X7C command
-	  */
 	else if (chk_apps_master() &&
 			!(driver->polling_reg_flag) &&
 			!(driver->smd_data[MODEM_DATA].ch) &&
 			!(driver->rcvd_feature_mask[MODEM_DATA])) {
-		/* respond to 0x0 command */
+		
 		if (*buf == 0x00) {
 			for (i = 0; i < 55; i++)
 				driver->apps_rsp_buf[i] = 0;
@@ -1291,8 +1259,8 @@ void diag_process_hdlc(void *data, unsigned len)
 	int err = 0;
 
 	mutex_lock(&driver->diag_hdlc_mutex);
-
-	pr_debug("diag: HDLC decode fn, len of data  %d\n", len);
+	if (diag7k_debug_mask)
+		DIAG_INFO("HDLC decode fn, len of data  %d\n", len);
 	hdlc.dest_ptr = driver->hdlc_buf;
 	hdlc.dest_size = USB_MAX_OUT_BUF;
 	hdlc.src_ptr = data;
@@ -1313,12 +1281,6 @@ void diag_process_hdlc(void *data, unsigned len)
 		}
 	}
 
-	/*
-	 * If the message is 3 bytes or less in length then the message is
-	 * too short. A message will need 4 bytes minimum, since there are
-	 * 2 bytes for the CRC and 1 byte for the ending 0x7e for the hdlc
-	 * encoding
-	 */
 	if (hdlc.dest_idx < 4) {
 		pr_err_ratelimited("diag: In %s, message is too short, len: %d, dest len: %d\n",
 			__func__, len, hdlc.dest_idx);
@@ -1379,11 +1341,11 @@ void diag_process_hdlc(void *data, unsigned len)
 			       __func__, MODEM_DATA, SMD_DATA_TYPE, err);
 		}
 		APPEND_DEBUG('h');
-#ifdef DIAG_DEBUG
-		printk(KERN_INFO "writing data to SMD, pkt length %d\n", len);
-		print_hex_dump(KERN_DEBUG, "Written Packet Data to SMD: ", 16,
+		if (diag7k_debug_mask) {
+			printk(KERN_INFO "writing data to SMD, pkt length %d\n", len);
+			print_hex_dump(KERN_INFO, "Written Packet Data to SMD: ", 16,
 			       1, DUMP_PREFIX_ADDRESS, data, len, 1);
-#endif /* DIAG DEBUG */
+		}
 	}
 	mutex_unlock(&driver->diag_hdlc_mutex);
 }
@@ -1450,12 +1412,6 @@ static int diagfwd_mux_open(int id, int mode)
 	unsigned long flags;
 
 	if (driver->rsp_buf_busy) {
-		/*
-		 * When a client switches from callback mode to USB mode
-		 * explicitly, there can be a situation when the last response
-		 * is not drained to the user space application. Reset the
-		 * in_busy flag in this case.
-		 */
 		spin_lock_irqsave(&driver->rsp_buf_busy_lock, flags);
 		driver->rsp_buf_busy = 0;
 		spin_unlock_irqrestore(&driver->rsp_buf_busy_lock, flags);
@@ -1463,26 +1419,22 @@ static int diagfwd_mux_open(int id, int mode)
 	switch (mode) {
 	case DIAG_USB_MODE:
 		driver->usb_connected = 1;
+		driver->qxdmusb_drop = 0;
 		break;
 	case DIAG_MEMORY_DEVICE_MODE:
 		break;
 	default:
 		return -EINVAL;
 	}
-
 	if ((mode == DIAG_USB_MODE &&
 			driver->logging_mode == MEMORY_DEVICE_MODE) ||
 			(mode == DIAG_MEMORY_DEVICE_MODE &&
 				driver->logging_mode == USB_MODE)) {
-		/* In this case Diag shouldn't not reset the smd in_busy data.
-		 * If the reset of smd in_busy values happens then this will
-		 * lead to loss of data read over peripherals.
-		*/
 	} else {
 		diag_reset_smd_data(RESET_AND_QUEUE);
 	}
 	for (i = 0; i < NUM_SMD_CONTROL_CHANNELS; i++) {
-		/* Poll SMD CNTL channels to check for data */
+		
 		diag_smd_notify(&(driver->smd_cntl[i]), SMD_EVENT_DATA);
 	}
 	queue_work(driver->diag_real_time_wq, &driver->diag_real_time_work);
@@ -1497,6 +1449,7 @@ static int diagfwd_mux_close(int id, int mode)
 
 	switch (mode) {
 	case DIAG_USB_MODE:
+		driver->qxdmusb_drop = 1;
 		driver->usb_connected = 0;
 		break;
 	case DIAG_MEMORY_DEVICE_MODE:
@@ -1509,8 +1462,8 @@ static int diagfwd_mux_close(int id, int mode)
 		for (i = 0; i < NUM_SMD_DATA_CHANNELS; i++) {
 			smd_info = &driver->smd_data[i];
 			spin_lock_irqsave(&smd_info->in_busy_lock, flags);
-			smd_info->in_busy_1 = 1;
-			smd_info->in_busy_2 = 1;
+			
+			
 			spin_unlock_irqrestore(&smd_info->in_busy_lock, flags);
 		}
 
@@ -1519,8 +1472,8 @@ static int diagfwd_mux_close(int id, int mode)
 				smd_info = &driver->smd_cmd[i];
 				spin_lock_irqsave(&smd_info->in_busy_lock,
 						flags);
-				smd_info->in_busy_1 = 1;
-				smd_info->in_busy_2 = 1;
+				
+				
 				spin_unlock_irqrestore(&smd_info->in_busy_lock,
 						flags);
 			}
@@ -1553,6 +1506,10 @@ static int diagfwd_mux_write_done(unsigned char *buf, int len, int buf_ctxt,
 	if (!buf || len < 0)
 		return -EINVAL;
 
+	if (buf_ctxt <=0){
+		printk(KERN_INFO "[DIAG] %s: buf_ctxt: %d\n",__func__, buf_ctxt);
+		return -EINVAL;
+	}
 	peripheral = GET_BUF_PERIPHERAL(buf_ctxt);
 	type = GET_BUF_TYPE(buf_ctxt);
 	num = GET_BUF_NUM(buf_ctxt);
@@ -1610,6 +1567,8 @@ void diag_smd_notify(void *ctxt, unsigned event)
 
 	if (event == SMD_EVENT_CLOSE) {
 		smd_info->ch = 0;
+		if (smd_info->peripheral == MODEM_DATA)
+			smd_diag_initialized = 0;
 		wake_up(&driver->smd_wait_q);
 		if (smd_info->type == SMD_DATA_TYPE) {
 			smd_info->notify_context = event;
@@ -1628,7 +1587,8 @@ void diag_smd_notify(void *ctxt, unsigned event)
 	} else if (event == SMD_EVENT_OPEN) {
 		if (smd_info->ch_save)
 			smd_info->ch = smd_info->ch_save;
-
+		if (smd_info->peripheral == MODEM_DATA)
+			smd_diag_initialized = 1;
 		if (smd_info->type == SMD_CNTL_TYPE) {
 			smd_info->notify_context = event;
 			queue_work(driver->diag_cntl_wq,
@@ -1663,6 +1623,39 @@ void diag_smd_notify(void *ctxt, unsigned event)
 		queue_work(driver->diag_wq, &(smd_info->diag_read_smd_work));
 	}
 }
+
+#if DIAG_XPST
+void diag_smd_enable(smd_channel_t *ch, char *src, int mode)
+{
+	int r = 0, index = MODEM_DATA;
+	static smd_channel_t *_ch;
+	DIAGFWD_INFO("smd_try_open(%s): mode=%d\n", src, mode);
+
+	mutex_lock(&driver->smd_lock);
+	diag_smd_function_mode = mode;
+	if (mode) {
+		if (!driver->smd_data[index].ch) {
+			r = smd_named_open_on_edge("DIAG", SMD_APPS_MODEM,
+					&driver->smd_data[index].ch,
+					&driver->smd_data[index],
+					diag_smd_notify);
+			if (!r)
+				_ch = driver->smd_data[index].ch;
+		} else
+			_ch = driver->smd_data[index].ch;
+	} else {
+		if (driver->smd_data[index].ch) {
+			r = smd_close(driver->smd_data[index].ch);
+			driver->smd_data[index].ch = NULL;
+			if (!r)
+				_ch = driver->smd_data[index].ch;
+		}
+	}
+	ch = _ch;
+	mutex_unlock(&driver->smd_lock);
+	
+}
+#endif
 
 static int diag_smd_probe(struct platform_device *pdev)
 {
@@ -1961,13 +1954,6 @@ int diag_smd_constructor(struct diag_smd_info *smd_info, int peripheral,
 
 	INIT_WORK(&(smd_info->diag_read_smd_work), diag_read_smd_work_fn);
 
-	/*
-	 * The update function assigned to the diag_notify_update_smd_work
-	 * work_struct is meant to be used for updating that is not to
-	 * be done in the context of the smd notify function. The
-	 * notify_context variable can be used for passing additional
-	 * information to the update function.
-	 */
 	smd_info->notify_context = 0;
 	smd_info->general_context = 0;
 	switch (type) {
@@ -1996,10 +1982,6 @@ int diag_smd_constructor(struct diag_smd_info *smd_info, int peripheral,
 		goto err;
 	}
 
-	/*
-	 * Set function ptr for function to call to process the data that
-	 * was just read from the smd channel
-	 */
 	switch (type) {
 	case SMD_DATA_TYPE:
 	case SMD_CMD_TYPE:
@@ -2051,12 +2033,6 @@ int diag_smd_write(struct diag_smd_info *smd_info, void *buf, int len)
 		mutex_unlock(&smd_info->smd_ch_mutex);
 		if (write_len == len)
 			break;
-		/*
-		 * The channel maybe busy - the FIFO can be full. Retry after
-		 * sometime. The value of 10000 was chosen emprically as the
-		 * optimal value for the peripherals to read data from the SMD
-		 * channel.
-		 */
 		usleep_range(10000, 10100);
 		retry_count++;
 	} while (retry_count < max_retries);
@@ -2079,7 +2055,7 @@ int diagfwd_init(void)
 	for (i = 0; i < DIAG_NUM_PROC; i++)
 		driver->real_time_mode[i] = 1;
 	driver->supports_separate_cmdrsp = device_supports_separate_cmdrsp();
-	driver->supports_apps_hdlc_encoding = 1;
+	driver->supports_apps_hdlc_encoding = 0;
 	mutex_init(&driver->diag_hdlc_mutex);
 	mutex_init(&driver->diag_cntl_mutex);
 	mutex_init(&driver->mode_lock);
@@ -2178,6 +2154,9 @@ int diagfwd_init(void)
 		pr_err("diag: Unable to register with USB, err: %d\n", ret);
 		goto err;
 	}
+#if DIAG_XPST
+	mutex_init(&driver->smd_lock);
+#endif
 	platform_driver_register(&msm_smd_ch1_driver);
 	platform_driver_register(&diag_smd_lite_driver);
 

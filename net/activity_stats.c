@@ -19,16 +19,8 @@
 #include <linux/suspend.h>
 #include <net/net_namespace.h>
 
-/*
- * Track transmission rates in buckets (power of 2).
- * 1,2,4,8...512 seconds.
- *
- * Buckets represent the count of network transmissions at least
- * N seconds apart, where N is 1 << bucket index.
- */
 #define BUCKET_MAX 10
 
-/* Track network activity frequency */
 static unsigned long activity_stats[BUCKET_MAX];
 static ktime_t last_transmit;
 static ktime_t suspend_time;
@@ -46,10 +38,6 @@ void activity_stats_update(void)
 	delta = ktime_to_ns(ktime_sub(now, last_transmit));
 
 	for (i = BUCKET_MAX - 1; i >= 0; i--) {
-		/*
-		 * Check if the time delta between network activity is within the
-		 * minimum bucket range.
-		 */
 		if (delta < (1000000000ULL << i))
 			continue;
 
@@ -101,7 +89,7 @@ static const struct file_operations activity_stats_fops = {
 	.open		= activity_stats_open,
 	.read		= seq_read,
 	.llseek		= seq_lseek,
-	.release	= seq_release,
+	.release	= single_release,
 };
 
 static struct notifier_block activity_stats_notifier_block = {

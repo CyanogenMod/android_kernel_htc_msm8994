@@ -163,13 +163,12 @@ enum dsi_pm_type {
 #define DSI_INTR_CMD_MDP_DONE		BIT(8)
 #define DSI_INTR_CMD_DMA_DONE_MASK	BIT(1)
 #define DSI_INTR_CMD_DMA_DONE		BIT(0)
-/* Update this if more interrupt masks are added in future chipsets */
 #define DSI_INTR_TOTAL_MASK		0x2222AA02
 
-#define DSI_CMD_TRIGGER_NONE		0x0	/* mdp trigger */
+#define DSI_CMD_TRIGGER_NONE		0x0	
 #define DSI_CMD_TRIGGER_TE		0x02
 #define DSI_CMD_TRIGGER_SW		0x04
-#define DSI_CMD_TRIGGER_SW_SEOF		0x05	/* cmd dma only */
+#define DSI_CMD_TRIGGER_SW_SEOF		0x05	
 #define DSI_CMD_TRIGGER_SW_TE		0x06
 
 #define DSI_VIDEO_TERM  BIT(16)
@@ -181,7 +180,6 @@ enum dsi_pm_type {
 #define DSI_DATA_LANES_STOP_STATE	0xF
 #define DSI_CLK_LANE_STOP_STATE		BIT(4)
 
-/* offsets for dynamic refresh */
 #define DSI_DYNAMIC_REFRESH_CTRL		0x200
 #define DSI_DYNAMIC_REFRESH_PIPE_DELAY		0x204
 #define DSI_DYNAMIC_REFRESH_PIPE_DELAY2		0x208
@@ -264,10 +262,29 @@ struct panel_horizontal_idle {
 	int idle;
 };
 
+struct mdss_dsi_pwrctrl {
+	int (*dsi_regulator_init) (struct platform_device *pdev);
+	int (*dsi_regulator_deinit) (struct platform_device *pdev);
+	int (*dsi_power_on) (struct mdss_panel_data *pdata);
+	int (*dsi_power_off) (struct mdss_panel_data *pdata);
+	void (*dsi_panel_reset) (struct mdss_panel_data *pdata);
+	void (*bkl_config) (struct mdss_panel_data *pdata, int enable);
+	void (*incell_touch_on) (int on);
+	void (*notify_touch_cont_splash) (int enable);
+};
+
 enum {
 	DSI_CTRL_0,
 	DSI_CTRL_1,
 	DSI_CTRL_MAX,
+};
+
+enum BACKLIGHT_TO_BRIGHTNESS_HTC_V1 {
+	BRI_SETTING_MIN   = 30,
+	BRI_SETTING_DEF   = 142,
+	BRI_SETTING_HIGH  = 200,
+	BRI_SETTING_EXTRA = 230,
+	BRI_SETTING_MAX   = 255,
 };
 
 #define DSI_CTRL_LEFT		DSI_CTRL_0
@@ -407,6 +424,23 @@ struct mdss_dsi_ctrl_pdata {
 	int horizontal_idle_cnt;
 	struct panel_horizontal_idle *line_idle;
 	struct mdss_util_intf *mdss_util;
+
+	
+	void *dsi_pwrctrl_data;			
+	struct dsi_panel_cmds cabc_off_cmds;
+	struct dsi_panel_cmds cabc_ui_cmds;
+	struct dsi_panel_cmds cabc_video_cmds;
+	struct dsi_panel_cmds dimming_on_cmds;
+
+	int brt_dim;	
+	int brt_min;
+	int brt_def;
+	int brt_high;
+	int brt_extra;
+	int brt_max;
+
+	
+	u16 *brt_code_table;
 };
 
 struct dsi_status_data {
@@ -514,11 +548,6 @@ static inline const char *__mdss_dsi_pm_supply_node_name(
 
 static inline bool mdss_dsi_split_display_enabled(void)
 {
-	/*
-	 * currently the only supported mode is split display.
-	 * So, if both controllers are initialized, then assume that
-	 * split display mode is enabled.
-	 */
 	return ctrl_list[DSI_CTRL_LEFT] && ctrl_list[DSI_CTRL_RIGHT];
 }
 

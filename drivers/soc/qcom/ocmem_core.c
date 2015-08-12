@@ -78,7 +78,6 @@ static void *ocmem_vbase;
 #define INTERLEAVING_MASK (0x1 << 17)
 #define INTERLEAVING_SHIFT (17)
 
-/* Power states of each memory macro */
 #define PASSTHROUGH (0x0)
 #define CORE_ON (0x2)
 #define PERI_ON (0x1)
@@ -93,7 +92,6 @@ static void *ocmem_vbase;
 #define PSCGC_CTL_IDX(x) ((x) * 0x4)
 #define PSCGC_CTL_n(x) (OC_PSGSC_CTL + (PSCGC_CTL_IDX(x)))
 
-/* Power states of each ocmem region */
 #define REGION_NORMAL_PASSTHROUGH 0x00000000
 #define REGION_FORCE_PERI_ON 0x00001111
 #define REGION_FORCE_CORE_ON 0x00002222
@@ -159,10 +157,6 @@ static inline unsigned rpm_macro_state(unsigned hw_macro_state)
 	return macro_state;
 }
 
-/* Generic wrapper that sets the region state either
-   by a direct write or through appropriate RPM call
-*/
-/* Must be called with region mutex held */
 static int commit_region_state(unsigned region_num)
 {
 	int rc = -1;
@@ -179,13 +173,11 @@ static int commit_region_state(unsigned region_num)
 	else
 		rc = ocmem_write(new_state,
 					ocmem_base + PSCGC_CTL_n(region_num));
-	/* Barrier to commit the region state */
+	
 	mb();
 	return 0;
 }
 
-/* Returns the current state of a OCMEM region */
-/* Must be called with region mutex held */
 static int read_region_state(unsigned region_num)
 {
 	int state;
@@ -256,7 +248,6 @@ static int commit_region_staging(unsigned region_num, unsigned start_m,
 }
 #endif
 
-/* Returns the current state of a OCMEM macro that belongs to a region */
 static int read_macro_state(unsigned region_num, unsigned macro_num)
 {
 	int state;
@@ -820,7 +811,6 @@ static int ocmem_core_set_default_state(void)
 #endif
 
 #if defined(CONFIG_MSM_OCMEM_POWER_DISABLE)
-/* Initializes a region to be turned ON in wide mode */
 static int ocmem_region_set_default_state(unsigned int r_num)
 {
 	unsigned m_num = 0;
@@ -937,21 +927,10 @@ int memory_is_off(unsigned int num)
 {
 	return 0;
 }
-#endif /* CONFIG_MSM_OCMEM_POWER_DEBUG */
+#endif 
 
-/* Memory Macro Power Transition Sequences
- * Normal to Sleep With Retention:
-	REGION_DEFAULT_ON -> REGION_DEFAULT_RETENTION
- * Sleep With Retention to Normal:
-	REGION_DEFAULT_RETENTION -> REGION_FORCE_CORE_ON -> REGION_DEFAULT_ON
- * Normal to OFF:
-	REGION_DEFAULT_ON -> REGION_DEFAULT_OFF
- * OFF to Normal:
-	REGION_DEFAULT_OFF -> REGION_DEFAULT_ON
-**/
 
 #if defined(CONFIG_MSM_OCMEM_POWER_DISABLE)
-/* If power management is disabled leave the macro states as is */
 static int switch_power_state(int id, unsigned long offset, unsigned long len,
 			unsigned new_state)
 {
@@ -1056,7 +1035,6 @@ invalid_transition:
 }
 #endif
 
-/* Interfaces invoked from the scheduler */
 int ocmem_memory_off(int id, unsigned long offset, unsigned long len)
 {
 	return switch_power_state(id, offset, len, REGION_DEFAULT_OFF);
@@ -1172,7 +1150,7 @@ static const struct file_operations power_show_fops = {
 	.open = ocmem_power_open,
 	.read = seq_read,
 	.llseek = seq_lseek,
-	.release = seq_release,
+	.release = single_release,
 };
 
 int ocmem_core_init(struct platform_device *pdev)

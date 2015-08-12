@@ -52,8 +52,6 @@ enum op_res {
 	OP_FAIL = ~0x0,
 };
 
-/* Represents various client priorities */
-/* Note: More than one client can share a priority level */
 enum client_prio {
 	MIN_PRIO = 0x0,
 	NO_PRIO = MIN_PRIO,
@@ -73,12 +71,6 @@ static void __iomem *ocmem_vaddr;
 static struct list_head sched_queue[MAX_OCMEM_PRIO];
 static struct mutex sched_queue_mutex;
 
-/* The duration in msecs before a pending operation is scheduled
- * This allows an idle window between use case boundaries where various
- * hardware state changes can occur. The value will be tweaked on actual
- * hardware.
-*/
-/* Delay in ms for switching to low power mode for OCMEM */
 #define SCHED_DELAY 5000
 
 static struct list_head rdm_queue;
@@ -96,7 +88,6 @@ struct ocmem_rdm_work {
 	struct work_struct work;
 };
 
-/* OCMEM Operational modes */
 enum ocmem_client_modes {
 	OCMEM_PERFORMANCE = 1,
 	OCMEM_PASSIVE,
@@ -104,7 +95,6 @@ enum ocmem_client_modes {
 	OCMEM_MODE_MAX = OCMEM_LOW_POWER
 };
 
-/* OCMEM Addressing modes */
 enum ocmem_interconnects {
 	OCMEM_BLOCKED = 0,
 	OCMEM_PORT = 1,
@@ -122,9 +112,6 @@ enum ocmem_tz_client {
 	TZ_DEBUG,
 };
 
-/**
- * Primary OCMEM Arbitration Table
- **/
 struct ocmem_table {
 	int client_id;
 	int priority;
@@ -155,22 +142,20 @@ static struct mutex sched_mutex;
 static struct mutex allocation_mutex;
 static struct mutex free_mutex;
 
-/* A region represents a continuous interval in OCMEM address space */
 struct ocmem_region {
-	/* Chain in Interval Tree */
+	
 	struct rb_node region_rb;
-	/* Hash map of requests */
+	
 	struct idr region_idr;
-	/* Chain in eviction list */
+	
 	struct list_head eviction_list;
 	unsigned long r_start;
 	unsigned long r_end;
 	unsigned long r_sz;
-	/* Highest priority of all requests served by this region */
+	
 	int max_prio;
 };
 
-/* Is OCMEM tightly coupled to the client ?*/
 static inline int is_tcm(int id)
 {
 	if (ocmem_client_table[id].hw_interconnect == OCMEM_PORT ||
@@ -227,7 +212,6 @@ inline struct ocmem_handle *req_to_handle(struct ocmem_req *req)
 		return NULL;
 }
 
-/* Simple wrappers which will have debug features added later */
 inline int ocmem_read(void *at)
 {
 	return readl_relaxed(at);
@@ -256,7 +240,6 @@ inline int get_tz_id(int id)
 		return ocmem_client_table[id].tz_id;
 }
 
-/* Returns the address that can be used by a device core to access OCMEM */
 static unsigned long device_address(int id, unsigned long addr)
 {
 	int hw_interconnect = ocmem_client_table[id].hw_interconnect;
@@ -277,7 +260,6 @@ static unsigned long device_address(int id, unsigned long addr)
 	return ret_addr;
 }
 
-/* Returns the address as viewed by the core */
 static unsigned long core_address(int id, unsigned long addr)
 {
 	int hw_interconnect = ocmem_client_table[id].hw_interconnect;
@@ -506,7 +488,6 @@ static struct ocmem_req *find_req_match(int owner, struct ocmem_region *region)
 	return req;
 }
 
-/* Must be called with req->sem held */
 static inline int is_mapped(struct ocmem_req *req)
 {
 	return TEST_STATE(req, R_MAPPED);
@@ -518,7 +499,6 @@ static inline int is_pending_shrink(struct ocmem_req *req)
 		TEST_STATE(req, R_WF_SHRINK);
 }
 
-/* Must be called with sched_mutex held */
 static int __sched_unmap(struct ocmem_req *req)
 {
 	struct ocmem_req *matched_req = NULL;
@@ -555,7 +535,6 @@ invalid_op_error:
 	return OP_FAIL;
 }
 
-/* Must be called with sched_mutex held */
 static int __sched_map(struct ocmem_req *req)
 {
 	struct ocmem_req *matched_req = NULL;
@@ -756,9 +735,7 @@ retry_next_step:
 		}
 
 		curr_sz += growth_sz;
-		/* Detach the region from the interval tree */
-		/* This is to guarantee that any change in size
-		 * causes the tree to be rebalanced if required */
+		
 
 		detach_req(matched_region, req);
 		if (req_count(matched_region) == 0) {
@@ -802,24 +779,22 @@ retry_next_step:
 			return OP_PARTIAL;
 		}
 	} else if (spanned_r != NULL && overlap_r != NULL) {
-		/* resolve conflicting regions based on priority */
+		
 		if (overlap_r->max_prio < prio) {
-			/* Growth cannot be triggered unless a previous
-			 * client of lower priority was evicted */
 			pr_err("ocmem: Invalid growth scheduled\n");
-			/* This is serious enough to fail */
+			
 			BUG();
 			return OP_FAIL;
 		} else if (overlap_r->max_prio > prio) {
 			if (min == max) {
-				/* Cannot grow at this time, try later */
+				
 				SET_STATE(req, R_PENDING);
 				SET_STATE(req, R_MUST_GROW);
 				return OP_RESCHED;
 			} else {
-			/* Try to grow in steps */
+			
 				growth_sz -= step;
-				/* We are OOM at this point so need to retry */
+				
 				if (growth_sz <= curr_sz) {
 					SET_STATE(req, R_PENDING);
 					SET_STATE(req, R_MUST_GROW);
@@ -850,14 +825,13 @@ region_error:
 	zone->z_ops->free(zone, alloc_addr, curr_sz);
 	detach_req(region, req);
 	update_region_prio(region);
-	/* req is going to be destroyed by the caller anyways */
+	
 	destroy_region(region);
 internal_error:
 invalid_op_error:
 	return OP_FAIL;
 }
 
-/* Must be called with sched_mutex held */
 static int __sched_free(struct ocmem_req *req)
 {
 	int owner = req->owner;
@@ -904,7 +878,6 @@ err_op_fail:
 	return OP_FAIL;
 }
 
-/* Must be called with sched_mutex held */
 static int __sched_shrink(struct ocmem_req *req, unsigned long new_sz)
 {
 	int owner = req->owner;
@@ -946,9 +919,7 @@ static int __sched_shrink(struct ocmem_req *req, unsigned long new_sz)
 		goto internal_error;
 	}
 
-	/* Detach the region from the interval tree */
-	/* This is to guarantee that the change in size
-	 * causes the tree to be rebalanced if required */
+	
 
 	detach_req(matched_region, req);
 	if (req_count(matched_region) == 0) {
@@ -1002,7 +973,6 @@ invalid_op_error:
 	return OP_FAIL;
 }
 
-/* Must be called with sched_mutex held */
 static int __sched_allocate(struct ocmem_req *req, bool can_block,
 				bool can_wait)
 {
@@ -1170,7 +1140,6 @@ invalid_op_error:
 	return OP_FAIL;
 }
 
-/* Remove the request from eviction lists */
 static void cancel_restore(struct ocmem_req *req)
 {
 	struct ocmem_eviction_data *edata;
@@ -2481,7 +2450,7 @@ static const struct file_operations allocations_show_fops = {
 	.open = ocmem_allocations_open,
 	.read = seq_read,
 	.llseek = seq_lseek,
-	.release = seq_release,
+	.release = single_release,
 };
 
 int ocmem_sched_init(struct platform_device *pdev)

@@ -79,15 +79,8 @@ static struct sidtab sidtab;
 struct policydb policydb;
 int ss_initialized;
 
-/*
- * The largest sequence number that has been used when
- * providing an access decision to the access vector cache.
- * The sequence number only changes when a policy change
- * occurs.
- */
 static u32 latest_granting;
 
-/* Forward declaration. */
 static int context_struct_to_string(struct context *context, char **scontext,
 				    u32 *scontext_len);
 
@@ -187,9 +180,6 @@ err:
 	return -EINVAL;
 }
 
-/*
- * Get real, policy values from mapped values
- */
 
 static u16 unmap_class(u16 tclass)
 {
@@ -199,9 +189,6 @@ static u16 unmap_class(u16 tclass)
 	return tclass;
 }
 
-/*
- * Get kernel value for class from its policy value
- */
 static u16 map_class(u16 pol_value)
 {
 	u16 i;
@@ -240,11 +227,6 @@ static void map_decision(u16 tclass, struct av_decision *avd,
 			if (!allow_unknown && !current_mapping[tclass].perms[i])
 				result |= 1<<i;
 		}
-		/*
-		 * In case the kernel has a bug and requests a permission
-		 * between num_perms and the maximum permission number, we
-		 * should audit that denial
-		 */
 		for (; i < (sizeof(u32)*8); i++)
 			result |= 1<<i;
 		avd->auditdeny = result;
@@ -256,17 +238,6 @@ int security_mls_enabled(void)
 	return policydb.mls_enabled;
 }
 
-/*
- * Return the boolean value of a constraint expression
- * when it is applied to the specified source and target
- * security contexts.
- *
- * xcontext is a special beast...  It is used by the validatetrans rules
- * only.  For these rules, scontext is the context before the transition,
- * tcontext is the context after the transition, and xcontext is the context
- * of the process performing the transition.  All other callers of
- * constraint_expr_eval should pass in NULL for xcontext.
- */
 static int constraint_expr_eval(struct context *scontext,
 				struct context *tcontext,
 				struct context *xcontext,
@@ -277,7 +248,7 @@ static int constraint_expr_eval(struct context *scontext,
 	struct role_datum *r1, *r2;
 	struct mls_level *l1, *l2;
 	struct constraint_expr *e;
-	int s[CEXPR_MAXDEPTH];
+	int s[CEXPR_MAXDEPTH]={0};
 	int sp = -1;
 
 	for (e = cexpr; e; e = e->next) {
@@ -441,10 +412,6 @@ mls_ops:
 	return s[0];
 }
 
-/*
- * security_dump_masked_av - dumps masked permissions during
- * security_compute_av due to RBAC, MLS/Constraint and Type bounds.
- */
 static int dump_masked_av_helper(void *k, void *d, void *args)
 {
 	struct perm_datum *pdatum = d;
@@ -524,17 +491,13 @@ static void security_dump_masked_av(struct context *scontext,
 	}
 	audit_log_end(ab);
 out:
-	/* release scontext/tcontext */
+	
 	kfree(tcontext_name);
 	kfree(scontext_name);
 
 	return;
 }
 
-/*
- * security_boundary_permission - drops violated permissions
- * on boundary constraint.
- */
 static void type_attribute_bounds_av(struct context *scontext,
 				     struct context *tcontext,
 				     u16 tclass,
@@ -581,40 +544,32 @@ static void type_attribute_bounds_av(struct context *scontext,
 					  tclass,
 					  &lo_avd);
 		if ((lo_avd.allowed & avd->allowed) == avd->allowed)
-			return;		/* no masked permission */
+			return;		
 		masked = ~lo_avd.allowed & avd->allowed;
 	}
 
 	if (source->bounds && target->bounds) {
 		memset(&lo_avd, 0, sizeof(lo_avd));
-		/*
-		 * lo_scontext and lo_tcontext are already
-		 * set up.
-		 */
 
 		context_struct_compute_av(&lo_scontext,
 					  &lo_tcontext,
 					  tclass,
 					  &lo_avd);
 		if ((lo_avd.allowed & avd->allowed) == avd->allowed)
-			return;		/* no masked permission */
+			return;		
 		masked = ~lo_avd.allowed & avd->allowed;
 	}
 
 	if (masked) {
-		/* mask violated permissions */
+		
 		avd->allowed &= ~masked;
 
-		/* audit masked permissions */
+		
 		security_dump_masked_av(scontext, tcontext,
 					tclass, masked, "bounds");
 	}
 }
 
-/*
- * Compute access vectors based on a context structure pair for
- * the permissions in a particular class.
- */
 static void context_struct_compute_av(struct context *scontext,
 				      struct context *tcontext,
 				      u16 tclass,
@@ -641,10 +596,6 @@ static void context_struct_compute_av(struct context *scontext,
 
 	tclass_datum = policydb.class_val_to_struct[tclass - 1];
 
-	/*
-	 * If a specific type enforcement rule was defined for
-	 * this permission check, then use it.
-	 */
 	avkey.target_class = tclass;
 	avkey.specified = AVTAB_AV;
 	sattr = flex_array_get(policydb.type_attr_map_array, scontext->type - 1);
@@ -666,16 +617,12 @@ static void context_struct_compute_av(struct context *scontext,
 					avd->auditdeny &= node->datum.data;
 			}
 
-			/* Check conditional av table for additional permissions */
+			
 			cond_compute_av(&policydb.te_cond_avtab, &avkey, avd);
 
 		}
 	}
 
-	/*
-	 * Remove any permissions prohibited by a constraint (this includes
-	 * the MLS policy).
-	 */
 	constraint = tclass_datum->constraints;
 	while (constraint) {
 		if ((constraint->permissions & (avd->allowed)) &&
@@ -686,11 +633,6 @@ static void context_struct_compute_av(struct context *scontext,
 		constraint = constraint->next;
 	}
 
-	/*
-	 * If checking process transition permission and the
-	 * role is changing, then check the (current_role, new_role)
-	 * pair.
-	 */
 	if (tclass == policydb.process_class &&
 	    (avd->allowed & policydb.process_trans_perms) &&
 	    scontext->role != tcontext->role) {
@@ -703,11 +645,6 @@ static void context_struct_compute_av(struct context *scontext,
 			avd->allowed &= ~policydb.process_trans_perms;
 	}
 
-	/*
-	 * If the given source and target types have boundary
-	 * constraint, lazy checks have to mask any violated
-	 * permission and notice it to userspace via audit.
-	 */
 	type_attribute_bounds_av(scontext, tcontext,
 				 tclass, avd);
 }
@@ -806,15 +743,6 @@ out:
 	return rc;
 }
 
-/*
- * security_bounded_transition - check whether the given
- * transition is directed to bounded, or not.
- * It returns 0, if @newsid is bounded by @oldsid.
- * Otherwise, it returns error code.
- *
- * @oldsid : current security identifier
- * @newsid : destinated security identifier
- */
 int security_bounded_transition(u32 old_sid, u32 new_sid)
 {
 	struct context *old_context, *new_context;
@@ -897,7 +825,6 @@ static void avd_init(struct av_decision *avd)
 	avd->seqno = latest_granting;
 	avd->flags = 0;
 }
-
 
 /**
  * security_compute_av - Compute access vector decisions.
@@ -1001,13 +928,6 @@ allow:
 	goto out;
 }
 
-/*
- * Write the security context string representation of
- * the context structure `context' into a dynamically
- * allocated string of the correct size.  Set `*scontext'
- * to point to this string and set `*scontext_len' to
- * the length of the string.
- */
 static int context_struct_to_string(struct context *context, char **scontext, u32 *scontext_len)
 {
 	char *scontextp;
@@ -1035,15 +955,12 @@ static int context_struct_to_string(struct context *context, char **scontext, u3
 	if (!scontext)
 		return 0;
 
-	/* Allocate space for the context; caller must free this space. */
+	
 	scontextp = kmalloc(*scontext_len, GFP_ATOMIC);
 	if (!scontextp)
 		return -ENOMEM;
 	*scontext = scontextp;
 
-	/*
-	 * Copy the user name, role name and type name into the context.
-	 */
 	sprintf(scontextp, "%s:%s:%s",
 		sym_name(&policydb, SYM_USERS, context->user - 1),
 		sym_name(&policydb, SYM_ROLES, context->role - 1),
@@ -1118,16 +1035,6 @@ out:
 
 }
 
-/**
- * security_sid_to_context - Obtain a context for a given SID.
- * @sid: security identifier, SID
- * @scontext: security context
- * @scontext_len: length in bytes
- *
- * Write the string representation of the context associated with @sid
- * into a dynamically allocated string of the correct size.  Set @scontext
- * to point to this string and set @scontext_len to the length of the string.
- */
 int security_sid_to_context(u32 sid, char **scontext, u32 *scontext_len)
 {
 	return security_sid_to_context_core(sid, scontext, scontext_len, 0);
@@ -1138,9 +1045,6 @@ int security_sid_to_context_force(u32 sid, char **scontext, u32 *scontext_len)
 	return security_sid_to_context_core(sid, scontext, scontext_len, 1);
 }
 
-/*
- * Caveat:  Mutates scontext.
- */
 static int string_to_context_struct(struct policydb *pol,
 				    struct sidtab *sidtabp,
 				    char *scontext,
@@ -1283,41 +1187,12 @@ out:
 	return rc;
 }
 
-/**
- * security_context_to_sid - Obtain a SID for a given security context.
- * @scontext: security context
- * @scontext_len: length in bytes
- * @sid: security identifier, SID
- *
- * Obtains a SID associated with the security context that
- * has the string representation specified by @scontext.
- * Returns -%EINVAL if the context is invalid, -%ENOMEM if insufficient
- * memory is available, or 0 on success.
- */
 int security_context_to_sid(const char *scontext, u32 scontext_len, u32 *sid)
 {
 	return security_context_to_sid_core(scontext, scontext_len,
 					    sid, SECSID_NULL, GFP_KERNEL, 0);
 }
 
-/**
- * security_context_to_sid_default - Obtain a SID for a given security context,
- * falling back to specified default if needed.
- *
- * @scontext: security context
- * @scontext_len: length in bytes
- * @sid: security identifier, SID
- * @def_sid: default SID to assign on error
- *
- * Obtains a SID associated with the security context that
- * has the string representation specified by @scontext.
- * The default SID is passed to the MLS layer to be used to allow
- * kernel labeling of the MLS field if the MLS field is not present
- * (for upgrading to MLS without full relabel).
- * Implicitly forces adding of the context even if it cannot be mapped yet.
- * Returns -%EINVAL if the context is invalid, -%ENOMEM if insufficient
- * memory is available, or 0 on success.
- */
 int security_context_to_sid_default(const char *scontext, u32 scontext_len,
 				    u32 *sid, u32 def_sid, gfp_t gfp_flags)
 {
@@ -1369,11 +1244,6 @@ static void filename_compute_type(struct policydb *p, struct context *newcontext
 	struct filename_trans ft;
 	struct filename_trans_datum *otype;
 
-	/*
-	 * Most filename trans rules are going to live in specific directories
-	 * like /dev or /var/run.  This bitmap will quickly skip rule searches
-	 * if the ttype does not contain any rules.
-	 */
 	if (!ebitmap_get_bit(&p->filename_trans_ttypes, ttype))
 		return;
 
@@ -1511,37 +1381,35 @@ static int security_compute_sid(u32 ssid,
 	}
 
 	if (avdatum) {
-		/* Use the type from the type transition/member/change rule. */
+		
 		newcontext.type = avdatum->data;
 	}
 
-	/* if we have a objname this is a file trans check so check those rules */
+	
 	if (objname)
 		filename_compute_type(&policydb, &newcontext, scontext->type,
 				      tcontext->type, tclass, objname);
 
-	/* Check for class-specific changes. */
+	
 	if (specified & AVTAB_TRANSITION) {
-		/* Look for a role transition rule. */
+		
 		for (roletr = policydb.role_tr; roletr; roletr = roletr->next) {
 			if ((roletr->role == scontext->role) &&
 			    (roletr->type == tcontext->type) &&
 			    (roletr->tclass == tclass)) {
-				/* Use the role transition rule. */
+				
 				newcontext.role = roletr->new_role;
 				break;
 			}
 		}
 	}
 
-	/* Set the MLS attributes.
-	   This is done last because it may allocate memory. */
 	rc = mls_compute_sid(scontext, tcontext, tclass, specified,
 			     &newcontext, sock);
 	if (rc)
 		goto out_unlock;
 
-	/* Check the validity of the context. */
+	
 	if (!policydb_context_isvalid(&policydb, &newcontext)) {
 		rc = compute_sid_handle_invalid_context(scontext,
 							tcontext,
@@ -1559,19 +1427,6 @@ out:
 	return rc;
 }
 
-/**
- * security_transition_sid - Compute the SID for a new subject/object.
- * @ssid: source security identifier
- * @tsid: target security identifier
- * @tclass: target security class
- * @out_sid: security identifier for new subject/object
- *
- * Compute a SID to use for labeling a new subject or object in the
- * class @tclass based on a SID pair (@ssid, @tsid).
- * Return -%EINVAL if any of the parameters are invalid, -%ENOMEM
- * if insufficient memory is available, or %0 if the new SID was
- * computed successfully.
- */
 int security_transition_sid(u32 ssid, u32 tsid, u16 tclass,
 			    const struct qstr *qstr, u32 *out_sid)
 {
@@ -1586,19 +1441,6 @@ int security_transition_sid_user(u32 ssid, u32 tsid, u16 tclass,
 				    objname, out_sid, false);
 }
 
-/**
- * security_member_sid - Compute the SID for member selection.
- * @ssid: source security identifier
- * @tsid: target security identifier
- * @tclass: target security class
- * @out_sid: security identifier for selected member
- *
- * Compute a SID to use when selecting a member of a polyinstantiated
- * object of class @tclass based on a SID pair (@ssid, @tsid).
- * Return -%EINVAL if any of the parameters are invalid, -%ENOMEM
- * if insufficient memory is available, or %0 if the SID was
- * computed successfully.
- */
 int security_member_sid(u32 ssid,
 			u32 tsid,
 			u16 tclass,
@@ -1608,19 +1450,6 @@ int security_member_sid(u32 ssid,
 				    out_sid, false);
 }
 
-/**
- * security_change_sid - Compute the SID for object relabeling.
- * @ssid: source security identifier
- * @tsid: target security identifier
- * @tclass: target security class
- * @out_sid: security identifier for selected member
- *
- * Compute a SID to use for relabeling an object of class @tclass
- * based on a SID pair (@ssid, @tsid).
- * Return -%EINVAL if any of the parameters are invalid, -%ENOMEM
- * if insufficient memory is available, or %0 if the SID was
- * computed successfully.
- */
 int security_change_sid(u32 ssid,
 			u32 tsid,
 			u16 tclass,
@@ -1630,7 +1459,6 @@ int security_change_sid(u32 ssid,
 				    out_sid, false);
 }
 
-/* Clone the SID into the new SID table. */
 static int clone_sid(u32 sid,
 		     struct context *context,
 		     void *arg)
@@ -1663,13 +1491,6 @@ struct convert_context_args {
 	struct policydb *newp;
 };
 
-/*
- * Convert the values in the security context
- * structure `c' from the values specified
- * in the policy `p->oldp' to the values specified
- * in the policy `p->newp'.  Verify that the
- * context is valid under the new policy.
- */
 static int convert_context(u32 key,
 			   struct context *c,
 			   void *p)
@@ -1748,26 +1569,14 @@ static int convert_context(u32 key,
 		goto bad;
 	c->type = typdatum->value;
 
-	/* Convert the MLS fields if dealing with MLS policies */
+	
 	if (args->oldp->mls_enabled && args->newp->mls_enabled) {
 		rc = mls_convert_context(args->oldp, args->newp, c);
 		if (rc)
 			goto bad;
 	} else if (args->oldp->mls_enabled && !args->newp->mls_enabled) {
-		/*
-		 * Switching between MLS and non-MLS policy:
-		 * free any storage used by the MLS fields in the
-		 * context for all existing entries in the sidtab.
-		 */
 		mls_context_destroy(c);
 	} else if (!args->oldp->mls_enabled && args->newp->mls_enabled) {
-		/*
-		 * Switching between non-MLS and MLS policy:
-		 * ensure that the MLS fields of the context for all
-		 * existing entries in the sidtab are filled in with a
-		 * suitable default value, likely taken from one of the
-		 * initial SIDs.
-		 */
 		oc = args->newp->ocontexts[OCON_ISID];
 		while (oc && oc->sid[0] != SECINITSID_UNLABELED)
 			oc = oc->next;
@@ -1820,16 +1629,6 @@ static void security_load_policycaps(void)
 
 static int security_preserve_bools(struct policydb *p);
 
-/**
- * security_load_policy - Load a security policy configuration.
- * @data: binary policy data
- * @len: length of data in bytes
- *
- * Load a new set of security policy configuration data,
- * validate it and convert the SID table as necessary.
- * This function will flush the access vector cache after
- * loading the new policy.
- */
 int security_load_policy(void *data, size_t len)
 {
 	struct policydb oldpolicydb, newpolicydb;
@@ -1910,17 +1709,13 @@ int security_load_policy(void *data, size_t len)
 		goto err;
 	}
 
-	/* Clone the SID table. */
+	
 	sidtab_shutdown(&sidtab);
 
 	rc = sidtab_map(&sidtab, clone_sid, &newsidtab);
 	if (rc)
 		goto err;
 
-	/*
-	 * Convert the internal representations of contexts
-	 * in the new SID table.
-	 */
 	args.oldp = &policydb;
 	args.newp = &newpolicydb;
 	rc = sidtab_map(&newsidtab, convert_context, &args);
@@ -1978,12 +1773,6 @@ size_t security_policydb_len(void)
 	return len;
 }
 
-/**
- * security_port_sid - Obtain the SID for a port.
- * @protocol: protocol number
- * @port: port number
- * @out_sid: security identifier
- */
 int security_port_sid(u8 protocol, u16 port, u32 *out_sid)
 {
 	struct ocontext *c;
@@ -2018,11 +1807,6 @@ out:
 	return rc;
 }
 
-/**
- * security_netif_sid - Obtain the SID for a network interface.
- * @name: interface name
- * @if_sid: interface SID
- */
 int security_netif_sid(char *name, u32 *if_sid)
 {
 	int rc = 0;
@@ -2072,13 +1856,6 @@ static int match_ipv6_addrmask(u32 *input, u32 *addr, u32 *mask)
 	return !fail;
 }
 
-/**
- * security_node_sid - Obtain the SID for a node (host).
- * @domain: communication domain aka address family
- * @addrp: address
- * @addrlen: address length in bytes
- * @out_sid: security identifier
- */
 int security_node_sid(u16 domain,
 		      void *addrp,
 		      u32 addrlen,
@@ -2148,19 +1925,6 @@ out:
 
 #define SIDS_NEL 25
 
-/**
- * security_get_user_sids - Obtain reachable SIDs for a user.
- * @fromsid: starting SID
- * @username: username
- * @sids: array of reachable SIDs for user
- * @nel: number of elements in @sids
- *
- * Generate the set of SIDs for legal security contexts
- * for a given user that can be reached by @fromsid.
- * Set *@sids to point to a dynamically allocated
- * array containing the set of SIDs.  Set *@nel to the
- * number of elements in the array.
- */
 
 int security_get_user_sids(u32 fromsid,
 			   char *username,
@@ -2261,17 +2025,6 @@ out:
 	return rc;
 }
 
-/**
- * security_genfs_sid - Obtain a SID for a file in a filesystem
- * @fstype: filesystem type
- * @path: path from root of mount
- * @sclass: file security class
- * @sid: SID for path
- *
- * Obtain a SID to use for a file in a filesystem that
- * cannot support xattr or use a fixed labeling behavior like
- * transition SIDs or task SIDs.
- */
 int security_genfs_sid(const char *fstype,
 		       char *path,
 		       u16 orig_sclass,
@@ -2325,12 +2078,6 @@ out:
 	return rc;
 }
 
-/**
- * security_fs_use - Determine how to handle labeling for a filesystem.
- * @fstype: filesystem type
- * @behavior: labeling behavior
- * @sid: SID for filesystem (superblock)
- */
 int security_fs_use(
 	const char *fstype,
 	unsigned int *behavior,
@@ -2521,10 +2268,6 @@ out:
 	return rc;
 }
 
-/*
- * security_sid_mls_copy() - computes a new sid based on the given
- * sid and the mls portion of mls_sid.
- */
 int security_sid_mls_copy(u32 sid, u32 mls_sid, u32 *new_sid)
 {
 	struct context *context1;
@@ -2588,26 +2331,6 @@ out:
 	return rc;
 }
 
-/**
- * security_net_peersid_resolve - Compare and resolve two network peer SIDs
- * @nlbl_sid: NetLabel SID
- * @nlbl_type: NetLabel labeling protocol type
- * @xfrm_sid: XFRM SID
- *
- * Description:
- * Compare the @nlbl_sid and @xfrm_sid values and if the two SIDs can be
- * resolved into a single SID it is returned via @peer_sid and the function
- * returns zero.  Otherwise @peer_sid is set to SECSID_NULL and the function
- * returns a negative value.  A table summarizing the behavior is below:
- *
- *                                 | function return |      @sid
- *   ------------------------------+-----------------+-----------------
- *   no peer labels                |        0        |    SECSID_NULL
- *   single peer label             |        0        |    <peer_label>
- *   multiple, consistent labels   |        0        |    <peer_label>
- *   multiple, inconsistent labels |    -<errno>     |    SECSID_NULL
- *
- */
 int security_net_peersid_resolve(u32 nlbl_sid, u32 nlbl_type,
 				 u32 xfrm_sid,
 				 u32 *peer_sid)
@@ -2618,24 +2341,15 @@ int security_net_peersid_resolve(u32 nlbl_sid, u32 nlbl_type,
 
 	*peer_sid = SECSID_NULL;
 
-	/* handle the common (which also happens to be the set of easy) cases
-	 * right away, these two if statements catch everything involving a
-	 * single or absent peer SID/label */
 	if (xfrm_sid == SECSID_NULL) {
 		*peer_sid = nlbl_sid;
 		return 0;
 	}
-	/* NOTE: an nlbl_type == NETLBL_NLTYPE_UNLABELED is a "fallback" label
-	 * and is treated as if nlbl_sid == SECSID_NULL when a XFRM SID/label
-	 * is present */
 	if (nlbl_sid == SECSID_NULL || nlbl_type == NETLBL_NLTYPE_UNLABELED) {
 		*peer_sid = xfrm_sid;
 		return 0;
 	}
 
-	/* we don't need to check ss_initialized here since the only way both
-	 * nlbl_sid and xfrm_sid are not equal to SECSID_NULL would be if the
-	 * security server was initialized and ss_initialized was true */
 	if (!policydb.mls_enabled)
 		return 0;
 
@@ -2659,11 +2373,6 @@ int security_net_peersid_resolve(u32 nlbl_sid, u32 nlbl_type,
 	if (rc)
 		goto out;
 
-	/* at present NetLabel SIDs/labels really only carry MLS
-	 * information so if the MLS portion of the NetLabel SID
-	 * matches the MLS portion of the labeled XFRM SID/label
-	 * then pass along the XFRM SID as it is the most
-	 * expressive */
 	*peer_sid = xfrm_sid;
 out:
 	read_unlock(&policy_rwlock);
@@ -2777,16 +2486,6 @@ int security_get_allow_unknown(void)
 	return policydb.allow_unknown;
 }
 
-/**
- * security_policycap_supported - Check for a specific policy capability
- * @req_cap: capability
- *
- * Description:
- * This function queries the currently loaded policy to see if it supports the
- * capability specified by @req_cap.  Returns true (1) if the capability is
- * supported, false (0) if it isn't supported.
- *
- */
 int security_policycap_supported(unsigned int req_cap)
 {
 	int rc;
@@ -2909,7 +2608,6 @@ out:
 	return rc;
 }
 
-/* Check to see if the rule contains any selinux fields */
 int selinux_audit_rule_known(struct audit_krule *rule)
 {
 	int i;
@@ -2966,8 +2664,6 @@ int selinux_audit_rule_match(u32 sid, u32 field, u32 op, void *vrule,
 		goto out;
 	}
 
-	/* a field/op pair that is not caught here will simply fall through
-	   without a match */
 	switch (field) {
 	case AUDIT_SUBJ_USER:
 	case AUDIT_OBJ_USER:
@@ -3070,17 +2766,6 @@ static int __init aurule_init(void)
 __initcall(aurule_init);
 
 #ifdef CONFIG_NETLABEL
-/**
- * security_netlbl_cache_add - Add an entry to the NetLabel cache
- * @secattr: the NetLabel packet security attributes
- * @sid: the SELinux SID
- *
- * Description:
- * Attempt to cache the context in @ctx, which was derived from the packet in
- * @skb, in the NetLabel subsystem cache.  This function assumes @secattr has
- * already been initialized.
- *
- */
 static void security_netlbl_cache_add(struct netlbl_lsm_secattr *secattr,
 				      u32 sid)
 {
@@ -3101,21 +2786,6 @@ static void security_netlbl_cache_add(struct netlbl_lsm_secattr *secattr,
 	secattr->flags |= NETLBL_SECATTR_CACHE;
 }
 
-/**
- * security_netlbl_secattr_to_sid - Convert a NetLabel secattr to a SELinux SID
- * @secattr: the NetLabel packet security attributes
- * @sid: the SELinux SID
- *
- * Description:
- * Convert the given NetLabel security attributes in @secattr into a
- * SELinux SID.  If the @secattr field does not contain a full SELinux
- * SID/context then use SECINITSID_NETMSG as the foundation.  If possible the
- * 'cache' field of @secattr is set and the CACHE flag is set; this is to
- * allow the @secattr to be used by NetLabel to cache the secattr to SID
- * conversion for future lookups.  Returns zero on success, negative values on
- * failure.
- *
- */
 int security_netlbl_secattr_to_sid(struct netlbl_lsm_secattr *secattr,
 				   u32 *sid)
 {
@@ -3177,16 +2847,6 @@ out:
 	return rc;
 }
 
-/**
- * security_netlbl_sid_to_secattr - Convert a SELinux SID to a NetLabel secattr
- * @sid: the SELinux SID
- * @secattr: the NetLabel packet security attributes
- *
- * Description:
- * Convert the given SELinux SID in @sid into a NetLabel security attribute.
- * Returns zero on success, negative values on failure.
- *
- */
 int security_netlbl_sid_to_secattr(u32 sid, struct netlbl_lsm_secattr *secattr)
 {
 	int rc;
@@ -3216,14 +2876,8 @@ out:
 	read_unlock(&policy_rwlock);
 	return rc;
 }
-#endif /* CONFIG_NETLABEL */
+#endif 
 
-/**
- * security_read_policy - read the policy.
- * @data: binary policy data
- * @len: length of data in bytes
- *
- */
 int security_read_policy(void **data, size_t *len)
 {
 	int rc;

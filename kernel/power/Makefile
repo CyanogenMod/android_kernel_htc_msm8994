@@ -16,3 +16,5 @@ obj-$(CONFIG_SUSPEND_TIME)	+= suspend_time.o
 obj-$(CONFIG_MAGIC_SYSRQ)	+= poweroff.o
 
 obj-$(CONFIG_SUSPEND)	+= wakeup_reason.o
+
+obj-$(CONFIG_HTC_PNPMGR)	+= htc_pnpmgr.o

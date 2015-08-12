@@ -27,6 +27,11 @@
 #include <sound/audio_cal_utils.h>
 #include "q6voice.h"
 
+#undef pr_info
+#undef pr_err
+#define pr_info(fmt, ...) pr_aud_info(fmt, ##__VA_ARGS__)
+#define pr_err(fmt, ...) pr_aud_err(fmt, ##__VA_ARGS__)
+
 #define TIMEOUT_MS 300
 
 
@@ -478,12 +483,6 @@ static int voice_apr_register(uint32_t session_id)
 			goto err;
 		}
 
-		/*
-		 * Register with modem for SSR callback for voice, volte and
-		 * modem based QCHAT calls. The APR handle is not stored since
-		 * it is used only to receive notifications and not for
-		 * communication
-		 */
 		if (!is_voip_session(session_id)) {
 			modem_mvm = apr_register("MODEM", "MVM",
 						 qdsp_mvm_callback,
@@ -506,12 +505,6 @@ static int voice_apr_register(uint32_t session_id)
 			goto err;
 		}
 		rtac_set_voice_handle(RTAC_CVS, common.apr_q6_cvs);
-		/*
-		 * Register with modem for SSR callback for voice, volte and
-		 * modem based QCHAT calls. The APR handle is not stored since
-		 * it is used only to receive notifications and not for
-		 * communication
-		 */
 		if (!is_voip_session(session_id)) {
 			modem_cvs = apr_register("MODEM", "CVS",
 						 qdsp_cvs_callback,
@@ -534,12 +527,6 @@ static int voice_apr_register(uint32_t session_id)
 			goto err;
 		}
 		rtac_set_voice_handle(RTAC_CVP, common.apr_q6_cvp);
-		/*
-		 * Register with modem for SSR callback for voice, volte and
-		 * modem based QCHAT calls. The APR handle is not stored since
-		 * it is used only to receive notifications and not for
-		 * communication
-		 */
 		if (!is_voip_session(session_id)) {
 			modem_cvp = apr_register("MODEM", "CVP",
 						 qdsp_cvp_callback,
@@ -2049,11 +2036,14 @@ static int voice_send_set_device_cmd(struct voice_data *v)
 	int ret = 0;
 	void *apr_cvp;
 	u16 cvp_handle;
-
+	int voc_idx = 0;
 	if (v == NULL) {
 		pr_err("%s: v is NULL\n", __func__);
 		return -EINVAL;
 	}
+
+	voc_idx = voice_get_idx_for_session(v->session_id);
+
 	apr_cvp = common.apr_q6_cvp;
 
 	if (!apr_cvp) {
@@ -2083,11 +2073,11 @@ static int voice_send_set_device_cmd(struct voice_data *v)
 	cvp_setdev_cmd.cvp_set_device_v2.tx_port_id = v->dev_tx.port_id;
 	cvp_setdev_cmd.cvp_set_device_v2.rx_port_id = v->dev_rx.port_id;
 
-	if (common.ec_ref_ext) {
+	if (common.ec_ref_ext[voc_idx]) {
 		cvp_setdev_cmd.cvp_set_device_v2.vocproc_mode =
 				VSS_IVOCPROC_VOCPROC_MODE_EC_EXT_MIXING;
 		cvp_setdev_cmd.cvp_set_device_v2.ec_ref_port_id =
-				common.ec_port_id;
+				common.ec_port_id[voc_idx];
 	} else {
 		cvp_setdev_cmd.cvp_set_device_v2.vocproc_mode =
 				    VSS_IVOCPROC_VOCPROC_MODE_EC_INT_MIXING;
@@ -2786,21 +2776,17 @@ static int voice_map_memory_physical_cmd(struct voice_data *v,
 
 	memtable = (uint32_t *) table_info->data;
 
-	/*
-	 * Store next table descriptor's address(64 bit) as NULL as there
-	 * is only one memory block
-	 */
 	memtable[0] = 0;
 	memtable[1] = 0;
 
-	/* Store next table descriptor's size */
+	
 	memtable[2] = 0;
 
-	/* Store shared mem add */
+	
 	memtable[3] = phys;
 	memtable[4] = 0;
 
-	/* Store shared memory size */
+	
 	memtable[5] = size;
 
 	mvm_map_phys_cmd.hdr.hdr_field = APR_HDR_FIELD(APR_MSG_TYPE_SEQ_CMD,
@@ -3272,10 +3258,14 @@ static int voice_setup_vocproc(struct voice_data *v)
 	struct cvp_create_full_ctl_session_cmd cvp_session_cmd;
 	int ret = 0;
 	void *apr_cvp;
+	int voc_idx = 0;
 	if (v == NULL) {
 		pr_err("%s: v is NULL\n", __func__);
 		return -EINVAL;
 	}
+
+	voc_idx = voice_get_idx_for_session(v->session_id);
+
 	apr_cvp = common.apr_q6_cvp;
 
 	if (!apr_cvp) {
@@ -3307,11 +3297,11 @@ static int voice_setup_vocproc(struct voice_data *v)
 	cvp_session_cmd.cvp_session.rx_port_id = v->dev_rx.port_id;
 	cvp_session_cmd.cvp_session.profile_id =
 					 VSS_ICOMMON_CAL_NETWORK_ID_NONE;
-	if (common.ec_ref_ext) {
+	if (common.ec_ref_ext[voc_idx]) { 
 		cvp_session_cmd.cvp_session.vocproc_mode =
 				VSS_IVOCPROC_VOCPROC_MODE_EC_EXT_MIXING;
 		cvp_session_cmd.cvp_session.ec_ref_port_id =
-					common.ec_port_id;
+					common.ec_port_id[voc_idx]; 
 	} else {
 		cvp_session_cmd.cvp_session.vocproc_mode =
 				 VSS_IVOCPROC_VOCPROC_MODE_EC_INT_MIXING;
@@ -3693,21 +3683,18 @@ static int voice_destroy_vocproc(struct voice_data *v)
 	mvm_handle = voice_get_mvm_handle(v);
 	cvp_handle = voice_get_cvp_handle(v);
 
-	/* disable slowtalk if st_enable is set */
+	
 	if (v->st_enable)
 		voice_send_set_pp_enable_cmd(v, MODULE_ID_VOICE_MODULE_ST, 0);
 
-	/* Disable HD Voice if hd_enable is set */
+	
 	if (v->hd_enable)
 		voice_send_hd_cmd(v, 0);
 
-	/* stop playback or recording */
+	
 	v->music_info.force = 1;
 	voice_cvs_stop_playback(v);
 	voice_cvs_stop_record(v);
-	/* If voice call is active during VoLTE, SRVCC happens.
-	   Start recording on voice session if recording started during VoLTE.
-	 */
 	if (is_volte_session(v->session_id) &&
 	    ((common.voice[VOC_PATH_PASSIVE].voc_state == VOC_RUN) ||
 	     (common.voice[VOC_PATH_PASSIVE].voc_state == VOC_CHANGE))) {
@@ -4397,10 +4384,6 @@ int voc_start_record(uint32_t port_id, uint32_t set, uint32_t session_id)
 				ret = voice_cvs_stop_record(v);
 		}
 
-		/* During SRVCC, recording will switch from VoLTE session to
-		   voice session.
-		   Then stop recording, need to stop recording on voice session.
-		 */
 		if ((!rec_set) && common.srvcc_rec_flag) {
 			pr_debug("%s, srvcc_rec_flag:%d\n",  __func__,
 				 common.srvcc_rec_flag);
@@ -4651,10 +4634,6 @@ int voc_start_playback(uint32_t set, uint16_t port_id)
 
 		mutex_unlock(&v->lock);
 
-		/* Voice and VoLTE call use the same pseudo port and hence
-		 * use the same mixer control. So enable incall delivery
-		 * for VoLTE as well with Voice.
-		 */
 		if (is_voice_session(v->session_id)) {
 			v = voice_get_session(voc_get_session_id(
 							VOLTE_SESSION_NAME));
@@ -4670,12 +4649,14 @@ static int voc_disable_cvp(uint32_t session_id)
 {
 	struct voice_data *v = voice_get_session(session_id);
 	int ret = 0;
-
+	int voc_idx = 0;
 	if (v == NULL) {
 		pr_err("%s: invalid session_id 0x%x\n", __func__, session_id);
 
 		return -EINVAL;
 	}
+
+	voc_idx = voice_get_idx_for_session(v->session_id);
 
 	mutex_lock(&v->lock);
 
@@ -4698,8 +4679,8 @@ static int voc_disable_cvp(uint32_t session_id)
 	}
 	mutex_unlock(&v->lock);
 
-	if (common.ec_ref_ext)
-		voc_set_ext_ec_ref(AFE_PORT_INVALID, false);
+	if (common.ec_ref_ext[voc_idx]) 
+		voc_set_ext_ec_ref(AFE_PORT_INVALID, false, voc_idx); 
 
 done:
 	return ret;
@@ -4740,9 +4721,6 @@ static int voc_enable_cvp(uint32_t session_id)
 						VSS_IVOLUME_DIRECTION_RX,
 						VSS_IVOLUME_MUTE_ON,
 						DEFAULT_MUTE_RAMP_DURATION);
-			/* Send unmute cmd as the TX stream
-			 * might be muted previously
-			 */
 			voice_send_stream_mute_cmd(v,
 						VSS_IVOLUME_DIRECTION_TX,
 						VSS_IVOLUME_MUTE_OFF,
@@ -5173,12 +5151,14 @@ int voc_end_voice_call(uint32_t session_id)
 {
 	struct voice_data *v = voice_get_session(session_id);
 	int ret = 0;
-
+	int voc_idx = 0;
 	if (v == NULL) {
 		pr_err("%s: invalid session_id 0x%x\n", __func__, session_id);
 
 		return -EINVAL;
 	}
+
+	voc_idx = voice_get_idx_for_session(v->session_id);
 
 	mutex_lock(&v->lock);
 
@@ -5205,8 +5185,8 @@ int voc_end_voice_call(uint32_t session_id)
 
 		ret = -EINVAL;
 	}
-	if (common.ec_ref_ext)
-		voc_set_ext_ec_ref(AFE_PORT_INVALID, false);
+	if (common.ec_ref_ext[voc_idx]) 
+		voc_set_ext_ec_ref(AFE_PORT_INVALID, false, voc_idx); 
 
 	mutex_unlock(&v->lock);
 	return ret;
@@ -5264,12 +5244,14 @@ int voc_disable_device(uint32_t session_id)
 {
 	struct voice_data *v = voice_get_session(session_id);
 	int ret = 0;
-
+	int voc_idx = 0;
 	pr_debug("%s: voc state=%d\n", __func__, v->voc_state);
 	if (v == NULL) {
 		pr_err("%s: v is NULL\n", __func__);
 		return -EINVAL;
 	}
+
+	voc_idx = voice_get_idx_for_session(v->session_id);
 
 	mutex_lock(&v->lock);
 	if (v->voc_state == VOC_RUN) {
@@ -5290,8 +5272,8 @@ int voc_disable_device(uint32_t session_id)
 			 __func__, v->voc_state);
 	}
 
-	if (common.ec_ref_ext)
-		voc_set_ext_ec_ref(AFE_PORT_INVALID, false);
+	if (common.ec_ref_ext[voc_idx]) 
+		voc_set_ext_ec_ref(AFE_PORT_INVALID, false, voc_idx); 
 done:
 	mutex_unlock(&v->lock);
 
@@ -5388,9 +5370,6 @@ int voc_set_lch(uint32_t session_id, enum voice_lch_mode lch_mode)
 	v->lch_mode = lch_mode;
 	mutex_unlock(&v->lock);
 
-	/* destroy vocproc session during local call hold for memory constraint
-	 * devices and recreate vocproc during local call unhold
-	 */
 	if (common.is_destroy_cvd) {
 		ret = voc_lch_ops(v, v->lch_mode);
 		if (ret < 0) {
@@ -5469,9 +5448,6 @@ int voc_start_voice_call(uint32_t session_id)
 		}
 
 		if (is_voip_session(session_id)) {
-			/* Allocate oob mem if not already allocated and
-			 * memory map the oob memory block.
-			 */
 			ret = voice_alloc_and_map_oob_mem(v);
 			if (ret < 0) {
 				pr_err("%s: voice_alloc_and_map_oob_mem() failed, ret:%d\n",
@@ -5531,10 +5507,13 @@ fail:
 	return ret;
 }
 
-int voc_set_ext_ec_ref(uint16_t port_id, bool state)
+int voc_set_ext_ec_ref(uint16_t port_id, bool state, int voc_idx) 
 {
 	int ret = 0;
-
+	if(voc_idx < 0 || voc_idx >= MAX_VOC_SESSIONS) {
+		pr_err("voc_idx %d is invalid\n",voc_idx);
+		return ret;
+	}
 	mutex_lock(&common.common_lock);
 	if (state == true) {
 		if (port_id == AFE_PORT_INVALID) {
@@ -5542,11 +5521,11 @@ int voc_set_ext_ec_ref(uint16_t port_id, bool state)
 			ret = -EINVAL;
 			goto exit;
 		}
-		common.ec_port_id = port_id;
-		common.ec_ref_ext = true;
+		common.ec_port_id[voc_idx] = port_id;	
+		common.ec_ref_ext[voc_idx] = true;	
 	} else {
-		common.ec_ref_ext = false;
-		common.ec_port_id = port_id;
+		common.ec_ref_ext[voc_idx] = false;	
+		common.ec_port_id[voc_idx] = port_id;	
 	}
 exit:
 	mutex_unlock(&common.common_lock);
@@ -5656,12 +5635,10 @@ static int32_t qdsp_mvm_callback(struct apr_client_data *data, void *priv)
 			ptr = data->payload;
 
 			pr_debug("%x %x\n", ptr[0], ptr[1]);
-			/* ping mvm service ACK */
+			
 			switch (ptr[0]) {
 			case VSS_IMVM_CMD_CREATE_PASSIVE_CONTROL_SESSION:
 			case VSS_IMVM_CMD_CREATE_FULL_CONTROL_SESSION:
-				/* Passive session is used for CS call
-				 * Full session is used for VoIP call. */
 				pr_debug("%s: cmd = 0x%x\n", __func__, ptr[0]);
 				if (!ptr[1]) {
 					pr_debug("%s: MVM handle is %d\n",
@@ -7027,33 +7004,35 @@ static int __init voice_init(void)
 
 	memset(&common, 0, sizeof(struct common_data));
 
-	/* set default value */
-	common.default_mute_val = 0;  /* default is un-mute */
+	
+	common.default_mute_val = 0;  
 	common.default_sample_val = 8000;
 	common.default_vol_step_val = 0;
 	common.default_vol_ramp_duration_ms = DEFAULT_VOLUME_RAMP_DURATION;
 	common.default_mute_ramp_duration_ms = DEFAULT_MUTE_RAMP_DURATION;
-	common.ec_ref_ext = false;
-	/* Initialize MVS info. */
+	
+	
+
+	
 	common.mvs_info.network_type = VSS_NETWORK_ID_DEFAULT;
 
-	/* Initialize is low memory flag */
+	
 	common.is_destroy_cvd = false;
 
-	/* Initialize CVD version */
+	
 	strlcpy(common.cvd_version, CVD_VERSION_DEFAULT,
 		sizeof(common.cvd_version));
-	/* Initialize Per-Vocoder Calibration flag */
+	
 	common.is_per_vocoder_cal_enabled = false;
 
 	mutex_init(&common.common_lock);
 
-	/* Initialize session id with vsid */
+	
 	init_session_id();
 
 	for (i = 0; i < MAX_VOC_SESSIONS; i++) {
 
-		/* initialize dev_rx and dev_tx */
+		
 		common.voice[i].dev_rx.dev_mute =  common.default_mute_val;
 		common.voice[i].dev_tx.dev_mute =  common.default_mute_val;
 		common.voice[i].dev_rx.volume_step_value =
@@ -7081,6 +7060,7 @@ static int __init voice_init(void)
 		init_waitqueue_head(&common.voice[i].cvp_wait);
 
 		mutex_init(&common.voice[i].lock);
+		common.ec_ref_ext[i] = false;
 	}
 
 	if (voice_init_cal_data())

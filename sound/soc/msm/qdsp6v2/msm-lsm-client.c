@@ -61,7 +61,6 @@ static struct snd_pcm_hardware msm_pcm_hardware_capture = {
 	.fifo_size =            0,
 };
 
-/* Conventional and unconventional sample rate supported */
 static unsigned int supported_sample_rates[] = {
 	16000,
 };
@@ -1142,10 +1141,6 @@ static int msm_lsm_close(struct snd_pcm_substream *substream)
 			pr_debug("%s: LSM client session stopped %d\n",
 				 __func__, ret);
 
-		/*
-		 * Go Ahead and try de-register sound model,
-		 * even if stop failed
-		 */
 		prtd->lsm_client->started = false;
 
 		ret = q6lsm_deregister_sound_model(prtd->lsm_client);

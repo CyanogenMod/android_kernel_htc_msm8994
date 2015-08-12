@@ -3,6 +3,7 @@
 
 #include <linux/types.h>
 #include <linux/fb.h>
+#include <linux/minifb.h>
 
 #define MSMFB_IOCTL_MAGIC 'm'
 #define MSMFB_GRP_DISP          _IOW(MSMFB_IOCTL_MAGIC, 1, unsigned int)
@@ -12,7 +13,6 @@
 #define MSMFB_CURSOR _IOW(MSMFB_IOCTL_MAGIC, 130, struct fb_cursor)
 #define MSMFB_SET_LUT _IOW(MSMFB_IOCTL_MAGIC, 131, struct fb_cmap)
 #define MSMFB_HISTOGRAM _IOWR(MSMFB_IOCTL_MAGIC, 132, struct mdp_histogram_data)
-/* new ioctls's for set/get ccs matrix */
 #define MSMFB_GET_CCS_MATRIX  _IOWR(MSMFB_IOCTL_MAGIC, 133, struct mdp_ccs)
 #define MSMFB_SET_CCS_MATRIX  _IOW(MSMFB_IOCTL_MAGIC, 134, struct mdp_ccs)
 #define MSMFB_OVERLAY_SET       _IOWR(MSMFB_IOCTL_MAGIC, 135, \
@@ -69,11 +69,15 @@
 						struct mdp_overlay_list)
 #define MSMFB_LPM_ENABLE	_IOWR(MSMFB_IOCTL_MAGIC, 170, unsigned int)
 
+#define MSMFB_USBFB_INIT _IOW(MSMFB_IOCTL_MAGIC, 304, struct minifb_session)
+#define MSMFB_USBFB_TERMINATE _IOW(MSMFB_IOCTL_MAGIC, 305, struct minifb_session)
+#define MSMFB_USBFB_QUEUE_BUFFER _IOW(MSMFB_IOCTL_MAGIC, 306, struct minifb_req)
+#define MSMFB_USBFB_DEQUEUE_BUFFER _IOW(MSMFB_IOCTL_MAGIC, 307, struct minifb_req)
+
 #define FB_TYPE_3D_PANEL 0x10101010
 #define MDP_IMGTYPE2_START 0x10000
 #define MSMFB_DRIVER_VERSION	0xF9E8D701
 
-/* HW Revisions for different MDSS targets */
 #define MDSS_GET_MAJOR(rev)		((rev) >> 28)
 #define MDSS_GET_MINOR(rev)		(((rev) >> 16) & 0xFFF)
 #define MDSS_GET_STEP(rev)		((rev) & 0xFFFF)
@@ -189,7 +193,6 @@ enum {
 #define MDSS_MDP_RIGHT_MIXER		0x100
 #define MDSS_MDP_DUAL_PIPE		0x200
 
-/* mdp_blit_req flag values */
 #define MDP_ROT_NOP 0
 #define MDP_FLIP_LR 0x1
 #define MDP_FLIP_UD 0x2
@@ -230,10 +233,6 @@ enum {
 #define MDP_TRANSP_NOP 0xffffffff
 #define MDP_ALPHA_NOP 0xff
 
-/*
- * MDP_DEINTERLACE & MDP_SHARPENING Flags are not valid for MDP3
- * so using them together for MDP_SMART_BLIT.
- */
 #define MDP_SMART_BLIT			0xC0000000
 
 #define MDP_FB_PAGE_PROTECTION_NONCACHED         (0)
@@ -241,9 +240,7 @@ enum {
 #define MDP_FB_PAGE_PROTECTION_WRITETHROUGHCACHE (2)
 #define MDP_FB_PAGE_PROTECTION_WRITEBACKCACHE    (3)
 #define MDP_FB_PAGE_PROTECTION_WRITEBACKWACACHE  (4)
-/* Sentinel: Don't use! */
 #define MDP_FB_PAGE_PROTECTION_INVALID           (5)
-/* Count of the number of MDP_FB_PAGE_PROTECTION_... values. */
 #define MDP_NUM_FB_PAGE_PROTECTION_VALUES        (5)
 
 struct mdp_rect {
@@ -258,13 +255,10 @@ struct mdp_img {
 	uint32_t height;
 	uint32_t format;
 	uint32_t offset;
-	int memory_id;		/* the file descriptor */
+	int memory_id;		
 	uint32_t priv;
 };
 
-/*
- * {3x3} + {3} ccs matrix
- */
 
 #define MDP_CCS_RGB2YUV 	0
 #define MDP_CCS_YUV2RGB 	1
@@ -287,10 +281,6 @@ struct mdp_csc {
 	uint32_t csc_post_lv[6];
 };
 
-/* The version of the mdp_blit_req structure so that
- * user applications can selectively decide which functionality
- * to include
- */
 
 #define MDP_BLIT_REQ_VERSION 2
 
@@ -515,25 +505,6 @@ struct mdp_overlay_pp_params {
 	struct mdp_hist_lut_data hist_lut_cfg;
 };
 
-/**
- * enum mdss_mdp_blend_op - Different blend operations set by userspace
- *
- * @BLEND_OP_NOT_DEFINED:    No blend operation defined for the layer.
- * @BLEND_OP_OPAQUE:         Apply a constant blend operation. The layer
- *                           would appear opaque in case fg plane alpha is
- *                           0xff.
- * @BLEND_OP_PREMULTIPLIED:  Apply source over blend rule. Layer already has
- *                           alpha pre-multiplication done. If fg plane alpha
- *                           is less than 0xff, apply modulation as well. This
- *                           operation is intended on layers having alpha
- *                           channel.
- * @BLEND_OP_COVERAGE:       Apply source over blend rule. Layer is not alpha
- *                           pre-multiplied. Apply pre-multiplication. If fg
- *                           plane alpha is less than 0xff, apply modulation as
- *                           well.
- * @BLEND_OP_MAX:            Used to track maximum blend operation possible by
- *                           mdp.
- */
 enum mdss_mdp_blend_op {
 	BLEND_OP_NOT_DEFINED = 0,
 	BLEND_OP_OPAQUE,
@@ -570,16 +541,6 @@ struct mdp_scale_data {
 	uint32_t roi_w[MAX_PLANES];
 };
 
-/**
- * enum mdp_overlay_pipe_type - Different pipe type set by userspace
- *
- * @PIPE_TYPE_AUTO:    Not specified, pipe will be selected according to flags.
- * @PIPE_TYPE_VIG:     VIG pipe.
- * @PIPE_TYPE_RGB:     RGB pipe.
- * @PIPE_TYPE_DMA:     DMA pipe.
- * @PIPE_TYPE_CURSOR:  CURSOR pipe.
- * @PIPE_TYPE_MAX:     Used to track maximum number of pipe type.
- */
 enum mdp_overlay_pipe_type {
 	PIPE_TYPE_AUTO = 0,
 	PIPE_TYPE_VIG,
@@ -589,62 +550,12 @@ enum mdp_overlay_pipe_type {
 	PIPE_TYPE_MAX,
 };
 
-/**
- * struct mdp_overlay - overlay surface structure
- * @src:	Source image information (width, height, format).
- * @src_rect:	Source crop rectangle, portion of image that will be fetched.
- *		This should always be within boundaries of source image.
- * @dst_rect:	Destination rectangle, the position and size of image on screen.
- *		This should always be within panel boundaries.
- * @z_order:	Blending stage to occupy in display, if multiple layers are
- *		present, highest z_order usually means the top most visible
- *		layer. The range acceptable is from 0-3 to support blending
- *		up to 4 layers.
- * @is_fg:	This flag is used to disable blending of any layers with z_order
- *		less than this overlay. It means that any layers with z_order
- *		less than this layer will not be blended and will be replaced
- *		by the background border color.
- * @alpha:	Used to set plane opacity. The range can be from 0-255, where
- *		0 means completely transparent and 255 means fully opaque.
- * @transp_mask: Color used as color key for transparency. Any pixel in fetched
- *		image matching this color will be transparent when blending.
- *		The color should be in same format as the source image format.
- * @flags:	This is used to customize operation of overlay. See MDP flags
- *		for more information.
- * @pipe_type:  Used to specify the type of overlay pipe.
- * @user_data:	DEPRECATED* Used to store user application specific information.
- * @bg_color:	Solid color used to fill the overlay surface when no source
- *		buffer is provided.
- * @horz_deci:	Horizontal decimation value, this indicates the amount of pixels
- *		dropped for each pixel that is fetched from a line. The value
- *		given should be power of two of decimation amount.
- *		0: no decimation
- *		1: decimate by 2 (drop 1 pixel for each pixel fetched)
- *		2: decimate by 4 (drop 3 pixels for each pixel fetched)
- *		3: decimate by 8 (drop 7 pixels for each pixel fetched)
- *		4: decimate by 16 (drop 15 pixels for each pixel fetched)
- * @vert_deci:	Vertical decimation value, this indicates the amount of lines
- *		dropped for each line that is fetched from overlay. The value
- *		given should be power of two of decimation amount.
- *		0: no decimation
- *		1: decimation by 2 (drop 1 line for each line fetched)
- *		2: decimation by 4 (drop 3 lines for each line fetched)
- *		3: decimation by 8 (drop 7 lines for each line fetched)
- *		4: decimation by 16 (drop 15 lines for each line fetched)
- * @overlay_pp_cfg: Overlay post processing configuration, for more information
- *		see struct mdp_overlay_pp_params.
- * @priority:	Priority is returned by the driver when overlay is set for the
- *		first time. It indicates the priority of the underlying pipe
- *		serving the overlay. This priority can be used by user-space
- *		in source split when pipes are re-used and shuffled around to
- *		reduce fallbacks.
- */
 struct mdp_overlay {
 	struct msmfb_img src;
 	struct mdp_rect src_rect;
 	struct mdp_rect dst_rect;
-	uint32_t z_order;	/* stage number */
-	uint32_t is_fg;		/* control alpha & transp */
+	uint32_t z_order;	
+	uint32_t is_fg;		
 	uint32_t alpha;
 	uint32_t blend_op;
 	uint32_t transp_mask;
@@ -712,18 +623,6 @@ struct mdp_misr {
 	uint32_t crc_value[MISR_CRC_BATCH_SIZE];
 };
 
-/*
-
-	mdp_block_type defines the identifiers for pipes in MDP 4.3 and up
-
-	MDP_BLOCK_RESERVED is provided for backward compatibility and is
-	deprecated. It corresponds to DMA_P. So MDP_BLOCK_DMA_P should be used
-	instead.
-
-	MDP_LOGICAL_BLOCK_DISP_0 identifies the display pipe which fb0 uses,
-	same for others.
-
-*/
 
 enum {
 	MDP_BLOCK_RESERVED = 0,
@@ -743,10 +642,6 @@ enum {
 	MDP_BLOCK_MAX,
 };
 
-/*
- * mdp_histogram_start_req is used to provide the parameters for
- * histogram start request
- */
 
 struct mdp_histogram_start_req {
 	uint32_t block;
@@ -755,10 +650,6 @@ struct mdp_histogram_start_req {
 	uint16_t num_bins;
 };
 
-/*
- * mdp_histogram_data is used to return the histogram data, once
- * the histogram is done/stopped/cance
- */
 
 struct mdp_histogram_data {
 	uint32_t block;
@@ -806,10 +697,6 @@ struct mdp_pgc_lut_data {
 	struct mdp_ar_gc_lut_data *b_data;
 };
 
-/*
- * mdp_rgb_lut_data is used to provide parameters for configuring the
- * generic RGB lut in case of gamma correction or other LUT updation usecases
- */
 struct mdp_rgb_lut_data {
 	uint32_t flags;
 	uint32_t lut_type;
@@ -961,7 +848,6 @@ struct mdss_ad_cfg {
 	uint32_t bl_ctrl_mode;
 };
 
-/* ops uses standard MDP_PP_* flags */
 struct mdss_ad_init_cfg {
 	uint32_t ops;
 	union {
@@ -970,7 +856,6 @@ struct mdss_ad_init_cfg {
 	} params;
 };
 
-/* mode uses MDSS_AD_MODE_* flags */
 struct mdss_ad_input {
 	uint32_t mode;
 	union {
@@ -1117,17 +1002,6 @@ struct mdp_display_commit {
 	struct mdp_rect r_roi;
 };
 
-/**
- * struct mdp_overlay_list - argument for ioctl MSMFB_OVERLAY_PREPARE
- * @num_overlays:	Number of overlay layers as part of the frame.
- * @overlay_list:	Pointer to a list of overlay structures identifying
- *			the layers as part of the frame
- * @flags:		Flags can be used to extend behavior.
- * @processed_overlays:	Output parameter indicating how many pipes were
- *			successful. If there are no errors this number should
- *			match num_overlays. Otherwise it will indicate the last
- *			successful index for overlay that couldn't be set.
- */
 struct mdp_overlay_list {
 	uint32_t num_overlays;
 	struct mdp_overlay **overlay_list;

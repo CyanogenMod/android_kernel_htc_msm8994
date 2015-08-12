@@ -392,6 +392,7 @@ config EDAC_CORTEX_ARM64_PANIC_ON_CE
 config EDAC_CORTEX_ARM64_DBE_IRQ_ONLY
 	depends on EDAC_CORTEX_ARM64
 	bool "Only check for parity errors when an irq is generated"
+	default y
 	help
 	   In ARM64, parity errors will cause an interrupt
 	   to be triggered but may also cause a data abort to

@@ -38,6 +38,11 @@
 #include "msm-pcm-q6-v2.h"
 #include "msm-pcm-routing-v2.h"
 
+#undef pr_info
+#undef pr_err
+#define pr_info(fmt, ...) pr_aud_info(fmt, ##__VA_ARGS__)
+#define pr_err(fmt, ...) pr_aud_err(fmt, ##__VA_ARGS__)
+
 enum stream_state {
 	IDLE = 0,
 	STOPPED,
@@ -110,7 +115,6 @@ static struct snd_pcm_hardware msm_pcm_hardware_playback = {
 	.fifo_size =            0,
 };
 
-/* Conventional and unconventional sample rate supported */
 static unsigned int supported_sample_rates[] = {
 	8000, 11025, 12000, 16000, 22050, 24000, 32000, 44100, 48000,
 	88200, 96000, 176400, 192000
@@ -382,7 +386,7 @@ static int msm_pcm_capture_prepare(struct snd_pcm_substream *substream)
 		if (params_format(params) == SNDRV_PCM_FORMAT_S24_LE)
 			bits_per_sample = 24;
 
-		/* ULL mode is not supported in capture path */
+		
 		if (pdata->perf_mode == LEGACY_PCM_MODE)
 			prtd->audio_client->perf_mode = LEGACY_PCM_MODE;
 		else
@@ -1154,7 +1158,7 @@ static int msm_pcm_add_app_type_controls(struct snd_soc_pcm_runtime *rtd)
 		return ret;
 	}
 	kctl = app_type_info->kctl;
-	snprintf(kctl->id.name, ctl_len, "%s %d %s", mixer_ctl_name,
+	snprintf(kctl->id.name, sizeof(kctl->id.name), "%s %d %s", mixer_ctl_name, 
 		 rtd->pcm->device, suffix);
 	kctl = app_type_info->kctl;
 	kctl->put = msm_pcm_app_type_cfg_ctl_put;

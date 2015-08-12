@@ -24,7 +24,7 @@
 	interrupt-parent = <&intc>;
 
 	chosen {
-		bootargs = "sched_enable_hmp=1 sched_enable_power_aware=1";
+		bootargs = "boot_cpus=0,1,2,3 sched_enable_hmp=1 sched_enable_power_aware=1 maxcpus=5 androidboot.rpmdevice=fc190000.qcom,rpm-stats-ver";
 	};
 
 	aliases {
@@ -35,7 +35,11 @@
 		i2c1 = &i2c_1;
 		i2c2 = &i2c_2;
 		i2c5 = &i2c_5;
+		i2c15 = &i2c_1_5;
+		i2c24 = &i2c_2_4;
 		spi0 = &spi_0;
+		serial0 = &blsp1_uart2;
+		serial2 = &blsp1_uart3;
 		qup2 = &i2c_2;
 	};
 
@@ -307,13 +311,6 @@
 			label = "dfps_data_mem";
 		};
 
-		cont_splash_mem: cont_splash_mem@0 {
-			linux,reserve-contiguous-region;
-			linux,reserve-region;
-			reg = <0 0x03401000 0 0x2200000>;
-			label = "cont_splash_mem";
-		};
-
 		peripheral_mem: peripheral_region@0 {
 			linux,reserve-contiguous-region;
 			linux,reserve-region;
@@ -348,6 +345,11 @@
 	cpuss@fd4a8000 {
 		compatible = "qcom,cpuss-8994";
 		reg = <0xfd4a8000 0x4>;
+	};
+
+	cpu_fuse@fc4b80b4 {
+		compatible = "qcom,cpufuse-8994";
+		reg = <0xfc4b80b4 0x4>;
 	};
 
 	acc0:clock-controller@f908b004 {
@@ -557,7 +559,7 @@
 	};
 
 	blsp1_uart3: serial@f991f000 {
-		compatible = "qcom,msm-lsuart-v14";
+		compatible = "CIR";
 		reg = <0xf991f000 0x1000>;
 		interrupts = <0 109 0>;
 		status = "disabled";
@@ -577,7 +579,7 @@
 	};
 
 	blsp2_uart2: uart@f995e000 { /* BLSP2 UART2 */
-		compatible = "qcom,msm-hsuart-v14";
+		compatible = "qcom,msm-hsuart-v14-brcm";
 		reg = <0xf995e000 0x1000>,
 			<0xf9944000 0x19000>;
 		status = "disabled";
@@ -612,6 +614,26 @@
 				<84 512 0 0>,
 				<84 512 500 800>;
 	};
+
+	//HTC_BT ++
+	htc,htc_bt_rfkill {
+		compatible = "htc,htc_rfkill";
+		brcm,bt-regon-gpio = <&msm_gpio 114 0>; /* BT_EN */
+
+		/* Host_wake_up pull up to select as UART per BCM4356 spec for BT on */
+		pinctrl-names = "bt_wake_host_gpio_on", "bt_wake_host_gpio_off";
+		pinctrl-0 = <&bt_wake_host_gpio_on>;
+		pinctrl-1 = <&bt_wake_host_gpio_off>;
+	};
+	htc,htc_bluesleep {
+		compatible = "htc,bluesleep_bcm";
+		brcm_bt_host_wake = <&msm_gpio 108 0>; /* BT_WAKE_HOST */
+		brcm_bt_wake_dev  = <&msm_gpio 112 0>; /* BT_WAKE_DEV */
+		interrupt-parent = <&msm_gpio>;
+		interrupts = <108 0>;
+		interrupt-names = "host_wake";
+	};
+	//HTC_BT --
 
 	qcom,sps@f9984000 {
 		compatible = "qcom,msm_sps";
@@ -664,9 +686,9 @@
 				"int_pls_link_down", "int_bridge_flush_n";
 
 		pinctrl-names = "default";
-		pinctrl-0 = <&pcie0_clkreq_default &pcie0_perst_default &pcie0_wake_default>;
+		pinctrl-0 = <&pcie0_clkreq_default &pcie0_perst_default>;
 
-		perst-gpio = <&msm_gpio 53 0>;
+		//perst-gpio = <&msm_gpio 53 0>;
 		wake-gpio = <&msm_gpio 55 0>;
 
 		gdsc-vdd-supply = <&gdsc_pcie_0>;
@@ -752,6 +774,7 @@
 		vreg-1.8-supply = <&pm8994_l12>;
 		vreg-0.9-supply = <&pm8994_l28>;
 
+		//qcom,l0s-supported;
 		qcom,l1-supported;
 		qcom,l1ss-supported;
 		qcom,aux-clk-sync;
@@ -895,11 +918,18 @@
 		mem_dump_table@10 {
 			compatible = "qcom,msm-imem-mem_dump_table";
 			reg = <0x10 8>;
+			htc,mem-dump-table-phys = <0x5cf0000>; /* at the end 0x10000 of Last LK RAM log */
 		};
 
 		restart_reason@65c {
 			compatible = "qcom,msm-imem-restart_reason";
 			reg = <0x65c 4>;
+		};
+
+		restart_info@a94 {
+			compatible = "htc,msm-imem-restart_info";
+			reg = <0xa94 100>;
+			info_size = <100>;
 		};
 
 		boot_stats@6b0 {
@@ -920,127 +950,24 @@
 
 	qcom,wdt@f9017000 {
 		compatible = "qcom,msm-watchdog";
-		reg = <0xf9017000 0x1000>;
-		reg-names = "wdt-base";
+		reg = <0xf9017000 0x1000>, <0xfc4a3000 0x1000>;
+		reg-names = "wdt-base", "mpm-clock-base";
 		interrupts = <0 3 0>, <0 4 0>;
-		qcom,bark-time = <11000>;
-		qcom,pet-time = <10000>;
+		qcom,bark-time = <18000>;
+		qcom,pet-time = <8000>;
 		qcom,ipi-ping;
 	};
 
 	qcom,msm-rtb {
 		compatible = "qcom,msm-rtb";
-		qcom,rtb-size = <0x100000>;
+		reg = <0x05a00000 0x100000>;
+		reg-names = "msm_rtb_res";
 	};
 
 	jtag_fuse: jtagfuse@fc4be024 {
 		compatible = "qcom,jtag-fuse";
 		reg = <0xfc4be024 0x8>;
 		reg-names = "fuse-base";
-	};
-
-	jtag_mm0: jtagmm@fb840000 {
-		compatible = "qcom,jtagv8-mm";
-		reg = <0xfb840000 0x1000>,
-		      <0xfb810000 0x1000>;
-		reg-names = "etm-base","debug-base";
-
-		clocks = <&clock_rpm clk_qdss_clk>,
-			 <&clock_rpm clk_qdss_a_clk>;
-		clock-names = "core_clk", "core_a_clk";
-
-		qcom,coresight-jtagmm-cpu = <&CPU0>;
-	};
-
-	jtag_mm1: jtagmm@fb940000 {
-		compatible = "qcom,jtagv8-mm";
-		reg = <0xfb940000 0x1000>,
-		      <0xfb910000 0x1000>;
-		reg-names = "etm-base","debug-base";
-
-		clocks = <&clock_rpm clk_qdss_clk>,
-			 <&clock_rpm clk_qdss_a_clk>;
-		clock-names = "core_clk", "core_a_clk";
-
-		qcom,coresight-jtagmm-cpu = <&CPU1>;
-	};
-
-	jtag_mm2: jtagmm@fba40000 {
-		compatible = "qcom,jtagv8-mm";
-		reg = <0xfba40000 0x1000>,
-		      <0xfba10000 0x1000>;
-		reg-names = "etm-base","debug-base";
-
-		clocks = <&clock_rpm clk_qdss_clk>,
-			 <&clock_rpm clk_qdss_a_clk>;
-		clock-names = "core_clk", "core_a_clk";
-
-		qcom,coresight-jtagmm-cpu = <&CPU2>;
-	};
-
-	jtag_mm3: jtagmm@fbb40000 {
-		compatible = "qcom,jtagv8-mm";
-		reg = <0xfbb40000 0x1000>,
-		      <0xfbb10000 0x1000>;
-		reg-names = "etm-base","debug-base";
-
-		clocks = <&clock_rpm clk_qdss_clk>,
-			 <&clock_rpm clk_qdss_a_clk>;
-		clock-names = "core_clk", "core_a_clk";
-
-		qcom,coresight-jtagmm-cpu = <&CPU3>;
-	};
-
-	jtag_mm4: jtagmm@fbc40000 {
-		compatible = "qcom,jtagv8-mm";
-		reg = <0xfbc40000 0x1000>,
-		      <0xfbc10000 0x1000>;
-		reg-names = "etm-base","debug-base";
-
-		clocks = <&clock_rpm clk_qdss_clk>,
-			 <&clock_rpm clk_qdss_a_clk>;
-		clock-names = "core_clk", "core_a_clk";
-
-		qcom,coresight-jtagmm-cpu = <&CPU4>;
-	};
-
-	jtag_mm5: jtagmm@fbd40000 {
-		compatible = "qcom,jtagv8-mm";
-		reg = <0xfbd40000 0x1000>,
-		      <0xfbd10000 0x1000>;
-		reg-names = "etm-base","debug-base";
-
-		clocks = <&clock_rpm clk_qdss_clk>,
-			 <&clock_rpm clk_qdss_a_clk>;
-		clock-names = "core_clk", "core_a_clk";
-
-		qcom,coresight-jtagmm-cpu = <&CPU5>;
-	};
-
-	jtag_mm6: jtagmm@fbe40000 {
-		compatible = "qcom,jtagv8-mm";
-		reg = <0xfbe40000 0x1000>,
-		      <0xfbe10000 0x1000>;
-		reg-names = "etm-base","debug-base";
-
-		clocks = <&clock_rpm clk_qdss_clk>,
-			 <&clock_rpm clk_qdss_a_clk>;
-		clock-names = "core_clk", "core_a_clk";
-
-		qcom,coresight-jtagmm-cpu = <&CPU6>;
-	};
-
-	jtag_mm7: jtagmm@fbf40000 {
-		compatible = "qcom,jtagv8-mm";
-		reg = <0xfbf40000 0x1000>,
-		      <0xfbf10000 0x1000>;
-		reg-names = "etm-base","debug-base";
-
-		clocks = <&clock_rpm clk_qdss_clk>,
-			 <&clock_rpm clk_qdss_a_clk>;
-		clock-names = "core_clk", "core_a_clk";
-
-		qcom,coresight-jtagmm-cpu = <&CPU7>;
 	};
 
 	rpm_bus: qcom,rpm-smd {
@@ -1302,7 +1229,8 @@
 			status = "disabled";
 		};
 
-	spi_0: spi_epm: spi@f9923000 { /* BLSP1 QUP1 */
+	spi_0: spi@f9923000 { /* BLSP1 QUP1 */
+		status = "disabled";
 		compatible = "qcom,spi-qup-v2";
 		#address-cells = <1>;
 		#size-cells = <0>;
@@ -1311,7 +1239,7 @@
 		      <0xf9904000 0x19000>;
 		interrupt-names = "spi_irq", "spi_bam_irq";
 		interrupts = <0 95 0>, <0 238 0>;
-		spi-max-frequency = <19200000>;
+		spi-max-frequency = <9600000>;
 
 		qcom,infinite-mode = <0>;
 		qcom,use-bam;
@@ -1320,9 +1248,12 @@
 		qcom,bam-producer-pipe-index = <13>;
 		qcom,master-id = <86>;
 		qcom,use-pinctrl;
-		pinctrl-names = "spi_default", "spi_sleep";
-		pinctrl-0 = <&spi_0_active &spi_0_cs1_active>;
-		pinctrl-1 = <&spi_0_sleep &spi_0_cs1_sleep>;
+		pinctrl-names = "default", "sleep";
+		pinctrl-0 = <&spi_0_active>;
+		pinctrl-1 = <&spi_0_suspend>;
+		qcom,gpio-mosi = <&msm_gpio 0 0>;
+		qcom,gpio-miso = <&msm_gpio 1 0>;
+		qcom,gpio-clk  = <&msm_gpio 3 0>;
 
 		clock-names = "iface_clk", "core_clk";
 
@@ -1378,23 +1309,25 @@
 				<82 512 12288 24576>; /* Max. bandwidth, 2xTSIF, each max of 96Mbps */
 
 		pinctrl-names = "disabled",
-			"tsif0-mode1", "tsif0-mode2",
-			"tsif1-mode1", "tsif1-mode2",
-			"dual-tsif-mode1", "dual-tsif-mode2";
+			"tsif0-mode1", "tsif0-mode2";
+			//"tsif1-mode1", "tsif1-mode2",
+			//"dual-tsif-mode1", "dual-tsif-mode2";
 
 		pinctrl-0 = <>;				/* disabled */
 		pinctrl-1 = <&tsif0_signals_active>;	/* tsif0-mode1 */
 		pinctrl-2 = <&tsif0_signals_active
 			&tsif0_sync_active>;		/* tsif0-mode2 */
-		pinctrl-3 = <&tsif1_signals_active>;	/* tsif1-mode1 */
+		/*
+		pinctrl-3 = <&tsif1_signals_active>;	/* tsif1-mode1 
 		pinctrl-4 = <&tsif1_signals_active
-			&tsif1_sync_active>;		/* tsif1-mode2 */
+			&tsif1_sync_active>;		/* tsif1-mode2 
 		pinctrl-5 = <&tsif0_signals_active
-			&tsif1_signals_active>;		/* dual-tsif-mode1 */
+			&tsif1_signals_active>;		/* dual-tsif-mode1 
 		pinctrl-6 = <&tsif0_signals_active
 			&tsif0_sync_active
 			&tsif1_signals_active
-			&tsif1_sync_active>;		/* dual-tsif-mode2 */
+			&tsif1_sync_active>;		/* dual-tsif-mode2 
+		*/
 	};
 
 	slim_msm: slim@fe12f000 {
@@ -1509,7 +1442,7 @@
 		interrupt-names = "hs_phy_irq", "pwr_event_irq", "pmic_id_irq";
 
 		USB3_GDSC-supply = <&gdsc_usb30>;
-		vbus_dwc3-supply = <&smbcharger_charger_otg>;
+		vbus_dwc3-supply = <&pmi8994_otg_supply>;
 		qcom,dwc-usb3-msm-tx-fifo-size = <29696>;
 		qcom,dwc-usb3-msm-qdss-tx-fifo-size = <8192>;
 		qcom,usb-dbm = <&dbm_1p5>;
@@ -1549,7 +1482,6 @@
 		reg = <0xf92f8800 0x3ff>,
 			<0xf9b3a000 0x110>;
 		reg-names = "core", "phy_csr";
-		qcom,hsphy-init = <0x00D191A4>;
 		vdd-supply = <&pm8994_s2_corner>;
 		vdda18-supply = <&pm8994_l6>;
 		vdda33-supply = <&pm8994_l24>;
@@ -1741,9 +1673,34 @@
 		clock-names = "ref_clk", "cfg_ahb_clk", "phy_reset";
 	};
 
+	htc,cable_detect {
+		compatible = "htc,cable-detect";
+		htc,usb-id-gpio = <&pmi8994_gpios 6 0>;
+		detect-type = <2>;
+		usb-id-pin-type = <0>;
+		usb-id-adc-channel = <16>;
+		qcom,usb_id-vadc = <&pmi8994_vadc>;
+		/* USB ID pin will connect to pm8994 on XA board */
+		htc,usb-id-gpio-xa = <&pm8994_gpios 1 0>;
+		usb-id-adc-channel-xa = <57>;
+		qcom,usb_id_xa-vadc = <&pm8994_vadc>;
+	};
+
 	android_usb@fe87f0c8 {
 		compatible = "qcom,android-usb";
 		reg = <0xfe87f0c8 0xc8>;
+		/*++ 2014/09/23 USB Team, PCN00010 ++*/
+		htc,fserial-init-string = "smd:modem,tty,tty:autobot,tty:serial,tty:autobot,tty:acm";
+		/*-- 2014/09/23 USB Team, PCN00010 --*/
+		/*++ 2014/10/21 USB Team, PCN00020 ++*/
+		htc,diag-client = "diag";
+		htc,rmnet-transports = "qti,bam2bam_ipa";
+		/*-- 2014/10/21 USB Team, PCN00020 --*/
+
+		/*++ 2014/10/29, USB Team, PCN00028 ++*/
+		htc,android-usb-nluns = <1>;
+		qcom,android-usb-cdrom;
+		/*-- 2014/10/29, USB Team, PCN00028 --*/
 		qcom,pm-qos-latency = <61 637 1261>;
 	};
 
@@ -1987,11 +1944,7 @@
 				<  199200 1525 >,
 				<  302400 1525 >,
 				<  384000 1525 >,
-				<  600000 2288 >,
-				<  691200 3562 >,
-				<  768000 4066 >,
-				<  844800 5126 >,
-				<  921600 6072 >;
+				<  600000 2288 >;
 		};
 
 		mincpubw-cpufreq {
@@ -2010,11 +1963,7 @@
 				<  199200 1525 >,
 				<  302400 1525 >,
 				<  384000 2288 >,
-				<  600000 3509 >,
-				<  691200 4066 >,
-				<  768000 5126 >,
-				<  844800 5928 >,
-				<  921600 5928 >;
+				<  600000 3509 >;
 		};
 
 		cci-cpufreq {
@@ -2033,11 +1982,7 @@
 				<  199200 150000 >,
 				<  302400 200000 >,
 				<  384000 249600 >,
-				<  600000 300000 >,
-				<  691200 384000 >,
-				<  768000 499200 >,
-				<  844800 600000 >,
-				<  921600 600000 >;
+				<  600000 300000 >;
 		};
 	};
 
@@ -2073,11 +2018,7 @@
 			<  199200 >,
 			<  302400 >,
 			<  384000 >,
-			<  600000 >,
-			<  691200 >,
-			<  768000 >,
-			<  844800 >,
-			<  921600 >;
+			<  600000 >;
 	};
 
 	clock_cpu: qcom,cpu-clock-8994@f9015000 {
@@ -2110,11 +2051,7 @@
 			<  199200000 1>,
 			<  302400000 2>,
 			<  384000000 3>,
-			<  600000000 4>,
-			<  691200000 5>,
-			<  768000000 6>,
-			<  844800000 7>,
-			<  921600000 8>;
+			<  600000000 4>;
 		qcom,cci-speedbin0-v0 =
 			<	   0 0>,
 			<  150000000 1>,
@@ -2206,10 +2143,12 @@
 			<783360 465000000 0x01000414>,
 			<783360 465000000 0x030fcfff>,
 			<783360 465000000 0x04000000>,
-			<489600 240000000 0x0c000000>,
-			<489600 240000000 0x01000414>,
-			<489600 240000000 0x030fcfff>,
-			<489600 240000000 0x04000000>,
+                        /* HTC_START: Modify venus frequency table to let venus runs @ 240MHz under slow-motion recording */
+			<432000 240000000 0x0c000000>,
+			<432000 240000000 0x01000414>,
+			<432000 240000000 0x030fcfff>,
+			<432000 240000000 0x04000000>,
+                        /* HTC_END */
 			<244800 133330000 0x0c000000>,
 			<244800 133330000 0x01000414>,
 			<244800 133330000 0x030fcfff>,
@@ -2457,6 +2396,58 @@
 		qcom,master-id = <86>;
 	};
 
+	i2c_1_5: i2c@f9927000 { /* BLSP1 QUP5 */
+		compatible = "qcom,i2c-msm-v2";
+		#address-cells = <1>;
+		#size-cells = <0>;
+		reg-names = "qup_phys_addr";
+		reg = <0xf9927000 0x1000>;
+		interrupt-names = "qup_irq";
+		interrupts = <0 99 0>;
+		qcom,clk-freq-out = <400000>;
+		qcom,clk-freq-in  = <19200000>;
+		clock-names = "iface_clk", "core_clk";
+		clocks = <&clock_gcc clk_gcc_blsp1_ahb_clk>,
+			 <&clock_gcc clk_gcc_blsp1_qup5_i2c_apps_clk>;
+
+		pinctrl-names = "i2c_active", "i2c_sleep";
+		pinctrl-0 = <&i2c_1_5_active &i2c_1_5_1_active>;
+		pinctrl-1 = <&i2c_1_5_sleep &i2c_1_5_1_sleep>;
+		qcom,noise-rjct-scl = <0>;
+		qcom,noise-rjct-sda = <0>;
+		dmas = <&dma_blsp1 20 64 0x20000020 0x20>,
+			<&dma_blsp1 21 32 0x20000020 0x20>;
+		dma-names = "tx", "rx";
+		qcom,master-id = <86>;
+		qcom,sda-gpio = <&msm_gpio 23 0>;
+		qcom,scl-gpio = <&msm_gpio 24 0>;
+	};
+
+	i2c_2_4: i2c@f9966000 { /* BLSP2 QUP4 */
+		compatible = "qcom,i2c-msm-v2";
+		#address-cells = <1>;
+		#size-cells = <0>;
+		reg-names = "qup_phys_addr";
+		reg = <0xf9966000 0x1000>;
+		interrupt-names = "qup_irq";
+		interrupts = <0 104 0>;
+		qcom,clk-freq-out = <400000>;
+		qcom,clk-freq-in  = <19200000>;
+		clock-names = "iface_clk", "core_clk";
+		clocks = <&clock_gcc clk_gcc_blsp2_ahb_clk>,
+			 <&clock_gcc clk_gcc_blsp2_qup4_i2c_apps_clk>;
+
+		pinctrl-names = "i2c_active", "i2c_sleep";
+		pinctrl-0 = <&i2c_2_4_active>;
+		pinctrl-1 = <&i2c_2_4_sleep>;
+		qcom,noise-rjct-scl = <0>;
+		qcom,noise-rjct-sda = <0>;
+		dmas = <&dma_blsp2 18 64 0x20000020 0x20>,
+			<&dma_blsp2 19 32 0x20000020 0x20>;
+		dma-names = "tx", "rx";
+		qcom,master-id = <84>;
+	};
+
 	i2c_5: i2c_11: i2c@f9967000 { /* BLSP2 QUP5 */
 		compatible = "qcom,i2c-msm-v2";
 		#address-cells = <1>;
@@ -2465,7 +2456,7 @@
 		reg = <0xf9967000 0x1000>;
 		interrupt-names = "qup_irq";
 		interrupts = <0 105 0>;
-		qcom,clk-freq-out = <100000>;
+		qcom,clk-freq-out = <400000>;
 		qcom,clk-freq-in  = <19200000>;
 		clock-names = "iface_clk", "core_clk";
 		clocks = <&clock_gcc clk_gcc_blsp2_ahb_clk>,
@@ -2525,43 +2516,48 @@
 			"RX_BIAS", "MCLK",
 			"LDO_H", "MCLK",
 			"MADINPUT", "MCLK",
-			"AMIC1", "MIC BIAS1 Internal1",
-			"MIC BIAS1 Internal1", "Handset Mic",
+			"Lineout_1 amp", "LINEOUT1",
+			"Lineout_3 amp", "LINEOUT3",
+			"Lineout_2 amp", "LINEOUT2",
+			"Lineout_4 amp", "LINEOUT4",
+			"AIF4 MAD", "MCLK",
+			"AMIC1", "MIC BIAS1 External",
+			"MIC BIAS1 External", "Handset Mic",
 			"AMIC2", "MIC BIAS2 External",
 			"MIC BIAS2 External", "Headset Mic",
-			"AMIC3", "MIC BIAS2 External",
-			"MIC BIAS2 External", "ANCRight Headset Mic",
-			"AMIC4", "MIC BIAS2 External",
-			"MIC BIAS2 External", "ANCLeft Headset Mic",
-			"DMIC1", "MIC BIAS1 External",
-			"MIC BIAS1 External", "Digital Mic1",
-			"DMIC2", "MIC BIAS1 External",
-			"MIC BIAS1 External", "Digital Mic2",
-			"DMIC3", "MIC BIAS3 External",
-			"MIC BIAS3 External", "Digital Mic3",
-			"DMIC4", "MIC BIAS3 External",
-			"MIC BIAS3 External", "Digital Mic4",
-			"DMIC5", "MIC BIAS4 External",
-			"MIC BIAS4 External", "Digital Mic5",
-			"DMIC6", "MIC BIAS4 External",
-			"MIC BIAS4 External", "Digital Mic6";
+			"AMIC3", "MIC BIAS3 External",
+			"MIC BIAS3 External", "ANCRight Headset Mic",
+			"AMIC4", "MIC BIAS4 External",
+			"MIC BIAS4 External", "Handset Mic",
+			"DMIC1", "MIC BIAS1 Internal1",
+			"MIC BIAS1 Internal1", "Digital Mic1",
+			"DMIC2", "MIC BIAS1 Internal1",
+			"MIC BIAS1 Internal1", "Digital Mic2",
+			"DMIC3", "MIC BIAS3 Internal1",
+			"MIC BIAS3 Internal1", "Digital Mic3",
+			"DMIC4", "MIC BIAS3 Internal1",
+			"MIC BIAS3 Internal1", "Digital Mic4",
+			"DMIC5", "MIC BIAS3 Internal1",
+			"MIC BIAS3 Internal1", "Digital Mic5",
+			"DMIC6", "MIC BIAS3 Internal1",
+			"MIC BIAS3 Internal1", "Digital Mic6";
 
 		clock-names = "osr_clk";
 		clocks = <&clock_rpm clk_div_clk1>;
 		qcom,cdc-mclk-gpios = <&pm8994_gpios 15 0>;
 		qcom,tomtom-mclk-clk-freq = <9600000>;
-		pinctrl-names = "sleep",
+		pinctrl-names = "auxpcm-sleep",
 				"auxpcm-active",
-				"mi2s-active",
-				"active";
-		pinctrl-0 = <&pri_mi2s_sleep>, <&pri_mi2s_sd0_sleep>,
-				<&sec_aux_pcm_sleep>, <&sec_aux_pcm_din_sleep>;
-		pinctrl-1 = <&pri_mi2s_sleep>, <&pri_mi2s_sd0_sleep>,
-				<&sec_aux_pcm_active>, <&sec_aux_pcm_din_active>;
-		pinctrl-2 = <&pri_mi2s_active>, <&pri_mi2s_sd0_active>,
-				<&sec_aux_pcm_sleep>, <&sec_aux_pcm_din_sleep>;
-		pinctrl-3 = <&pri_mi2s_active>, <&pri_mi2s_sd0_active>,
-				<&sec_aux_pcm_active>, <&sec_aux_pcm_din_active>;
+				"ftm-auxpcm-sleep",
+				"ftm-auxpcm-active";
+
+		pinctrl-0 = <&sec_aux_pcm_sleep>, <&sec_aux_pcm_din_sleep>;
+		pinctrl-1 = <&sec_aux_pcm_active>, <&sec_aux_pcm_din_active>;
+//htc audio ++
+		pinctrl-2 = <&ftm_sec_aux_pcm_sleep>;
+		pinctrl-3 = <&ftm_sec_aux_pcm_active>;
+//htc audio --
+
 		asoc-platform = <&pcm0>, <&pcm1>, <&pcm2>, <&voip>, <&voice>,
 				<&loopback>, <&compress>, <&hostless>,
 				<&afe>, <&lsm>, <&routing>, <&cpe>, <&compr>;
@@ -2570,7 +2566,8 @@
 				"msm-compress-dsp", "msm-pcm-hostless", "msm-pcm-afe",
 				"msm-lsm-client", "msm-pcm-routing", "msm-cpe-lsm",
 				"msm-compr-dsp";
-		asoc-cpu = <&dai_pri_auxpcm>, <&dai_sec_auxpcm>, <&dai_hdmi>, <&dai_mi2s>,
+		asoc-cpu = <&dai_pri_auxpcm>, <&dai_sec_auxpcm>, <&dai_hdmi>,
+				<&dai_mi2s0>, <&dai_mi2s2>, <&dai_mi2s3>,
 				<&sb_0_rx>, <&sb_0_tx>, <&sb_1_rx>, <&sb_1_tx>,
 				<&sb_2_rx>, <&sb_2_tx>, <&sb_3_rx>, <&sb_3_tx>,
 				<&sb_4_rx>, <&sb_4_tx>, <&sb_5_tx>, <&bt_sco_rx>,
@@ -2580,6 +2577,7 @@
 				<&incall_music2_rx>;
 		asoc-cpu-names = "msm-dai-q6-auxpcm.1", "msm-dai-q6-auxpcm.2",
 				"msm-dai-q6-hdmi.8", "msm-dai-q6-mi2s.0",
+				"msm-dai-q6-mi2s.2", "msm-dai-q6-mi2s.3",
 				"msm-dai-q6-dev.16384", "msm-dai-q6-dev.16385",
 				"msm-dai-q6-dev.16386", "msm-dai-q6-dev.16387",
 				"msm-dai-q6-dev.16388", "msm-dai-q6-dev.16389",
@@ -2594,7 +2592,84 @@
 				"msm-dai-q6-dev.32770";
 		asoc-codec = <&stub_codec>;
 		asoc-codec-names = "msm-stub-codec.1";
+
+//htc audio ++
+		ftm-btpcm-clock	= <&msm_gpio 79 0>;
+		ftm-btpcm-sync	= <&msm_gpio 80 0>;
+		ftm-btpcm-dout	= <&msm_gpio 81 0>;
+		ftm-btpcm-din	= <&msm_gpio 82 0>;
+		qcom,led_gpio	= <&pm8994_gpios 6 0>;
+		hset-amp-gpio	= <&pm8994_gpios 9 0>;
+		rcv-gpio-sel	= <&pm8994_gpios 8 0>;
+		rcv-gpio-en	= <&pm8994_gpios 14 0>;
+		aud-reserved	= <&pmi8994_gpios 3 0>;
+
+		wcd_pinctrl {
+			compatible = "aud_pinctrl_dev";
+			pinctrl_type = <2>;
+			dev_id = <0>;
+			pinctrl-names = "wcd_clk2-sleep",
+					"wcd_clk2-active";
+
+			pinctrl-0 = <&wcd_clk2_sleep>;
+			pinctrl-1 = <&wcd_clk2_active>;
+		};
+
+		/*auxpcm_pinctrl {
+			compatible = "aud_pinctrl_dev";
+			pinctrl_type = <1>;
+			dev_id = <1>;
+			pinctrl-names = "auxpcm-sleep",
+					"auxpcm-active";
+
+			pinctrl-0 = <&sec_aux_pcm_sleep>, <&sec_aux_pcm_din_sleep>;
+			pinctrl-1 = <&sec_aux_pcm_active>, <&sec_aux_pcm_din_active>;
+		};*/
+
+		pri_mi2s_pinctrl {
+			compatible = "aud_pinctrl_dev";
+			pinctrl_type = <0>;
+			dev_id = <0>;
+			pinctrl-names = "pri_mi2s_sleep",
+					"pri_mi2s_active";
+
+			pinctrl-0 = <&pri_mi2s_sleep>, <&pri_mi2s_sd0_sleep>;
+			pinctrl-1 = <&pri_mi2s_active>, <&pri_mi2s_sd0_active>;
+		};
+
+		quat_mi2s_pinctrl {
+			compatible = "aud_pinctrl_dev";
+			pinctrl_type = <0>;
+			dev_id = <3>;
+			pinctrl-names = "quat_mi2s_sleep",
+					"quat_mi2s_active";
+
+			pinctrl-0 = <&quat_mi2s_sleep>, <&quat_mi2s_sd0_sleep> , <&quat_mi2s_sd1_sleep>;
+			pinctrl-1 = <&quat_mi2s_active>, <&quat_mi2s_sd0_active> , <&quat_mi2s_sd1_active>;
+		};
+//htc audio --
 	};
+
+//htc audio ++
+	i2c@f9966000 {
+		nxp_tfa9887_amp@34 {
+			compatible = "nxp,tfa9895-amp";
+			reg = <0x34>;
+		};
+		nxp_tfa9887l_amp@35 {
+			compatible = "nxp,tfa9895l-amp";
+			reg = <0x35>;
+		};
+		richteck_rt5501_amp@52 {
+			compatible = "richtek,rt5506-amp";
+			reg = <0x52>;
+			richtek,power-gpio = <&pm8994_gpios 4 0x00>;
+			richtek,enable-gpio = <&msm_gpio 43 0x00>;
+			power_supply = "8941_s3";
+		};
+
+	};
+//htc audio --
 
 	qcom,msm-adsp-loader {
 		compatible = "qcom,adsp-loader";
@@ -2828,12 +2903,25 @@
 
 	qcom,msm-dai-mi2s {
 		compatible = "qcom,msm-dai-mi2s";
-		dai_mi2s: qcom,msm-dai-q6-mi2s-prim {
+		dai_mi2s0: qcom,msm-dai-q6-mi2s-prim {
 			compatible = "qcom,msm-dai-q6-mi2s";
 			qcom,msm-dai-q6-mi2s-dev-id = <0>;
 			qcom,msm-mi2s-rx-lines = <2>;
 			qcom,msm-mi2s-tx-lines = <1>;
 		};
+                dai_mi2s2: qcom,msm-dai-q6-mi2s-tert {
+			compatible = "qcom,msm-dai-q6-mi2s";
+			qcom,msm-dai-q6-mi2s-dev-id = <2>;
+			qcom,msm-mi2s-rx-lines = <1>;
+			qcom,msm-mi2s-tx-lines = <2>;
+		};
+                dai_mi2s3: qcom,msm-dai-q6-mi2s-quat {
+			compatible = "qcom,msm-dai-q6-mi2s";
+			qcom,msm-dai-q6-mi2s-dev-id = <3>;
+			qcom,msm-mi2s-rx-lines = <1>;
+			qcom,msm-mi2s-tx-lines = <2>;
+		};
+
 	};
 
 	hostless: qcom,msm-pcm-hostless {
@@ -3150,7 +3238,7 @@
 	qcom,msm-thermal {
 		compatible = "qcom,msm-thermal";
 		qcom,sensor-id = <7>;
-		qcom,poll-ms = <250>;
+		qcom,poll-ms = <100>;
 		qcom,limit-temp = <60>;
 		qcom,temp-hysteresis = <10>;
 		qcom,therm-reset-temp = <115>;
@@ -3158,9 +3246,9 @@
 		qcom,freq-control-mask = <0xff>;
 		qcom,core-limit-temp = <80>;
 		qcom,core-temp-hysteresis = <10>;
-		qcom,core-control-mask = <0xfe>;
+		qcom,core-control-mask = <0xfa>;
 		qcom,hotplug-temp = <105>;
-		qcom,hotplug-temp-hysteresis = <40>;
+		qcom,hotplug-temp-hysteresis = <25>;
 		qcom,cpu-sensors = "tsens_tz_sensor7", "tsens_tz_sensor8",
 				   "tsens_tz_sensor9", "tsens_tz_sensor10",
 				   "tsens_tz_sensor13", "tsens_tz_sensor14",
@@ -3213,35 +3301,49 @@
 			qcom,high-threshold-uamp = <4200000>;
 			qcom,mitigation-freq-khz = <768000>;
 			qcom,vph-high-threshold-uv = <3500000>;
-			qcom,vph-low-threshold-uv = <3300000>;
-			qcom,soc-low-threshold = <10>;
+			qcom,vph-low-threshold-uv = <3200000>;
+			qcom,soc-low-threshold = <20>;
 			qcom,thermal-handle = <&msm_thermal_freq>;
 		};
 	};
 
-	cnss: qcom,cnss@06300000 {
-		compatible = "qcom,cnss";
-		reg = <0x06300000 0x200000>;
-		reg-names = "ramdump";
-		wlan-en-gpio = <&msm_gpio 113 0>;
-		vdd-wlan-supply = <&bt_vreg>;
-		vdd-wlan-io-supply = <&pm8994_s4>;
-		vdd-wlan-xtal-supply = <&pm8994_l30>;
-		qcom,notify-modem-status;
-		pinctrl-names = "default";
-		pinctrl-0 = <&cnss_default>;
-		qcom,wlan-rc-num = <1>;
-		qcom,wlan-uart-access;
+    cnss: qcom,cnss@06300000 {
+            compatible = "qcom,cnss";
+            reg = <0x06300000 0x200000>;
+            reg-names = "ramdump";
+            wlan-en-gpio = <&msm_gpio 113 0>;
+            vdd-wlan-supply = <&bt_vreg>;
+            vdd-wlan-io-supply = <&pm8994_s4>;
+            vdd-wlan-xtal-supply = <&pm8994_l30>;
+            qcom,notify-modem-status;
+            pinctrl-names = "default";
+            pinctrl-0 = <&cnss_default>;
+            qcom,wlan-rc-num = <1>;
+            qcom,wlan-uart-access;
 
-		qcom,msm-bus,name = "msm-cnss";
-		qcom,msm-bus,num-cases = <4>;
-		qcom,msm-bus,num-paths = <1>;
-		qcom,msm-bus,vectors-KBps =
-					<100 512 0 0>,           /* No vote */
-					<100 512 6250 200000>,   /* 50 Mbps */
-					<100 512 25000 200000>,  /* 200 Mbps */
-					<100 512 100000 200000>; /* 800 Mbps */
+            qcom,msm-bus,name = "msm-cnss";
+            qcom,msm-bus,num-cases = <4>;
+            qcom,msm-bus,num-paths = <1>;
+            qcom,msm-bus,vectors-KBps =
+                                      <45 512 0 0>,           /* No vote */
+                                      <45 512 6250 200000>,   /* 50 Mbps */
+                                      <45 512 25000 200000>,  /* 200 Mbps */
+                                      <45 512 100000 200000>; /* 800 Mbps */
+    };
+
+	/* HTC_WIFI_START */
+	htc,wlan_bcm_gpio {
+		compatible = "wlan_bcm_gpio";
+		wlan-en-gpio = <&msm_gpio 113 0>;
+		wlan-irq-gpio = <&msm_gpio 111 0>;
+		wlan-boot-gpio = <&msm_gpio 134 0>;
+		pinctrl-names = "default", "seci_in_default", "seci_in_low";
+		pinctrl-0 = <&cnss_default &wlan_wake_host &wlan_seci_low>;
+		pinctrl-1 = <&wlan_seci_default>;
+		pinctrl-2 = <&wlan_seci_low>;
+		htc,wlan-rc-num = <1>;
 	};
+	/* HTC_WIFI_END */
 
 	audio_heap {
 		compatible = "qcom,msm-shared-memory";
@@ -3438,6 +3540,13 @@
 		qcom,clk_div = <27>;
 	};
 
+	htc_pnpmgr{
+		compatible = "htc,perf_table";
+		htc,cluster-map = <0xF0>, <0x0F>;
+		htc,perf_table = <921600>, <921600>, <921600>, <921600>, <921600>,
+				<940800>, <940800>, <940800>, <940800>, <940800>;
+	};
+
 	cci@f9100000 {
 		compatible = "arm,cci-400";
 		#address-cells = <1>;
@@ -3455,7 +3564,6 @@
 				     <0 344 0>,
 				     <0 344 0>;
 		};
-
 	};
 };
 
@@ -3567,6 +3675,7 @@
 #include "msm-pm8994.dtsi"
 #include "msm-pmi8994.dtsi"
 #include "msm8994-regulator.dtsi"
+#include "msm-pm8994-pmi8994-vreg-dump.dtsi"
 #include "msm8994-ion.dtsi"
 #include "msm8994-iommu.dtsi"
 #include "msm8994-iommu-domains.dtsi"
