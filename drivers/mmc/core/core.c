@@ -32,16 +32,11 @@
 #include <linux/jiffies.h>
 #include <linux/statfs.h>
 #include <linux/debugfs.h>
-#include <linux/f2fs_fs.h>
-
-#include "../../../fs/f2fs/f2fs.h"
-#include "../../../fs/f2fs/segment.h"
 
 
 #include <trace/events/mmc.h>
 #define CREATE_TRACE_POINTS
 #include <trace/events/mmcio.h>
-#include <trace/events/f2fs.h>
 
 #include <linux/mmc/card.h>
 #include <linux/mmc/host.h>
