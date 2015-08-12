@@ -207,8 +207,6 @@ static int lmh_reset(struct lmh_sensor_ops *ops)
 	}
 
 	if (!lmh_data->intr_status_val) {
-		/* Scan through the sensor list and abort the interrupt
-		 * enable if any of the sensor is still throttling */
 		list_for_each_entry(lmh_iter_sensor, &lmh_sensor_list,
 			list_ptr) {
 			if (lmh_iter_sensor->last_read_value) {
@@ -229,8 +227,6 @@ static int lmh_reset(struct lmh_sensor_ops *ops)
 reset_exit:
 	up_write(&lmh_sensor_access);
 	if (!lmh_data->intr_status_val) {
-		/* cancel the poll work after releasing the lock to avoid
-		** deadlock situation */
 		pr_debug("Zero throttling. Re-enabling interrupt\n");
 		cancel_delayed_work_sync(&lmh_data->poll_work);
 		trace_lmh_event_call("Lmh Interrupt Clear");

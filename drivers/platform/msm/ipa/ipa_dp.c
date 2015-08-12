@@ -25,7 +25,6 @@
 #define POLLING_INACTIVITY_TX 40
 #define POLLING_MIN_SLEEP_TX 400
 #define POLLING_MAX_SLEEP_TX 500
-/* 8K less 1 nominal MTU (1500 bytes) rounded to units of KB */
 #define IPA_GENERIC_AGGR_BYTE_LIMIT 6
 #define IPA_GENERIC_AGGR_TIME_LIMIT 1
 #define IPA_GENERIC_AGGR_PKT_LIMIT 0
@@ -137,19 +136,6 @@ static void ipa_wq_write_done_status(int src_pipe)
 	ipa_wq_write_done_common(sys, cnt);
 }
 
-/**
- * ipa_write_done() - this function will be (eventually) called when a Tx
- * operation is complete
- * * @work:	work_struct used by the work queue
- *
- * Will be called in deferred context.
- * - invoke the callback supplied by the client who sent this command
- * - iterate over all packets and validate that
- *   the order for sent packet is the same as expected
- * - delete all the tx packet descriptors from the system
- *   pipe context (not needed anymore)
- * - return the tx buffer back to dma_pool
- */
 static void ipa_wq_write_done(struct work_struct *work)
 {
 	struct ipa_tx_pkt_wrapper *tx_pkt;
@@ -190,9 +176,6 @@ static int ipa_handle_tx_core(struct ipa_sys_context *sys, bool process_all,
 	return cnt;
 }
 
-/**
- * ipa_tx_switch_to_intr_mode() - Operate the Tx data path in interrupt mode
- */
 static void ipa_tx_switch_to_intr_mode(struct ipa_sys_context *sys)
 {
 	int ret;
@@ -258,19 +241,6 @@ static void ipa_wq_handle_tx(struct work_struct *work)
 	ipa_handle_tx(sys);
 }
 
-/**
- * ipa_send_one() - Send a single descriptor
- * @sys:	system pipe context
- * @desc:	descriptor to send
- * @in_atomic:  whether caller is in atomic context
- *
- * - Allocate tx_packet wrapper
- * - transfer data to the IPA
- * - after the transfer was done the SPS will
- *   notify the sending user via ipa_sps_irq_comp_tx()
- *
- * Return codes: 0: success, -EFAULT: failure
- */
 int ipa_send_one(struct ipa_sys_context *sys, struct ipa_desc *desc,
 		bool in_atomic)
 {
@@ -314,10 +284,6 @@ int ipa_send_one(struct ipa_sys_context *sys, struct ipa_desc *desc,
 	tx_pkt->user1 = desc->user1;
 	tx_pkt->user2 = desc->user2;
 
-	/*
-	 * Special treatment for immediate commands, where the structure of the
-	 * descriptor is different
-	 */
 	if (desc->type == IPA_IMM_CMD_DESC) {
 		sps_flags |= SPS_IOVEC_FLAG_IMME;
 		len = desc->opcode;
@@ -353,26 +319,6 @@ fail_mem_alloc:
 	return -EFAULT;
 }
 
-/**
- * ipa_send() - Send multiple descriptors in one HW transaction
- * @sys: system pipe context
- * @num_desc: number of packets
- * @desc: packets to send (may be immediate command or data)
- * @in_atomic:  whether caller is in atomic context
- *
- * This function is used for system-to-bam connection.
- * - SPS driver expect struct sps_transfer which will contain all the data
- *   for a transaction
- * - ipa_tx_pkt_wrapper will be used for each ipa
- *   descriptor (allocated from wrappers cache)
- * - The wrapper struct will be configured for each ipa-desc payload and will
- *   contain information which will be later used by the user callbacks
- * - each transfer will be made by calling to sps_transfer()
- * - Each packet (command or data) that will be sent will also be saved in
- *   ipa_sys_context for later check that all data was sent
- *
- * Return codes: 0: success, -EFAULT: failure
- */
 int ipa_send(struct ipa_sys_context *sys, u32 num_desc, struct ipa_desc *desc,
 		bool in_atomic)
 {
@@ -426,10 +372,6 @@ int ipa_send(struct ipa_sys_context *sys, u32 num_desc, struct ipa_desc *desc,
 			IPAERR("failed to alloc tx wrapper\n");
 			goto failure;
 		}
-		/*
-		 * first desc of set is "special" as it holds the count and
-		 * other info
-		 */
 		if (i == 0) {
 			transfer.user = tx_pkt;
 			tx_pkt->mult.phys_base = dma_addr;
@@ -470,17 +412,9 @@ int ipa_send(struct ipa_sys_context *sys, u32 num_desc, struct ipa_desc *desc,
 		tx_pkt->user1 = desc[i].user1;
 		tx_pkt->user2 = desc[i].user2;
 
-		/*
-		 * Point the iovec to the buffer and
-		 * add this packet to system pipe context.
-		 */
 		iovec->addr = tx_pkt->mem.phys_base;
 		list_add_tail(&tx_pkt->link, &sys->head_desc_list);
 
-		/*
-		 * Special treatment for immediate commands, where the structure
-		 * of the descriptor is different
-		 */
 		if (desc[i].type == IPA_IMM_CMD_DESC) {
 			iovec->size = desc[i].opcode;
 			iovec->flags |= SPS_IOVEC_FLAG_IMME;
@@ -535,15 +469,6 @@ failure:
 	return -EFAULT;
 }
 
-/**
- * ipa_sps_irq_cmd_ack - callback function which will be called by SPS driver after an
- * immediate command is complete.
- * @user1:	pointer to the descriptor of the transfer
- * @user2:
- *
- * Complete the immediate commands completion object, this will release the
- * thread which waits on this completion object (ipa_send_cmd())
- */
 static void ipa_sps_irq_cmd_ack(void *user1, int user2)
 {
 	struct ipa_desc *desc = (struct ipa_desc *)user1;
@@ -557,16 +482,6 @@ static void ipa_sps_irq_cmd_ack(void *user1, int user2)
 	complete(&desc->xfer_done);
 }
 
-/**
- * ipa_send_cmd - send immediate commands
- * @num_desc:	number of descriptors within the desc struct
- * @descr:	descriptor structure
- *
- * Function will block till command gets ACK from IPA HW, caller needs
- * to free any resources it allocated after function returns
- * The callback in ipa_desc should not be set by the caller
- * for this function.
- */
 int ipa_send_cmd(u16 num_desc, struct ipa_desc *descr)
 {
 	struct ipa_desc *desc;
@@ -617,14 +532,6 @@ bail:
 	return result;
 }
 
-/**
- * ipa_sps_irq_tx_notify() - Callback function which will be called by
- * the SPS driver to start a Tx poll operation.
- * Called in an interrupt context.
- * @notify:	SPS driver supplied notification struct
- *
- * This function defer the work for this event to the tx workqueue.
- */
 static void ipa_sps_irq_tx_notify(struct sps_event_notify *notify)
 {
 	struct ipa_sys_context *sys = (struct ipa_sys_context *)notify->user;
@@ -658,15 +565,6 @@ static void ipa_sps_irq_tx_notify(struct sps_event_notify *notify)
 	}
 }
 
-/**
- * ipa_sps_irq_tx_no_aggr_notify() - Callback function which will be called by
- * the SPS driver after a Tx operation is complete.
- * Called in an interrupt context.
- * @notify:	SPS driver supplied notification struct
- *
- * This function defer the work for this event to the tx workqueue.
- * This event will be later handled by ipa_write_done.
- */
 static void ipa_sps_irq_tx_no_aggr_notify(struct sps_event_notify *notify)
 {
 	struct ipa_tx_pkt_wrapper *tx_pkt;
@@ -683,20 +581,6 @@ static void ipa_sps_irq_tx_no_aggr_notify(struct sps_event_notify *notify)
 	}
 }
 
-/**
- * ipa_handle_rx_core() - The core functionality of packet reception. This
- * function is read from multiple code paths.
- *
- * All the packets on the Rx data path are received on the IPA_A5_LAN_WAN_IN
- * endpoint. The function runs as long as there are packets in the pipe.
- * For each packet:
- *  - Disconnect the packet from the system pipe linked list
- *  - Unmap the packets skb, make it non DMAable
- *  - Free the packet from the cache
- *  - Prepare a proper skb
- *  - Call the endpoints notify function, passing the skb in the parameters
- *  - Replenish the rx cache
- */
 static int ipa_handle_rx_core(struct ipa_sys_context *sys, bool process_all,
 		bool in_poll_state)
 {
@@ -730,9 +614,6 @@ static int ipa_handle_rx_core(struct ipa_sys_context *sys, bool process_all,
 	return cnt;
 }
 
-/**
- * ipa_rx_switch_to_intr_mode() - Operate the Rx data path in interrupt mode
- */
 static void ipa_rx_switch_to_intr_mode(struct ipa_sys_context *sys)
 {
 	int ret;
@@ -769,19 +650,6 @@ fail:
 			msecs_to_jiffies(1));
 }
 
-/**
- * ipa_rx_notify() - Callback function which is called by the SPS driver when a
- * a packet is received
- * @notify:	SPS driver supplied notification information
- *
- * Called in an interrupt context, therefore the majority of the work is
- * deffered using a work queue.
- *
- * After receiving a packet, the driver goes to polling mode and keeps pulling
- * packets until the rx buffer is empty, then it goes back to interrupt mode.
- * This comes to prevent the CPU from handling too many interrupts when the
- * throughput is high.
- */
 static void ipa_sps_irq_rx_notify(struct sps_event_notify *notify)
 {
 	struct ipa_sys_context *sys = (struct ipa_sys_context *)notify->user;
@@ -824,14 +692,6 @@ static void switch_to_intr_tx_work_func(struct work_struct *work)
 	ipa_handle_tx(sys);
 }
 
-/**
- * ipa_handle_rx() - handle packet reception. This function is executed in the
- * context of a work queue.
- * @work: work struct needed by the work queue
- *
- * ipa_handle_rx_core() is run in polling mode. After all packets has been
- * received, the driver switches back to interrupt mode.
- */
 static void ipa_handle_rx(struct ipa_sys_context *sys)
 {
 	int inactive_cycles = 0;
@@ -862,22 +722,6 @@ static void switch_to_intr_rx_work_func(struct work_struct *work)
 	ipa_handle_rx(sys);
 }
 
-/**
- * ipa_setup_sys_pipe() - Setup an IPA end-point in system-BAM mode and perform
- * IPA EP configuration
- * @sys_in:	[in] input needed to setup BAM pipe and configure EP
- * @clnt_hdl:	[out] client handle
- *
- *  - configure the end-point registers with the supplied
- *    parameters from the user.
- *  - call SPS APIs to create a system-to-bam connection with IPA.
- *  - allocate descriptor FIFO
- *  - register callback function(ipa_sps_irq_rx_notify or
- *    ipa_sps_irq_tx_notify - depends on client type) in case the driver is
- *    not configured to pulling mode
- *
- * Returns:	0 on success, negative on failure
- */
 int ipa_setup_sys_pipe(struct ipa_sys_connect_params *sys_in, u32 *clnt_hdl)
 {
 	struct ipa_ep_context *ep;
@@ -1137,12 +981,6 @@ fail_gen:
 }
 EXPORT_SYMBOL(ipa_setup_sys_pipe);
 
-/**
- * ipa_teardown_sys_pipe() - Teardown the system-BAM pipe and cleanup IPA EP
- * @clnt_hdl:	[in] the handle obtained from ipa_setup_sys_pipe
- *
- * Returns:	0 on success, negative on failure
- */
 int ipa_teardown_sys_pipe(u32 clnt_hdl)
 {
 	struct ipa_ep_context *ep;
@@ -1202,16 +1040,6 @@ int ipa_teardown_sys_pipe(u32 clnt_hdl)
 }
 EXPORT_SYMBOL(ipa_teardown_sys_pipe);
 
-/**
- * ipa_tx_comp_usr_notify_release() - Callback function which will call the
- * user supplied callback function to release the skb, or release it on
- * its own if no callback function was supplied.
- * @user1
- * @user2
- *
- * This notified callback is for the destination client.
- * This function is supplied in ipa_connect.
- */
 static void ipa_tx_comp_usr_notify_release(void *user1, int user2)
 {
 	struct sk_buff *skb = (struct sk_buff *)user1;
@@ -1233,33 +1061,6 @@ static void ipa_tx_cmd_comp(void *user1, int user2)
 	kfree(user1);
 }
 
-/**
- * ipa_tx_dp() - Data-path tx handler
- * @dst:	[in] which IPA destination to route tx packets to
- * @skb:	[in] the packet to send
- * @metadata:	[in] TX packet meta-data
- *
- * Data-path tx handler, this is used for both SW data-path which by-passes most
- * IPA HW blocks AND the regular HW data-path for WLAN AMPDU traffic only. If
- * dst is a "valid" CONS type, then SW data-path is used. If dst is the
- * WLAN_AMPDU PROD type, then HW data-path for WLAN AMPDU is used. Anything else
- * is an error. For errors, client needs to free the skb as needed. For success,
- * IPA driver will later invoke client callback if one was supplied. That
- * callback should free the skb. If no callback supplied, IPA driver will free
- * the skb internally
- *
- * The function will use two descriptors for this send command
- * (for A5_WLAN_AMPDU_PROD only one desciprtor will be sent),
- * the first descriptor will be used to inform the IPA hardware that
- * apps need to push data into the IPA (IP_PACKET_INIT immediate command).
- * Once this send was done from SPS point-of-view the IPA driver will
- * get notified by the supplied callback - ipa_sps_irq_tx_comp()
- *
- * ipa_sps_irq_tx_comp will call to the user supplied
- * callback (from ipa_connect)
- *
- * Returns:	0 on success, negative on failure
- */
 int ipa_tx_dp(enum ipa_client_type dst, struct sk_buff *skb,
 		struct ipa_tx_meta *meta)
 {
@@ -1276,15 +1077,6 @@ int ipa_tx_dp(enum ipa_client_type dst, struct sk_buff *skb,
 		return -EINVAL;
 	}
 
-	/*
-	 * USB_CONS: PKT_INIT ep_idx = dst pipe
-	 * Q6_CONS: PKT_INIT ep_idx = sender pipe
-	 * A5_LAN_WAN_PROD: HW path ep_idx = sender pipe
-	 *
-	 * LAN TX: all PKT_INIT
-	 * WAN TX: PKT_INIT (cmd) + HW (data)
-	 *
-	 */
 	if (IPA_CLIENT_IS_CONS(dst)) {
 		src_ep_idx = ipa_get_ep_mapping(IPA_CLIENT_APPS_LAN_WAN_PROD);
 		dst_ep_idx = ipa_get_ep_mapping(dst);
@@ -1594,7 +1386,6 @@ fail_kmem_cache_alloc:
 	return;
 }
 
-
 /**
  * ipa_replenish_rx_cache() - Replenish the Rx packets cache.
  *
@@ -1734,10 +1525,6 @@ static void replenish_rx_work_func(struct work_struct *work)
 	ipa_dec_client_disable_clks();
 }
 
-/**
- * ipa_cleanup_rx() - release RX queue resources
- *
- */
 static void ipa_cleanup_rx(struct ipa_sys_context *sys)
 {
 	struct ipa_rx_pkt_wrapper *rx_pkt;
@@ -1781,8 +1568,11 @@ static int ipa_lan_rx_pyld_hdlr(struct sk_buff *skb,
 	unsigned char *buf;
 	bool drop_packet;
 	int src_pipe;
+       unsigned int used = *(unsigned int *)skb->cb;
+       unsigned int used_align = ALIGN(used, 32);
+       unsigned long unused = IPA_GENERIC_RX_BUFF_BASE_SZ - used;
 
-	IPA_DUMP_BUFF(skb->data, 0, skb->len);
+       IPA_DUMP_BUFF(skb->data, 0, skb->len);
 
 	if (skb->len == 0) {
 		IPAERR("ZLT\n");
@@ -1799,8 +1589,6 @@ static int ipa_lan_rx_pyld_hdlr(struct sk_buff *skb,
 		goto begin;
 	}
 
-	/* this pipe has TX comp (status only) + mux-ed LAN RX data
-	 * (status+data) */
 	if (sys->len_rem) {
 		IPADBG("rem %d skb %d pad %d\n", sys->len_rem, skb->len,
 				sys->len_pad);
@@ -1813,6 +1601,8 @@ static int ipa_lan_rx_pyld_hdlr(struct sk_buff *skb,
 						skb->data, sys->len_rem);
 					skb_trim(skb2,
 						skb2->len - sys->len_pad);
+					skb2->truesize = skb2->len +
+						sizeof(struct sk_buff);
 					sys->ep->client_notify(sys->ep->priv,
 						IPA_RECEIVE,
 						(unsigned long)(skb2));
@@ -1910,13 +1700,9 @@ begin:
 			continue;
 		}
 		if (status->endp_dest_idx == (sys->ep - ipa_ctx->ep)) {
-			/* RX data */
+			
 			src_pipe = status->endp_src_idx;
 
-			/*
-			 * A packet which is received back to the AP after
-			 * there was no route match.
-			 */
 			if (!status->exception && !status->route_match)
 				drop_packet = true;
 
@@ -1962,6 +1748,11 @@ begin:
 					if (drop_packet)
 						dev_kfree_skb_any(skb2);
 					else {
+						skb2->truesize = skb2->len +
+						sizeof(struct sk_buff) +
+						(ALIGN(len +
+						IPA_PKT_STATUS_SIZE, 32) *
+						unused / used_align);
 						sys->ep->client_notify(
 							sys->ep->priv,
 							IPA_RECEIVE,
@@ -2075,10 +1866,6 @@ static int ipa_wan_rx_pyld_hdlr(struct sk_buff *skb,
 		IPAERR("ZLT\n");
 		goto bail;
 	}
-	/*
-	 * payload splits across 2 buff or more,
-	 * take the start of the payload from prev_skb
-	 */
 	if (sys->len_rem)
 		wan_rx_handle_splt_pyld(skb, sys);
 
@@ -2123,22 +1910,18 @@ static int ipa_wan_rx_pyld_hdlr(struct sk_buff *skb,
 			WARN_ON(1);
 			goto bail;
 		}
-		/* RX data */
+		
 		if (skb->len == IPA_PKT_STATUS_SIZE) {
 			IPAERR("Ins header in next buffer\n");
 			WARN_ON(1);
 			goto bail;
 		}
 		qmap_hdr = *(u32 *)(status+1);
-		/*
-		 * Take the pkt_len_with_pad from the last 2 bytes of the QMAP
-		 * header
-		 */
 
-		/*QMAP is BE: convert the pkt_len field from BE to LE*/
+		
 		pkt_len_with_pad = ntohs((qmap_hdr>>16) & 0xffff);
 		IPADBG("pkt_len with pad %d\n", pkt_len_with_pad);
-		/*get the CHECKSUM_PROCESS bit*/
+		
 		checksum_trailer_exists = status->status_mask &
 				IPA_HW_PKT_STATUS_MASK_CKSUM_PROCESS;
 		IPADBG("checksum_trailer_exists %d\n",
@@ -2153,10 +1936,6 @@ static int ipa_wan_rx_pyld_hdlr(struct sk_buff *skb,
 
 		skb2 = skb_clone(skb, GFP_KERNEL);
 		if (likely(skb2)) {
-			/*
-			 * the len of actual data is smaller than expected
-			 * payload split across 2 buff
-			 */
 			if (skb->len < frame_len) {
 				IPADBG("SPL skb len %d len %d\n",
 						skb->len, frame_len);
@@ -2215,10 +1994,6 @@ static int ipa_rx_pyld_hdlr(struct sk_buff *rx_skb, struct ipa_sys_context *sys)
 	IPA_STATS_INC_CNT(ipa_ctx->stats.rx_pkts);
 	IPA_STATS_EXCP_CNT(mux_hdr->flags, ipa_ctx->stats.rx_excp_pkts);
 
-	/*
-	 * Any packets arriving over AMPDU_TX should be dispatched
-	 * to the regular WLAN RX data-path.
-	 */
 	if (unlikely(src_pipe == WLAN_AMPDU_TX_EP))
 		src_pipe = WLAN_PROD_TX_EP;
 
@@ -2233,11 +2008,6 @@ static int ipa_rx_pyld_hdlr(struct sk_buff *rx_skb, struct ipa_sys_context *sys)
 
 	pull_len = sizeof(struct ipa_a5_mux_hdr);
 
-	/*
-	 * IP packet starts on word boundary
-	 * remove the MUX header and any padding and pass the frame to
-	 * the client which registered a rx callback on the "src pipe"
-	 */
 	padding = ep->cfg.hdr.hdr_len & 0x3;
 	if (padding)
 		pull_len += 4 - padding;
@@ -2383,14 +2153,6 @@ static void ipa_wq_rx_avail(struct work_struct *work)
 	ipa_wq_rx_common(sys, 0);
 }
 
-/**
- * ipa_sps_irq_rx_no_aggr_notify() - Callback function which will be called by
- * the SPS driver after a Rx operation is complete.
- * Called in an interrupt context.
- * @notify:	SPS driver supplied notification struct
- *
- * This function defer the work for this event to a workqueue.
- */
 void ipa_sps_irq_rx_no_aggr_notify(struct sps_event_notify *notify)
 {
 	struct ipa_rx_pkt_wrapper *rx_pkt;
@@ -2612,18 +2374,6 @@ static int ipa_assign_policy(struct ipa_sys_connect_params *in,
 	return 0;
 }
 
-/**
- * ipa_tx_client_rx_notify_release() - Callback function
- * which will call the user supplied callback function to
- * release the skb, or release it on its own if no callback
- * function was supplied
- *
- * @user1: [in] - Data Descriptor
- * @user2: [in] - endpoint idx
- *
- * This notified callback is for the destination client
- * This function is supplied in ipa_tx_dp_mul
- */
 static void ipa_tx_client_rx_notify_release(void *user1, int user2)
 {
 	struct ipa_tx_data_desc *dd = (struct ipa_tx_data_desc *)user1;
@@ -2646,17 +2396,6 @@ static void ipa_tx_client_rx_notify_release(void *user1, int user2)
 		ipa_ctx->ep[ep_idx].wstats.rx_hd_reply++;
 	}
 }
-/**
- * ipa_tx_client_rx_pkt_status() - Callback function
- * which will call the user supplied callback function to
- * increase the available fifo descriptor
- *
- * @user1: [in] - Data Descriptor
- * @user2: [in] - endpoint idx
- *
- * This notified callback is for the destination client
- * This function is supplied in ipa_tx_dp_mul
- */
 static void ipa_tx_client_rx_pkt_status(void *user1, int user2)
 {
 	int ep_idx = user2;
@@ -2664,7 +2403,6 @@ static void ipa_tx_client_rx_pkt_status(void *user1, int user2)
 	atomic_inc(&ipa_ctx->ep[ep_idx].avail_fifo_desc);
 	ipa_ctx->ep[ep_idx].wstats.rx_pkts_status_rcvd++;
 }
-
 
 /**
  * ipa_tx_dp_mul() - Data-path tx handler for multiple packets
@@ -2796,7 +2534,6 @@ void ipa_free_skb(struct ipa_rx_data *data)
 }
 EXPORT_SYMBOL(ipa_free_skb);
 
-/* Functions added to support kernel tests */
 
 int ipa_sys_setup(struct ipa_sys_connect_params *sys_in,
 			unsigned long *ipa_bam_hdl,

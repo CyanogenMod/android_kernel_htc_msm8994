@@ -1,4 +1,4 @@
-/* Copyright (c) 2014-2015, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2014, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -31,23 +31,18 @@
 
 #define MSM_FD_WORD_SIZE_BYTES 4
 
-/* Face detection thresholds definitions */
 #define MSM_FD_DEF_THRESHOLD 5
 #define MSM_FD_MAX_THRESHOLD_VALUE 9
 
-/* Face angle lookup table */
 #define MSM_FD_DEF_ANGLE_IDX 2
 static int msm_fd_angle[] = {45, 135, 359};
 
-/* Face direction lookup table */
 #define MSM_FD_DEF_DIR_IDX 0
 static int msm_fd_dir[] = {0, 90, 270, 180};
 
-/* Minimum face size lookup table */
 #define MSM_FD_DEF_MIN_SIZE_IDX 0
 static int msm_fd_min_size[] = {20, 25, 32, 40};
 
-/* Face detection size lookup table */
 static struct msm_fd_size fd_size[] = {
 	{
 		.width    = 320,
@@ -75,19 +70,11 @@ static struct msm_fd_size fd_size[] = {
 	},
 };
 
-/*
- * msm_fd_ctx_from_fh - Get fd context from v4l2 fh.
- * @fh: Pointer to v4l2 fh.
- */
 static inline struct fd_ctx *msm_fd_ctx_from_fh(struct v4l2_fh *fh)
 {
 	return container_of(fh, struct fd_ctx, fh);
 }
 
-/*
- * msm_fd_get_format_index - Get format index from v4l2 format.
- * @f: Pointer to v4l2 format struct.
- */
 static int msm_fd_get_format_index(struct v4l2_format *f)
 {
 	int index;
@@ -100,12 +87,6 @@ static int msm_fd_get_format_index(struct v4l2_format *f)
 	return index - 1;
 }
 
-/*
- * msm_fd_get_idx_from_value - Get array index from value.
- * @value: Value for which index is needed.
- * @array: Array in which index is searched for.
- * @array_size: Array size.
- */
 static int msm_fd_get_idx_from_value(int value, int *array, int array_size)
 {
 	int index;
@@ -123,11 +104,6 @@ static int msm_fd_get_idx_from_value(int value, int *array, int array_size)
 	return index;
 }
 
-/*
- * msm_fd_fill_format_from_index - Fill v4l2 format struct from size index.
- * @f: Pointer of v4l2 struct which will be filled.
- * @index: Size index (Format will be filled based on this index).
- */
 static int msm_fd_fill_format_from_index(struct v4l2_format *f, int index)
 {
 	f->fmt.pix.width = fd_size[index].width;
@@ -143,11 +119,6 @@ static int msm_fd_fill_format_from_index(struct v4l2_format *f, int index)
 	return 0;
 }
 
-/*
- * msm_fd_fill_format_from_ctx - Fill v4l2 format struct from fd context.
- * @f: Pointer of v4l2 struct which will be filled.
- * @c: Pointer to fd context.
- */
 static int msm_fd_fill_format_from_ctx(struct v4l2_format *f, struct fd_ctx *c)
 {
 	if (NULL == c->format.size)
@@ -163,15 +134,6 @@ static int msm_fd_fill_format_from_ctx(struct v4l2_format *f, struct fd_ctx *c)
 	return 0;
 }
 
-/*
- * msm_fd_queue_setup - vb2_ops queue_setup callback.
- * @q: Pointer to vb2 queue struct.
- * @fmt: Pointer to v4l2 format struct (NULL is valid argument).
- * @num_buffers: Pointer of number of buffers requested.
- * @num_planes: Pointer to number of planes requested.
- * @sizes: Array containing sizes of planes.
- * @alloc_ctxs: Array of allocated contexts for each plane.
- */
 static int msm_fd_queue_setup(struct vb2_queue *q,
 	const struct v4l2_format *fmt,
 	unsigned int *num_buffers, unsigned int *num_planes,
@@ -191,10 +153,6 @@ static int msm_fd_queue_setup(struct vb2_queue *q,
 	return 0;
 }
 
-/*
- * msm_fd_buf_init - vb2_ops buf_init callback.
- * @vb: Pointer to vb2 buffer struct.
- */
 int msm_fd_buf_init(struct vb2_buffer *vb)
 {
 	struct msm_fd_buffer *fd_buffer =
@@ -206,10 +164,6 @@ int msm_fd_buf_init(struct vb2_buffer *vb)
 	return 0;
 }
 
-/*
- * msm_fd_buf_queue - vb2_ops buf_queue callback.
- * @vb: Pointer to vb2 buffer struct.
- */
 static void msm_fd_buf_queue(struct vb2_buffer *vb)
 {
 	struct fd_ctx *ctx = vb2_get_drv_priv(vb->vb2_queue);
@@ -227,11 +181,6 @@ static void msm_fd_buf_queue(struct vb2_buffer *vb)
 	return;
 }
 
-/*
- * msm_fd_start_streaming - vb2_ops start_streaming callback.
- * @q: Pointer to vb2 queue struct.
- * @count: Number of buffer queued before stream on call.
- */
 static int msm_fd_start_streaming(struct vb2_queue *q, unsigned int count)
 {
 	struct fd_ctx *ctx = vb2_get_drv_priv(q);
@@ -256,10 +205,6 @@ out:
 	return ret;
 }
 
-/*
- * msm_fd_stop_streaming - vb2_ops stop_streaming callback.
- * @q: Pointer to vb2 queue struct.
- */
 static int msm_fd_stop_streaming(struct vb2_queue *q)
 {
 	struct fd_ctx *ctx = vb2_get_drv_priv(q);
@@ -270,7 +215,6 @@ static int msm_fd_stop_streaming(struct vb2_queue *q)
 	return 0;
 }
 
-/* Videobuf2 queue callbacks. */
 static struct vb2_ops msm_fd_vb2_q_ops = {
 	.queue_setup     = msm_fd_queue_setup,
 	.buf_init        = msm_fd_buf_init,
@@ -279,13 +223,6 @@ static struct vb2_ops msm_fd_vb2_q_ops = {
 	.stop_streaming  = msm_fd_stop_streaming,
 };
 
-/*
- * msm_fd_get_userptr - Map and get buffer handler for user pointer buffer.
- * @alloc_ctx: Contexts allocated in buf_setup.
- * @vaddr: Virtual addr passed from userpsace (in our case ion fd)
- * @size: Size of the buffer
- * @write: True if buffer will be used for writing the data.
- */
 static void *msm_fd_get_userptr(void *alloc_ctx,
 	unsigned long vaddr, unsigned long size, int write)
 {
@@ -307,10 +244,6 @@ error:
 	return ERR_PTR(-ENOMEM);
 }
 
-/*
- * msm_fd_put_userptr - Unmap and free buffer handler.
- * @buf_priv: Buffer handler allocated get_userptr callback.
- */
 static void msm_fd_put_userptr(void *buf_priv)
 {
 	if (IS_ERR_OR_NULL(buf_priv))
@@ -321,16 +254,11 @@ static void msm_fd_put_userptr(void *buf_priv)
 	kzfree(buf_priv);
 }
 
-/* Videobuf2 memory callbacks. */
 static struct vb2_mem_ops msm_fd_vb2_mem_ops = {
 	.get_userptr = msm_fd_get_userptr,
 	.put_userptr = msm_fd_put_userptr,
 };
 
-/*
- * msm_fd_open - Fd device open method.
- * @file: Pointer to file struct.
- */
 static int msm_fd_open(struct file *file)
 {
 	struct msm_fd_device *device = video_drvdata(file);
@@ -344,11 +272,11 @@ static int msm_fd_open(struct file *file)
 
 	ctx->fd_device = device;
 
-	/* Initialize work buffer handler */
+	
 	ctx->work_buf.pool = NULL;
 	ctx->work_buf.fd = -1;
 
-	/* Set ctx defaults */
+	
 	ctx->settings.speed = ctx->fd_device->clk_rates_num;
 	ctx->settings.angle_index = MSM_FD_DEF_ANGLE_IDX;
 	ctx->settings.direction_index = MSM_FD_DEF_DIR_IDX;
@@ -403,10 +331,6 @@ error_vb2_queue_init:
 	return ret;
 }
 
-/*
- * msm_fd_release - Fd device release method.
- * @file: Pointer to file struct.
- */
 static int msm_fd_release(struct file *file)
 {
 	struct fd_ctx *ctx = msm_fd_ctx_from_fh(file->private_data);
@@ -428,11 +352,6 @@ static int msm_fd_release(struct file *file)
 	return 0;
 }
 
-/*
- * msm_fd_poll - Fd device pool method.
- * @file: Pointer to file struct.
- * @wait: Pointer to pool table struct.
- */
 static unsigned int msm_fd_poll(struct file *file,
 	struct poll_table_struct *wait)
 {
@@ -450,14 +369,6 @@ static unsigned int msm_fd_poll(struct file *file,
 	return ret;
 }
 
-/*
- * msm_fd_private_ioctl - V4l2 private ioctl handler.
- * @file: Pointer to file struct.
- * @fd: V4l2 device file handle.
- * @valid_prio: Priority ioctl valid flag.
- * @cmd: Ioctl command.
- * @arg: Ioctl argument.
- */
 static long msm_fd_private_ioctl(struct file *file, void *fh,
 	bool valid_prio, unsigned int cmd, void *arg)
 {
@@ -465,7 +376,7 @@ static long msm_fd_private_ioctl(struct file *file, void *fh,
 	struct fd_ctx *ctx = msm_fd_ctx_from_fh(fh);
 	struct msm_fd_stats *stats;
 	int stats_idx;
-	int ret;
+	int ret = -EFAULT;
 	int i;
 
 	switch (cmd) {
@@ -511,12 +422,6 @@ static long msm_fd_private_ioctl(struct file *file, void *fh,
 }
 
 #ifdef CONFIG_COMPAT
-/*
- * msm_fd_compat_ioctl32 - Compat ioctl handler function.
- * @file: Pointer to file struct.
- * @cmd: Ioctl command.
- * @arg: Ioctl argument.
- */
 static long msm_fd_compat_ioctl32(struct file *file,
 	unsigned int cmd, unsigned long arg)
 {
@@ -558,7 +463,6 @@ static long msm_fd_compat_ioctl32(struct file *file,
 }
 #endif
 
-/* Fd device file operations callbacks */
 static const struct v4l2_file_operations fd_fops = {
 	.owner          = THIS_MODULE,
 	.open           = msm_fd_open,
@@ -570,12 +474,6 @@ static const struct v4l2_file_operations fd_fops = {
 #endif
 };
 
-/*
- * msm_fd_querycap - V4l2 ioctl query capability handler.
- * @file: Pointer to file struct.
- * @fh: V4l2 File handle.
- * @cap: Pointer to v4l2_capability struct need to be filled.
- */
 static int msm_fd_querycap(struct file *file,
 	void *fh, struct v4l2_capability *cap)
 {
@@ -587,12 +485,6 @@ static int msm_fd_querycap(struct file *file,
 	return 0;
 }
 
-/*
- * msm_fd_enum_fmt_vid_out - V4l2 ioctl enumerate format handler.
- * @file: Pointer to file struct.
- * @fh: V4l2 File handle.
- * @f: Pointer to v4l2_fmtdesc struct need to be filled.
- */
 static int msm_fd_enum_fmt_vid_out(struct file *file,
 	void *fh, struct v4l2_fmtdesc *f)
 {
@@ -606,12 +498,6 @@ static int msm_fd_enum_fmt_vid_out(struct file *file,
 	return 0;
 }
 
-/*
- * msm_fd_g_fmt - V4l2 ioctl get format handler.
- * @file: Pointer to file struct.
- * @fh: V4l2 File handle.
- * @f: Pointer to v4l2_format struct need to be filled.
- */
 static int msm_fd_g_fmt(struct file *file, void *fh, struct v4l2_format *f)
 {
 	struct fd_ctx *ctx = msm_fd_ctx_from_fh(fh);
@@ -619,12 +505,6 @@ static int msm_fd_g_fmt(struct file *file, void *fh, struct v4l2_format *f)
 	return msm_fd_fill_format_from_ctx(f, ctx);
 }
 
-/*
- * msm_fd_try_fmt_vid_out - V4l2 ioctl try format handler.
- * @file: Pointer to file struct.
- * @fh: V4l2 File handle.
- * @f: Pointer to v4l2_format struct.
- */
 static int msm_fd_try_fmt_vid_out(struct file *file,
 	void *fh, struct v4l2_format *f)
 {
@@ -635,12 +515,6 @@ static int msm_fd_try_fmt_vid_out(struct file *file,
 	return msm_fd_fill_format_from_index(f, index);
 }
 
-/*
- * msm_fd_s_fmt_vid_out - V4l2 ioctl set format handler.
- * @file: Pointer to file struct.
- * @fh: V4l2 File handle.
- * @f: Pointer to v4l2_format struct.
- */
 static int msm_fd_s_fmt_vid_out(struct file *file,
 	void *fh, struct v4l2_format *f)
 {
@@ -656,7 +530,7 @@ static int msm_fd_s_fmt_vid_out(struct file *file,
 	ctx->format.bytesperline = f->fmt.pix.bytesperline;
 	ctx->format.sizeimage = f->fmt.pix.sizeimage;
 
-	/* Initialize crop */
+	
 	ctx->format.crop.top = 0;
 	ctx->format.crop.left = 0;
 	ctx->format.crop.width = fd_size[index].width;
@@ -665,12 +539,6 @@ static int msm_fd_s_fmt_vid_out(struct file *file,
 	return 0;
 }
 
-/*
- * msm_fd_reqbufs - V4l2 ioctl request buffers handler.
- * @file: Pointer to file struct.
- * @fh: V4l2 File handle.
- * @req: Pointer to v4l2_requestbuffer struct.
- */
 static int msm_fd_reqbufs(struct file *file,
 	void *fh, struct v4l2_requestbuffers *req)
 {
@@ -679,12 +547,6 @@ static int msm_fd_reqbufs(struct file *file,
 	return vb2_reqbufs(&ctx->vb2_q, req);
 }
 
-/*
- * msm_fd_qbuf - V4l2 ioctl queue buffer handler.
- * @file: Pointer to file struct.
- * @fh: V4l2 File handle.
- * @pb: Pointer to v4l2_buffer struct.
- */
 static int msm_fd_qbuf(struct file *file, void *fh,
 	struct v4l2_buffer *pb)
 {
@@ -693,12 +555,6 @@ static int msm_fd_qbuf(struct file *file, void *fh,
 	return vb2_qbuf(&ctx->vb2_q, pb);
 }
 
-/*
- * msm_fd_dqbuf - V4l2 ioctl dequeue buffer handler.
- * @file: Pointer to file struct.
- * @fh: V4l2 File handle.
- * @pb: Pointer to v4l2_buffer struct.
- */
 static int msm_fd_dqbuf(struct file *file,
 	void *fh, struct v4l2_buffer *pb)
 {
@@ -707,12 +563,6 @@ static int msm_fd_dqbuf(struct file *file,
 	return vb2_dqbuf(&ctx->vb2_q, pb, file->f_flags & O_NONBLOCK);
 }
 
-/*
- * msm_fd_streamon - V4l2 ioctl stream on handler.
- * @file: Pointer to file struct.
- * @fh: V4l2 File handle.
- * @buf_type: V4l2 buffer type.
- */
 static int msm_fd_streamon(struct file *file,
 	void *fh, enum v4l2_buf_type buf_type)
 {
@@ -726,12 +576,6 @@ static int msm_fd_streamon(struct file *file,
 	return ret;
 }
 
-/*
- * msm_fd_streamoff - V4l2 ioctl stream off handler.
- * @file: Pointer to file struct.
- * @fh: V4l2 File handle.
- * @buf_type: V4l2 buffer type.
- */
 static int msm_fd_streamoff(struct file *file,
 	void *fh, enum v4l2_buf_type buf_type)
 {
@@ -745,11 +589,6 @@ static int msm_fd_streamoff(struct file *file,
 	return ret;
 }
 
-/*
- * msm_fd_subscribe_event - V4l2 ioctl subscribe for event handler.
- * @fh: V4l2 File handle.
- * @sub: Pointer to v4l2_event_subscription containing event information.
- */
 static int msm_fd_subscribe_event(struct v4l2_fh *fh,
 	const struct v4l2_event_subscription *sub)
 {
@@ -766,11 +605,6 @@ static int msm_fd_subscribe_event(struct v4l2_fh *fh,
 	return ret;
 }
 
-/*
- * msm_fd_unsubscribe_event - V4l2 ioctl unsubscribe from event handler.
- * @fh: V4l2 File handle.
- * @sub: Pointer to v4l2_event_subscription containing event information.
- */
 static int msm_fd_unsubscribe_event(struct v4l2_fh *fh,
 	const struct v4l2_event_subscription *sub)
 {
@@ -784,12 +618,6 @@ static int msm_fd_unsubscribe_event(struct v4l2_fh *fh,
 	return ret;
 }
 
-/*
- * msm_fd_guery_ctrl - V4l2 ioctl query control.
- * @file: Pointer to file struct.
- * @fh: V4l2 File handle.
- * @sub: Pointer to v4l2_queryctrl struct info need to be filled based on id.
- */
 static int msm_fd_guery_ctrl(struct file *file, void *fh,
 	struct v4l2_queryctrl *a)
 {
@@ -804,7 +632,6 @@ static int msm_fd_guery_ctrl(struct file *file, void *fh,
 		a->step = 1;
 		strlcpy(a->name, "msm fd face speed idx",
 			sizeof(a->name));
-		break;
 	case V4L2_CID_FD_FACE_ANGLE:
 		a->type = V4L2_CTRL_TYPE_INTEGER;
 		a->default_value =  msm_fd_angle[MSM_FD_DEF_ANGLE_IDX];
@@ -866,12 +693,6 @@ static int msm_fd_guery_ctrl(struct file *file, void *fh,
 	return 0;
 }
 
-/*
- * msm_fd_g_ctrl - V4l2 ioctl get control.
- * @file: Pointer to file struct.
- * @fh: V4l2 File handle.
- * @sub: Pointer to v4l2_queryctrl struct need to be filled.
- */
 static int msm_fd_g_ctrl(struct file *file, void *fh, struct v4l2_control *a)
 {
 	struct fd_ctx *ctx = msm_fd_ctx_from_fh(fh);
@@ -911,12 +732,6 @@ static int msm_fd_g_ctrl(struct file *file, void *fh, struct v4l2_control *a)
 	return 0;
 }
 
-/*
- * msm_fd_s_ctrl - V4l2 ioctl set control.
- * @file: Pointer to file struct.
- * @fh: V4l2 File handle.
- * @sub: Pointer to v4l2_queryctrl struct need to be set.
- */
 static int msm_fd_s_ctrl(struct file *file, void *fh, struct v4l2_control *a)
 {
 	struct fd_ctx *ctx = msm_fd_ctx_from_fh(fh);
@@ -986,12 +801,6 @@ static int msm_fd_s_ctrl(struct file *file, void *fh, struct v4l2_control *a)
 	return 0;
 }
 
-/*
- * msm_fd_cropcap - V4l2 ioctl crop capabilites.
- * @file: Pointer to file struct.
- * @fh: V4l2 File handle.
- * @sub: Pointer to v4l2_cropcap struct need to be set.
- */
 static int msm_fd_cropcap(struct file *file, void *fh, struct v4l2_cropcap *a)
 {
 	struct fd_ctx *ctx = msm_fd_ctx_from_fh(fh);
@@ -1014,12 +823,6 @@ static int msm_fd_cropcap(struct file *file, void *fh, struct v4l2_cropcap *a)
 	return 0;
 }
 
-/*
- * msm_fd_g_crop - V4l2 ioctl get crop.
- * @file: Pointer to file struct.
- * @fh: V4l2 File handle.
- * @sub: Pointer to v4l2_crop struct need to be set.
- */
 static int msm_fd_g_crop(struct file *file, void *fh, struct v4l2_crop *crop)
 {
 	struct fd_ctx *ctx = msm_fd_ctx_from_fh(fh);
@@ -1034,12 +837,6 @@ static int msm_fd_g_crop(struct file *file, void *fh, struct v4l2_crop *crop)
 	return 0;
 }
 
-/*
- * msm_fd_s_crop - V4l2 ioctl set crop.
- * @file: Pointer to file struct.
- * @fh: V4l2 File handle.
- * @sub: Pointer to v4l2_crop struct need to be set.
- */
 static int msm_fd_s_crop(struct file *file, void *fh,
 	const struct v4l2_crop *crop)
 {
@@ -1051,7 +848,7 @@ static int msm_fd_s_crop(struct file *file, void *fh,
 		return -EINVAL;
 	}
 
-	/* First check that crop is valid */
+	
 	min_face_size = msm_fd_min_size[ctx->settings.min_size_index];
 
 	if (crop->c.width < min_face_size || crop->c.height < min_face_size)
@@ -1068,7 +865,6 @@ static int msm_fd_s_crop(struct file *file, void *fh,
 	return 0;
 }
 
-/* V4l2 ioctl handlers */
 static const struct v4l2_ioctl_ops fd_ioctl_ops = {
 	.vidioc_querycap          = msm_fd_querycap,
 	.vidioc_enum_fmt_vid_out  = msm_fd_enum_fmt_vid_out,
@@ -1091,12 +887,6 @@ static const struct v4l2_ioctl_ops fd_ioctl_ops = {
 	.vidioc_default           = msm_fd_private_ioctl,
 };
 
-/*
- * msm_fd_fill_results - Read and fill face detection result.
- * @fd: Pointer to fd device.
- * @face: Pointer of face data which information need to be stored.
- * @idx: Face number index need to be filled.
- */
 static void msm_fd_fill_results(struct msm_fd_device *fd,
 	struct msm_fd_face_data *face, int idx)
 {
@@ -1124,18 +914,6 @@ static void msm_fd_fill_results(struct msm_fd_device *fd,
 		face->face.top = 0;
 }
 
-/*
- * msm_fd_wq_handler - Fd device workqueue handler.
- * @work: Pointer to work struct.
- *
- * This function is bottom half of fd irq what it does:
- *
- * - Stop the fd engine.
- * - Getter fd result and store in stats buffer.
- * - If available schedule next buffer for processing.
- * - Sent event to v4l2.
- * - Release buffer from v4l2 queue.
- */
 static void msm_fd_wq_handler(struct work_struct *work)
 {
 	struct msm_fd_buffer *active_buf;
@@ -1150,34 +928,34 @@ static void msm_fd_wq_handler(struct work_struct *work)
 
 	active_buf = msm_fd_hw_get_active_buffer(fd);
 	if (!active_buf) {
-		/* This should never happen, something completely wrong */
+		
 		dev_err(fd->dev, "Oops no active buffer empty queue\n");
 		return;
 	}
 	ctx = vb2_get_drv_priv(active_buf->vb.vb2_queue);
 
-	/* Increment sequence number, 0 means sequence is not valid */
+	
 	ctx->sequence++;
 	if (unlikely(!ctx->sequence))
 		ctx->sequence = 1;
 
-	/* Fill face detection statistics */
+	
 	stats = &ctx->stats[ctx->sequence % MSM_FD_MAX_RESULT_BUFS];
 
-	/* First mark stats as invalid */
+	
 	atomic_set(&stats->frame_id, 0);
 
 	stats->face_cnt = msm_fd_hw_get_face_count(fd);
 	for (i = 0; i < stats->face_cnt; i++)
 		msm_fd_fill_results(fd, &stats->face_data[i], i);
 
-	/* Stats are ready, set correct frame id */
+	
 	atomic_set(&stats->frame_id, ctx->sequence);
 
-	/* We have the data from fd hw, we can start next processing */
+	
 	msm_fd_hw_schedule_next_buffer(fd);
 
-	/* Sent event */
+	
 	memset(&event, 0x00, sizeof(event));
 	event.type = MSM_EVENT_FD;
 	fd_event = (struct msm_fd_event *)event.u.data;
@@ -1186,35 +964,41 @@ static void msm_fd_wq_handler(struct work_struct *work)
 	fd_event->frame_id = ctx->sequence;
 	v4l2_event_queue_fh(&ctx->fh, &event);
 
-	/* Return buffer to vb queue */
+	
 	active_buf->vb.v4l2_buf.sequence = ctx->fh.sequence;
 	vb2_buffer_done(&active_buf->vb, VB2_BUF_STATE_DONE);
 
-	/* Release buffer from the device */
+	
 	msm_fd_hw_buffer_done(fd, active_buf);
 }
 
-/*
- * fd_probe - Fd device probe method.
- * @pdev: Pointer fd platform device.
- */
+static irqreturn_t msm_fd_irq(int irq, void *dev_id)
+{
+	struct msm_fd_device *fd = dev_id;
+
+	if (msm_fd_hw_is_finished(fd))
+		queue_work(fd->work_queue, &fd->work);
+	else
+		dev_err(fd->dev, "Something wrong! FD still running\n");
+
+	return IRQ_HANDLED;
+}
+
 static int fd_probe(struct platform_device *pdev)
 {
 	struct msm_fd_device *fd;
 	int ret;
 
-	/* Face detection device struct */
+	
 	fd = kzalloc(sizeof(struct msm_fd_device), GFP_KERNEL);
 	if (!fd)
 		return -ENOMEM;
 
 	mutex_init(&fd->lock);
 	spin_lock_init(&fd->slock);
-	init_completion(&fd->hw_halt_completion);
-	INIT_LIST_HEAD(&fd->buf_queue);
 	fd->dev = &pdev->dev;
 
-	/* Get resources */
+	
 	ret = msm_fd_hw_get_mem_resources(pdev, fd);
 	if (ret < 0) {
 		dev_err(&pdev->dev, "Fail get resources\n");
@@ -1241,23 +1025,31 @@ static int fd_probe(struct platform_device *pdev)
 		goto error_iommu_get;
 	}
 
-	/* Get face detect hw before read engine revision */
-	ret = msm_fd_hw_get(fd, 0);
-	if (ret < 0) {
-		dev_err(&pdev->dev, "Fail to get hw\n");
-		goto error_hw_get_request_irq;
-	}
-	fd->hw_revision = msm_fd_hw_get_revision(fd);
-
-	msm_fd_hw_put(fd);
-
-	ret = msm_fd_hw_request_irq(pdev, fd, msm_fd_wq_handler);
-	if (ret < 0) {
-		dev_err(&pdev->dev, "Fail request irq\n");
-		goto error_hw_get_request_irq;
+	fd->irq_num = platform_get_irq(pdev, 0);
+	if (fd->irq_num < 0) {
+		dev_err(&pdev->dev, "Can not get fd irq resource\n");
+		ret = -ENODEV;
+		goto error_irq_request;
 	}
 
-	/* v4l2 device */
+	ret = devm_request_irq(&pdev->dev, fd->irq_num, msm_fd_irq,
+		IRQF_TRIGGER_RISING, dev_name(&pdev->dev), fd);
+	if (ret) {
+		dev_err(&pdev->dev, "Can not claim IRQ %d\n", fd->irq_num);
+		goto error_irq_request;
+	}
+
+	fd->work_queue = alloc_workqueue(MSM_FD_DRV_NAME,
+		WQ_HIGHPRI | WQ_NON_REENTRANT | WQ_UNBOUND, 0);
+	if (!fd->work_queue) {
+		dev_err(&pdev->dev, "Can not register workqueue\n");
+		ret = -ENOMEM;
+		goto error_alloc_workqueue;
+	}
+	INIT_WORK(&fd->work, msm_fd_wq_handler);
+	INIT_LIST_HEAD(&fd->buf_queue);
+
+	
 	ret = v4l2_device_register(&pdev->dev, &fd->v4l2_dev);
 	if (ret < 0) {
 		dev_err(&pdev->dev, "Failed to register v4l2 device\n");
@@ -1289,8 +1081,10 @@ static int fd_probe(struct platform_device *pdev)
 error_video_register:
 	v4l2_device_unregister(&fd->v4l2_dev);
 error_v4l2_register:
-	msm_fd_hw_release_irq(fd);
-error_hw_get_request_irq:
+	destroy_workqueue(fd->work_queue);
+error_alloc_workqueue:
+	devm_free_irq(&pdev->dev, fd->irq_num, fd);
+error_irq_request:
 	msm_fd_hw_put_iommu(fd);
 error_iommu_get:
 	msm_fd_hw_put_clocks(fd);
@@ -1303,10 +1097,6 @@ error_mem_resources:
 	return ret;
 }
 
-/*
- * fd_device_remove - Fd device remove method.
- * @pdev: Pointer fd platform device.
- */
 static int fd_device_remove(struct platform_device *pdev)
 {
 	struct msm_fd_device *fd;
@@ -1317,8 +1107,9 @@ static int fd_device_remove(struct platform_device *pdev)
 		return 0;
 	}
 	video_unregister_device(&fd->video);
+	destroy_workqueue(fd->work_queue);
 	v4l2_device_unregister(&fd->v4l2_dev);
-	msm_fd_hw_release_irq(fd);
+	devm_free_irq(&pdev->dev, fd->irq_num, fd);
 	msm_fd_hw_put_iommu(fd);
 	msm_fd_hw_put_clocks(fd);
 	regulator_put(fd->vdd);
@@ -1328,13 +1119,11 @@ static int fd_device_remove(struct platform_device *pdev)
 	return 0;
 }
 
-/* Device tree match struct */
 static const struct of_device_id msm_fd_dt_match[] = {
 	{.compatible = "qcom,face-detection"},
 	{}
 };
 
-/* Fd platform driver definition */
 static struct platform_driver fd_driver = {
 	.probe = fd_probe,
 	.remove = fd_device_remove,

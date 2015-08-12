@@ -32,6 +32,11 @@
 #include <sound/soc-dpcm.h>
 #include <sound/initval.h>
 
+#undef pr_info
+#undef pr_err
+#define pr_info(fmt, ...) pr_aud_info(fmt, ##__VA_ARGS__)
+#define pr_err(fmt, ...) pr_aud_err(fmt, ##__VA_ARGS__)
+
 static const struct snd_pcm_hardware no_host_hardware = {
 	.info			= SNDRV_PCM_INFO_MMAP |
 					SNDRV_PCM_INFO_MMAP_VALID |
@@ -44,15 +49,9 @@ static const struct snd_pcm_hardware no_host_hardware = {
 	.period_bytes_max	= PAGE_SIZE >> 1,
 	.periods_min		= 2,
 	.periods_max		= 4,
-	/*
-	 * Increase the max buffer bytes as PAGE_SIZE bytes is
-	 * not enough to encompass all the scenarios sent by
-	 * userspapce.
-	 */
 	.buffer_bytes_max	= PAGE_SIZE * 4,
 };
 
-/* DPCM stream event, send event to FE and all active BEs. */
 int dpcm_dapm_stream_event(struct snd_soc_pcm_runtime *fe, int dir,
 	int event)
 {
@@ -86,10 +85,6 @@ static int soc_pcm_apply_symmetry(struct snd_pcm_substream *substream,
 	    !rtd->dai_link->symmetric_rates)
 		return 0;
 
-	/* This can happen if multiple streams are starting simultaneously -
-	 * the second can need to get its constraints before the first has
-	 * picked a rate.  Complain and allow the application to carry on.
-	 */
 	if (!soc_dai->rate) {
 		dev_warn(soc_dai->dev,
 			 "ASoC: Not enforcing symmetric_rates due to race\n");
@@ -111,11 +106,6 @@ static int soc_pcm_apply_symmetry(struct snd_pcm_substream *substream,
 	return 0;
 }
 
-/*
- * List of sample sizes that might go over the bus for parameter
- * application.  There ought to be a wildcard sample size for things
- * like the DAC/ADC resolution to use but there isn't right now.
- */
 static int sample_sizes[] = {
 	8, 16, 24, 32,
 };
@@ -146,11 +136,6 @@ static void soc_pcm_apply_msb(struct snd_pcm_substream *substream,
 	}
 }
 
-/*
- * Called by ALSA when a PCM substream is opened, the runtime->hw record is
- * then initialized and any private data can be allocated. This also calls
- * startup for the cpu DAI, platform, machine and codec DAI.
- */
 static int soc_pcm_open(struct snd_pcm_substream *substream)
 {
 	struct snd_soc_pcm_runtime *rtd = substream->private_data;
@@ -341,11 +326,6 @@ out:
 	return ret;
 }
 
-/*
- * Power down the audio subsystem pmdown_time msecs after close is called.
- * This is to ensure there are no pops or clicks in between any music tracks
- * due to DAPM power cycling.
- */
 static void close_delayed_work(struct work_struct *work)
 {
 	struct snd_soc_pcm_runtime *rtd =
@@ -369,11 +349,6 @@ static void close_delayed_work(struct work_struct *work)
 	mutex_unlock(&rtd->pcm_mutex);
 }
 
-/*
- * Called by ALSA when a PCM substream is closed. Private data can be
- * freed here. The cpu DAI, codec DAI, machine and platform are also
- * shutdown.
- */
 static int soc_pcm_close(struct snd_pcm_substream *substream)
 {
 	struct snd_soc_pcm_runtime *rtd = substream->private_data;
@@ -396,16 +371,13 @@ static int soc_pcm_close(struct snd_pcm_substream *substream)
 	codec_dai->active--;
 	codec->active--;
 
-	/* clear the corresponding DAIs rate when inactive */
+	
 	if (!cpu_dai->active)
 		cpu_dai->rate = 0;
 
 	if (!codec_dai->active)
 		codec_dai->rate = 0;
 
-	/* Muting the DAC suppresses artifacts caused during digital
-	 * shutdown, for example from stopping clocks.
-	 */
 	snd_soc_dai_digital_mute(codec_dai, 1, substream->stream);
 
 	if (cpu_dai->driver->ops->shutdown)
@@ -449,11 +421,6 @@ static int soc_pcm_close(struct snd_pcm_substream *substream)
 	return 0;
 }
 
-/*
- * Called by ALSA when the PCM substream is prepared, can set format, sample
- * rate, etc.  This function is non atomic and can be called multiple times,
- * it can refer to the runtime info.
- */
 static int soc_pcm_prepare(struct snd_pcm_substream *substream)
 {
 	struct snd_soc_pcm_runtime *rtd = substream->private_data;
@@ -531,11 +498,6 @@ out:
 	return ret;
 }
 
-/*
- * Called by ALSA when the hardware params are set by application. This
- * function can also be called multiple times and can allocate buffers
- * (using snd_pcm_lib_* ). It's non-atomic.
- */
 static int soc_pcm_hw_params(struct snd_pcm_substream *substream,
 				struct snd_pcm_hw_params *params)
 {
@@ -594,12 +556,9 @@ static int soc_pcm_hw_params(struct snd_pcm_substream *substream,
 		}
 	}
 
-	/* store the rate for each DAIs */
+	
 	cpu_dai->rate = params_rate(params);
 	codec_dai->rate = params_rate(params);
-	/* malloc a page for hostless IO.
-	 * FIXME: rework with alsa-lib changes so that this malloc is not required.
-	 */
 	if (rtd->dai_link->no_host_mode == SND_SOC_DAI_LINK_NO_HOST) {
 		substream->dma_buffer.dev.type = SNDRV_DMA_TYPE_DEV;
 		substream->dma_buffer.dev.dev = rtd->dev;
@@ -631,9 +590,6 @@ codec_err:
 	return ret;
 }
 
-/*
- * Frees resources allocated by hw_params, can be called multiple times
- */
 static int soc_pcm_hw_free(struct snd_pcm_substream *substream)
 {
 	struct snd_soc_pcm_runtime *rtd = substream->private_data;
@@ -726,11 +682,6 @@ static int soc_pcm_bespoke_trigger(struct snd_pcm_substream *substream,
 	}
 	return 0;
 }
-/*
- * soc level wrapper for pointer callback
- * If cpu_dai, codec_dai, platform driver has the delay callback, than
- * the runtime->delay will be updated accordingly.
- */
 static snd_pcm_uframes_t soc_pcm_pointer(struct snd_pcm_substream *substream)
 {
 	struct snd_soc_pcm_runtime *rtd = substream->private_data;
@@ -758,7 +709,6 @@ static snd_pcm_uframes_t soc_pcm_pointer(struct snd_pcm_substream *substream)
 	return offset;
 }
 
-/* connect a FE and BE */
 static int dpcm_be_connect(struct snd_soc_pcm_runtime *fe,
 		struct snd_soc_pcm_runtime *be, int stream)
 {
@@ -797,14 +747,13 @@ static int dpcm_be_connect(struct snd_soc_pcm_runtime *fe,
 	return 1;
 }
 
-/* reparent a BE onto another FE */
 static void dpcm_be_reparent(struct snd_soc_pcm_runtime *fe,
 			struct snd_soc_pcm_runtime *be, int stream)
 {
 	struct snd_soc_dpcm *dpcm;
 	struct snd_pcm_substream *fe_substream, *be_substream;
 
-	/* reparent if BE is connected to other FEs */
+	
 	if (!be->dpcm[stream].users)
 		return;
 
@@ -825,7 +774,6 @@ static void dpcm_be_reparent(struct snd_soc_pcm_runtime *fe,
 	}
 }
 
-/* disconnect a BE and FE */
 void dpcm_be_disconnect(struct snd_soc_pcm_runtime *fe, int stream)
 {
 	struct snd_soc_dpcm *dpcm, *d;
@@ -854,7 +802,6 @@ void dpcm_be_disconnect(struct snd_soc_pcm_runtime *fe, int stream)
 	}
 }
 
-/* get BE for DAI widget and stream */
 static struct snd_soc_pcm_runtime *dpcm_get_be(struct snd_soc_card *card,
 		struct snd_soc_dapm_widget *widget, int stream)
 {
@@ -1040,10 +987,6 @@ static int dpcm_add_paths(struct snd_soc_pcm_runtime *fe, int stream,
 	return new;
 }
 
-/*
- * Find the corresponding BE DAIs that source or sink audio to this
- * FE substream.
- */
 int dpcm_process_paths(struct snd_soc_pcm_runtime *fe,
 	int stream, struct snd_soc_dapm_widget_list **list, int new)
 {
@@ -1113,12 +1056,22 @@ int dpcm_be_dai_startup(struct snd_soc_pcm_runtime *fe, int stream)
 				stream ? "capture" : "playback",
 				be->dpcm[stream].state);
 
-		if (be->dpcm[stream].users++ != 0)
+		if (be->dpcm[stream].users++ != 0) {
+			if(fe->dai_link->stream_name && be->dai_link->name)
+				pr_info("fe %s ref be %s users %d \n",fe->dai_link->stream_name,\
+					be->dai_link->name,be->dpcm[stream].users);
 			continue;
+		}
+
+		if(fe->dai_link->stream_name && be->dai_link->name)
+			pr_info("fe %s connec be %s users %d \n",fe->dai_link->stream_name,\
+				be->dai_link->name,be->dpcm[stream].users);
 
 		if ((be->dpcm[stream].state != SND_SOC_DPCM_STATE_NEW) &&
 		    (be->dpcm[stream].state != SND_SOC_DPCM_STATE_CLOSE))
 			continue;
+
+		pr_info("open path  %s %s %s \n", fe->dai_link->stream_name,(stream == SNDRV_PCM_STREAM_PLAYBACK)?"->":"<-",be->dai_link->name);
 
 		dev_dbg(be->dev, "ASoC: open BE %s\n", be->dai_link->name);
 
@@ -1253,12 +1206,22 @@ int dpcm_be_dai_shutdown(struct snd_soc_pcm_runtime *fe, int stream)
 				stream ? "capture" : "playback",
 				be->dpcm[stream].state);
 
-		if (--be->dpcm[stream].users != 0)
+		if (--be->dpcm[stream].users != 0) {
+			if(fe->dai_link->stream_name && be->dai_link->name)
+				pr_info("fe %s discon be %s users %d\n", fe->dai_link->stream_name,\
+					be->dai_link->name,be->dpcm[stream].users);
 			continue;
+		}
+
+		if(fe->dai_link->stream_name && be->dai_link->name)
+			pr_info("fe %s discon be %s users %d\n", fe->dai_link->stream_name,\
+				be->dai_link->name,be->dpcm[stream].users);
 
 		if ((be->dpcm[stream].state != SND_SOC_DPCM_STATE_HW_FREE) &&
 		    (be->dpcm[stream].state != SND_SOC_DPCM_STATE_OPEN))
 			continue;
+
+		pr_info("close path  %s %s %s \n", fe->dai_link->stream_name,(stream == SNDRV_PCM_STREAM_PLAYBACK)?"->":"<-",be->dai_link->name);
 
 		dev_dbg(be->dev, "ASoC: close BE %s\n",
 			dpcm->fe->dai_link->name);
@@ -1298,19 +1261,17 @@ int dpcm_be_dai_hw_free(struct snd_soc_pcm_runtime *fe, int stream)
 {
 	struct snd_soc_dpcm *dpcm;
 
-	/* only hw_params backends that are either sinks or sources
-	 * to this frontend DAI */
 	list_for_each_entry(dpcm, &fe->dpcm[stream].be_clients, list_be) {
 
 		struct snd_soc_pcm_runtime *be = dpcm->be;
 		struct snd_pcm_substream *be_substream =
 			snd_soc_dpcm_get_substream(be, stream);
 
-		/* is this op for this BE ? */
+		
 		if (!snd_soc_dpcm_be_can_update(fe, be, stream))
 			continue;
 
-		/* only free hw when no longer used - check all FEs */
+		
 		if (!snd_soc_dpcm_can_be_free_stop(fe, be, stream))
 				continue;
 
@@ -1342,14 +1303,12 @@ static int dpcm_fe_dai_hw_free(struct snd_pcm_substream *substream)
 
 	dev_dbg(fe->dev, "ASoC: hw_free FE %s\n", fe->dai_link->name);
 
-	/* call hw_free on the frontend */
+	
 	err = soc_pcm_hw_free(substream);
 	if (err < 0)
 		dev_err(fe->dev,"ASoC: hw_free FE %s failed\n",
 			fe->dai_link->name);
 
-	/* only hw_params backends that are either sinks or sources
-	 * to this frontend DAI */
 	err = dpcm_be_dai_hw_free(fe, stream);
 
 	fe->dpcm[stream].state = SND_SOC_DPCM_STATE_HW_FREE;
@@ -1889,6 +1848,10 @@ static int dpcm_fe_dai_prepare(struct snd_pcm_substream *substream)
 	if (list_empty(&fe->dpcm[stream].be_clients)) {
 		dev_err(fe->dev, "ASoC: no backend DAIs enabled for %s\n",
 				fe->dai_link->name);
+#ifdef CONFIG_HTC_DEBUG_DSP
+		pr_err("%s: trigger ramdump here to check mixer paths!", __func__);
+		BUG();
+#endif
 		ret = -EINVAL;
 		goto out;
 	}
@@ -2122,9 +2085,6 @@ static int dpcm_run_old_update(struct snd_soc_pcm_runtime *fe, int stream)
 	return ret;
 }
 
-/* Called by DAPM mixer/mux changes to update audio routing between PCMs and
- * any DAI links.
- */
 int soc_dpcm_runtime_update(struct snd_soc_dapm_widget *widget)
 {
 	struct snd_soc_card *card;
@@ -2301,7 +2261,6 @@ static int dpcm_fe_dai_close(struct snd_pcm_substream *fe_substream)
 	return ret;
 }
 
-/* create a new pcm */
 int soc_new_pcm(struct snd_soc_pcm_runtime *rtd, int num)
 {
 	struct snd_soc_platform *platform = rtd->platform;
@@ -2437,7 +2396,6 @@ out:
 	return ret;
 }
 
-/* is the current PCM operation for this FE ? */
 int snd_soc_dpcm_fe_can_update(struct snd_soc_pcm_runtime *fe, int stream)
 {
 	if (fe->dpcm[stream].runtime_update == SND_SOC_DPCM_UPDATE_FE)
@@ -2446,7 +2404,6 @@ int snd_soc_dpcm_fe_can_update(struct snd_soc_pcm_runtime *fe, int stream)
 }
 EXPORT_SYMBOL_GPL(snd_soc_dpcm_fe_can_update);
 
-/* is the current PCM operation for this BE ? */
 int snd_soc_dpcm_be_can_update(struct snd_soc_pcm_runtime *fe,
 		struct snd_soc_pcm_runtime *be, int stream)
 {
@@ -2458,7 +2415,6 @@ int snd_soc_dpcm_be_can_update(struct snd_soc_pcm_runtime *fe,
 }
 EXPORT_SYMBOL_GPL(snd_soc_dpcm_be_can_update);
 
-/* get the substream for this BE */
 struct snd_pcm_substream *
 	snd_soc_dpcm_get_substream(struct snd_soc_pcm_runtime *be, int stream)
 {
@@ -2466,7 +2422,6 @@ struct snd_pcm_substream *
 }
 EXPORT_SYMBOL_GPL(snd_soc_dpcm_get_substream);
 
-/* get the BE runtime state */
 enum snd_soc_dpcm_state
 	snd_soc_dpcm_be_get_state(struct snd_soc_pcm_runtime *be, int stream)
 {
@@ -2474,7 +2429,6 @@ enum snd_soc_dpcm_state
 }
 EXPORT_SYMBOL_GPL(snd_soc_dpcm_be_get_state);
 
-/* set the BE runtime state */
 void snd_soc_dpcm_be_set_state(struct snd_soc_pcm_runtime *be,
 		int stream, enum snd_soc_dpcm_state state)
 {
@@ -2482,10 +2436,6 @@ void snd_soc_dpcm_be_set_state(struct snd_soc_pcm_runtime *be,
 }
 EXPORT_SYMBOL_GPL(snd_soc_dpcm_be_set_state);
 
-/*
- * We can only hw_free, stop, pause or suspend a BE DAI if any of it's FE
- * are not running, paused or suspended for the specified stream direction.
- */
 int snd_soc_dpcm_can_be_free_stop(struct snd_soc_pcm_runtime *fe,
 		struct snd_soc_pcm_runtime *be, int stream)
 {
@@ -2504,15 +2454,11 @@ int snd_soc_dpcm_can_be_free_stop(struct snd_soc_pcm_runtime *fe,
 			return 0;
 	}
 
-	/* it's safe to free/stop this BE DAI */
+	
 	return 1;
 }
 EXPORT_SYMBOL_GPL(snd_soc_dpcm_can_be_free_stop);
 
-/*
- * We can only change hw params a BE DAI if any of it's FE are not prepared,
- * running, paused or suspended for the specified stream direction.
- */
 int snd_soc_dpcm_can_be_params(struct snd_soc_pcm_runtime *fe,
 		struct snd_soc_pcm_runtime *be, int stream)
 {

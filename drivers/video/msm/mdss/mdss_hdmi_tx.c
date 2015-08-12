@@ -40,18 +40,12 @@
 #define DEFAULT_VIDEO_RESOLUTION HDMI_VFRMT_640x480p60_4_3
 #define DEFAULT_HDMI_PRIMARY_RESOLUTION HDMI_VFRMT_1280x720p60_16_9
 
-/* HDMI PHY/PLL bit field macros */
 #define SW_RESET BIT(2)
 #define SW_RESET_PLL BIT(0)
 
 #define HPD_DISCONNECT_POLARITY 0
 #define HPD_CONNECT_POLARITY    1
 
-/*
- * Audio engine may take 1 to 3 sec to shutdown
- * in normal cases. To handle worst cases, making
- * timeout for audio engine shutdown as 5 sec.
- */
 #define AUDIO_POLL_SLEEP_US   (5 * 1000)
 #define AUDIO_POLL_TIMEOUT_US (AUDIO_POLL_SLEEP_US * 1000)
 
@@ -61,10 +55,12 @@
 	((d & 0xff) + ((d >> 8) & 0xff) +	\
 	((d >> 16) & 0xff) + ((d >> 24) & 0xff))
 
-/* Enable HDCP by default */
 static bool hdcp_feature_on = true;
+#ifdef CONFIG_HTC_MHL_DETECTION_8620
+static struct hdmi_tx_ctrl *hdmi_ctrl_mhl = NULL;
+#endif
+static DEFINE_MUTEX(hpd_disconnect_mutex);
 
-/* Supported HDMI Audio channels */
 #define MSM_HDMI_AUDIO_CHANNEL_2	2
 #define MSM_HDMI_AUDIO_CHANNEL_3	3
 #define MSM_HDMI_AUDIO_CHANNEL_4	4
@@ -73,7 +69,6 @@ static bool hdcp_feature_on = true;
 #define MSM_HDMI_AUDIO_CHANNEL_7	7
 #define MSM_HDMI_AUDIO_CHANNEL_8	8
 
-/* AVI INFOFRAME DATA */
 #define NUM_MODES_AVI 20
 #define AVI_MAX_DATA_BYTES 13
 
@@ -94,35 +89,15 @@ enum {
 };
 
 #define IFRAME_PACKET_OFFSET 0x80
-/*
- * InfoFrame Type Code:
- * 0x0 - Reserved
- * 0x1 - Vendor Specific
- * 0x2 - Auxiliary Video Information
- * 0x3 - Source Product Description
- * 0x4 - AUDIO
- * 0x5 - MPEG Source
- * 0x6 - NTSC VBI
- * 0x7 - 0xFF - Reserved
- */
 #define AVI_IFRAME_TYPE 0x2
 #define AVI_IFRAME_VERSION 0x2
 #define LEFT_SHIFT_BYTE(x) ((x) << 8)
 #define LEFT_SHIFT_WORD(x) ((x) << 16)
 #define LEFT_SHIFT_24BITS(x) ((x) << 24)
 
-/* AVI Infoframe data byte 3, bit 7 (msb) represents ITC bit */
 #define SET_ITC_BIT(byte)  (byte = (byte | BIT(7)))
 #define CLR_ITC_BIT(byte)  (byte = (byte & ~BIT(7)))
 
-/*
- * CN represents IT content type, if ITC bit in infoframe data byte 3
- * is set, CN bits will represent content type as below:
- * 0b00 Graphics
- * 0b01 Photo
- * 0b10 Cinema
- * 0b11 Game
-*/
 #define CONFIG_CN_BITS(bits, byte) \
 		(byte = (byte & ~(BIT(4) | BIT(5))) |\
 			((bits & (BIT(0) | BIT(1))) << 4))
@@ -151,7 +126,6 @@ enum hdmi_tx_res_states {
 	RESOLUTION_CHANGED
 };
 
-/* parameters for clock regeneration */
 struct hdmi_tx_audio_acr {
 	u32 n;
 	u32 cts;
@@ -163,6 +137,7 @@ struct hdmi_tx_audio_acr_arry {
 };
 
 static int hdmi_tx_set_mhl_hpd(struct platform_device *pdev, uint8_t on);
+static int hdmi_tx_set_hev_vic(struct platform_device *pdev, uint8_t write_burst_vic);
 static int hdmi_tx_sysfs_enable_hpd(struct hdmi_tx_ctrl *hdmi_ctrl, int on);
 static irqreturn_t hdmi_tx_isr(int irq, void *data);
 static void hdmi_tx_hpd_off(struct hdmi_tx_ctrl *hdmi_ctrl);
@@ -207,24 +182,8 @@ const char *hdmi_pm_name(enum hdmi_tx_power_module_type module)
 	case HDMI_TX_CEC_PM:	return "HDMI_TX_CEC_PM";
 	default: return "???";
 	}
-} /* hdmi_pm_name */
+} 
 
-/*
- * 13 Bytes of AVI infoframe data wrt each resolution
- * Data Byte 01: 0 Y1 Y0 A0 B1 B0 S1 S0
- * Data Byte 02: C1 C0 M1 M0 R3 R2 R1 R0
- * Data Byte 03: ITC EC2 EC1 EC0 Q1 Q0 SC1 SC0
- * Data Byte 04: 0 VIC6 VIC5 VIC4 VIC3 VIC2 VIC1 VIC0
- * Data Byte 05: 0 0 0 0 PR3 PR2 PR1 PR0
- * Data Byte 06: LSB Line No of End of Top Bar
- * Data Byte 07: MSB Line No of End of Top Bar
- * Data Byte 08: LSB Line No of Start of Bottom Bar
- * Data Byte 09: MSB Line No of Start of Bottom Bar
- * Data Byte 10: LSB Pixel Number of End of Left Bar
- * Data Byte 11: MSB Pixel Number of End of Left Bar
- * Data Byte 12: LSB Pixel Number of Start of Right Bar
- * Data Byte 13: MSB Pixel Number of Start of Right Bar
- */
 static u8 hdmi_tx_avi_iframe_lut[HDMI_EVFRMT_END + 1][AVI_MAX_DATA_BYTES] = {
 	[HDMI_VFRMT_720x480p60_4_3] = {
 		0x10, 0x18, 0x00, 0x02, 0x00, 0x00, 0x00,
@@ -286,28 +245,26 @@ static u8 hdmi_tx_avi_iframe_lut[HDMI_EVFRMT_END + 1][AVI_MAX_DATA_BYTES] = {
 	[HDMI_VFRMT_4096x2160p24_16_9] = {
 		0x10, 0x28, 0x00, 0x00, 0x00, 0x00, 0x00,
 		0x71, 0x08, 0x00, 0x00, 0x01, 0x10}
-}; /* hdmi_tx_avi_iframe_lut */
+}; 
 
-/* Audio constants lookup table for hdmi_tx_audio_acr_setup */
-/* Valid Pixel-Clock rates: 25.2MHz, 27MHz, 27.03MHz, 74.25MHz, 148.5MHz */
 static const struct hdmi_tx_audio_acr_arry hdmi_tx_audio_acr_lut[] = {
-	/*  25.200MHz  */
+	
 	{25200, {{4096, 25200}, {6272, 28000}, {6144, 25200}, {12544, 28000},
 		{12288, 25200}, {25088, 28000}, {24576, 25200} } },
-	/*  27.000MHz  */
+	
 	{27000, {{4096, 27000}, {6272, 30000}, {6144, 27000}, {12544, 30000},
 		{12288, 27000}, {25088, 30000}, {24576, 27000} } },
-	/*  27.027MHz */
+	
 	{27027, {{4096, 27027}, {6272, 30030}, {6144, 27027}, {12544, 30030},
 		{12288, 27027}, {25088, 30030}, {24576, 27027} } },
-	/*  74.250MHz */
+	
 	{74250, {{4096, 74250}, {6272, 82500}, {6144, 74250}, {12544, 82500},
 		{12288, 74250}, {25088, 82500}, {24576, 74250} } },
-	/* 148.500MHz */
+	
 	{148500, {{4096, 148500}, {6272, 165000}, {6144, 148500},
 		{12544, 165000}, {12288, 148500}, {25088, 165000},
 		{24576, 148500} } },
-	/* 297.000MHz */
+	
 	{297000, {{3072, 222750}, {4704, 247500}, {5120, 247500},
 		{9408, 247500}, {10240, 247500}, {18816, 247500},
 		{20480, 247500} } },
@@ -559,11 +516,6 @@ static void hdmi_tx_wait_for_audio_engine(struct hdmi_tx_ctrl *hdmi_ctrl)
 		return;
 	}
 
-	/*
-	 * wait for 5 sec max for audio engine to acknowledge if hdmi tx core
-	 * can be safely turned off. Sleep for a reasonable time to make sure
-	 * vote_hdmi_core_on variable is updated properly by audio.
-	 */
 	while (hdmi_ctrl->vote_hdmi_core_on && --wait_for_vote)
 		msleep(100);
 
@@ -614,9 +566,8 @@ static struct hdmi_tx_ctrl *hdmi_tx_get_drvdata_from_sysfs_dev(
 		DEV_ERR("%s: fbi = NULL\n", __func__);
 		return NULL;
 	}
-} /* hdmi_tx_get_drvdata_from_sysfs_dev */
+} 
 
-/* todo: Fix this. Right now this is declared in hdmi_util.h */
 void *hdmi_get_featuredata_from_sysfs_dev(struct device *device,
 	u32 feature_type)
 {
@@ -1239,11 +1190,10 @@ static void hdmi_tx_hdcp_cb(void *ptr, enum hdmi_hdcp_state status)
 	case HDCP_STATE_INACTIVE:
 	default:
 		break;
-		/* do nothing */
+		
 	}
 }
 
-/* Enable HDMI features */
 static int hdmi_tx_init_features(struct hdmi_tx_ctrl *hdmi_ctrl)
 {
 	struct hdmi_edid_init_data edid_init_data;
@@ -1388,7 +1338,8 @@ static int hdmi_tx_read_sink_info(struct hdmi_tx_ctrl *hdmi_ctrl)
 
 	hdmi_ddc_config(&hdmi_ctrl->ddc_ctrl);
 
-	status = hdmi_edid_read(hdmi_ctrl->feature_data[HDMI_TX_FEAT_EDID]);
+	status = hdmi_edid_read(hdmi_ctrl->feature_data[HDMI_TX_FEAT_EDID], hdmi_ctrl->mhl_write_burst_vic);
+	hdmi_ctrl->mhl_write_burst_vic = 0;
 	if (!status)
 		DEV_DBG("%s: hdmi_edid_read success\n", __func__);
 	else
@@ -1403,9 +1354,11 @@ static void hdmi_tx_hpd_int_work(struct work_struct *work)
 	struct hdmi_tx_ctrl *hdmi_ctrl = NULL;
 	struct dss_io_data *io;
 
+	mutex_lock(&hpd_disconnect_mutex);
 	hdmi_ctrl = container_of(work, struct hdmi_tx_ctrl, hpd_int_work);
 	if (!hdmi_ctrl || !hdmi_ctrl->hpd_initialized) {
 		DEV_DBG("%s: invalid input\n", __func__);
+		mutex_unlock(&hpd_disconnect_mutex);
 		return;
 	}
 	io = &hdmi_ctrl->pdata.io[HDMI_TX_CORE_IO];
@@ -1415,6 +1368,7 @@ static void hdmi_tx_hpd_int_work(struct work_struct *work)
 	if (hdmi_ctrl->hpd_state) {
 		if (hdmi_tx_enable_power(hdmi_ctrl, HDMI_TX_DDC_PM, true)) {
 			DEV_ERR("%s: Failed to enable ddc power\n", __func__);
+			mutex_unlock(&hpd_disconnect_mutex);
 			return;
 		}
 
@@ -1437,7 +1391,9 @@ static void hdmi_tx_hpd_int_work(struct work_struct *work)
 
 	if (!completion_done(&hdmi_ctrl->hpd_int_done))
 		complete_all(&hdmi_ctrl->hpd_int_done);
-} /* hdmi_tx_hpd_int_work */
+
+	mutex_unlock(&hpd_disconnect_mutex);
+} 
 
 static int hdmi_tx_check_capability(struct hdmi_tx_ctrl *hdmi_ctrl)
 {
@@ -1789,12 +1745,7 @@ static void hdmi_tx_set_spd_infoframe(struct hdmi_tx_ctrl *hdmi_ctrl)
 	vendor_name = hdmi_ctrl->spd_vendor_name;
 	product_description = hdmi_ctrl->spd_product_description;
 
-	/* Setup Packet header and payload */
-	/*
-	 * 0x83 InfoFrame Type Code
-	 * 0x01 InfoFrame Version Number
-	 * 0x19 Length of Source Product Description InfoFrame
-	 */
+	
 	packet_header  = 0x83 | (0x01 << 8) | (0x19 << 16);
 	DSS_REG_W(io, HDMI_GENERIC1_HDR, packet_header);
 	check_sum += IFRAME_CHECKSUM_32(packet_header);
@@ -1835,24 +1786,11 @@ static void hdmi_tx_set_spd_infoframe(struct hdmi_tx_ctrl *hdmi_ctrl)
 	DSS_REG_W(io, HDMI_GENERIC1_5, packet_payload);
 	check_sum += IFRAME_CHECKSUM_32(packet_payload);
 
-	/*
-	 * Source Device Information
-	 * 00h unknown
-	 * 01h Digital STB
-	 * 02h DVD
-	 * 03h D-VHS
-	 * 04h HDD Video
-	 * 05h DVC
-	 * 06h DSC
-	 * 07h Video CD
-	 * 08h Game
-	 * 09h PC general
-	 */
 	packet_payload = (product_description[15] & 0x7f) | 0x00 << 8;
 	DSS_REG_W(io, HDMI_GENERIC1_6, packet_payload);
 	check_sum += IFRAME_CHECKSUM_32(packet_payload);
 
-	/* Vendor Name (7bit ASCII code) */
+	
 	packet_payload = ((vendor_name[0] & 0x7f) << 8)
 		| ((vendor_name[1] & 0x7f) << 16)
 		| ((vendor_name[2] & 0x7f) << 24);
@@ -1860,21 +1798,15 @@ static void hdmi_tx_set_spd_infoframe(struct hdmi_tx_ctrl *hdmi_ctrl)
 	packet_payload |= ((0x100 - (0xff & check_sum)) & 0xff);
 	DSS_REG_W(io, HDMI_GENERIC1_0, packet_payload);
 
-	/*
-	 * GENERIC1_LINE | GENERIC1_CONT | GENERIC1_SEND
-	 * Setup HDMI TX generic packet control
-	 * Enable this packet to transmit every frame
-	 * Enable HDMI TX engine to transmit Generic packet 1
-	 */
 	packet_control = DSS_REG_R_ND(io, HDMI_GEN_PKT_CTRL);
 	packet_control |= ((0x1 << 24) | (1 << 5) | (1 << 4));
 	DSS_REG_W(io, HDMI_GEN_PKT_CTRL, packet_control);
-} /* hdmi_tx_set_spd_infoframe */
+} 
 
 static void hdmi_tx_set_mode(struct hdmi_tx_ctrl *hdmi_ctrl, u32 power_on)
 {
 	struct dss_io_data *io = NULL;
-	/* Defaults: Disable block, HDMI mode */
+	
 	u32 reg_val = BIT(1);
 
 	if (!hdmi_ctrl) {
@@ -2439,22 +2371,8 @@ static int hdmi_tx_audio_iframe_setup(struct hdmi_tx_ctrl *hdmi_ctrl,
 	aud_pck_ctrl_2_reg = 1 | (layout << 1);
 	DSS_REG_W(io, HDMI_AUDIO_PKT_CTRL2, aud_pck_ctrl_2_reg);
 
-	/*
-	 * Please see table 20 Audio InfoFrame in HDMI spec
-	 * FL  = front left
-	 * FC  = front Center
-	 * FR  = front right
-	 * FLC = front left center
-	 * FRC = front right center
-	 * RL  = rear left
-	 * RC  = rear center
-	 * RR  = rear right
-	 * RLC = rear left center
-	 * RRC = rear right center
-	 * LFE = low frequency effect
-	 */
 
-	/* Read first then write because it is bundled with other controls */
+	
 	audio_info_ctrl_reg = DSS_REG_R(io, HDMI_INFOFRAME_CTRL0);
 
 	if (enabled) {
@@ -2485,58 +2403,41 @@ static int hdmi_tx_audio_iframe_setup(struct hdmi_tx_ctrl *hdmi_ctrl,
 			return -EINVAL;
 		}
 
-		/* Program the Channel-Speaker allocation */
+		
 		audio_info_1_reg = 0;
-		/* CA(channel_allocation) */
+		
 		audio_info_1_reg |= channel_allocation & 0xff;
-		/* Program the Level shifter */
+		
 		audio_info_1_reg |= (level_shift << 11) & 0x00007800;
-		/* Program the Down-mix Inhibit Flag */
+		
 		audio_info_1_reg |= (down_mix << 15) & 0x00008000;
 
 		DSS_REG_W(io, HDMI_AUDIO_INFO1, audio_info_1_reg);
 
-		/*
-		 * Calculate CheckSum: Sum of all the bytes in the
-		 * Audio Info Packet (See table 8.4 in HDMI spec)
-		 */
 		check_sum = 0;
-		/* HDMI_AUDIO_INFO_FRAME_PACKET_HEADER_TYPE[0x84] */
+		
 		check_sum += 0x84;
-		/* HDMI_AUDIO_INFO_FRAME_PACKET_HEADER_VERSION[0x01] */
+		
 		check_sum += 1;
-		/* HDMI_AUDIO_INFO_FRAME_PACKET_LENGTH[0x0A] */
+		
 		check_sum += 0x0A;
 		check_sum += channel_count;
 		check_sum += channel_allocation;
-		/* See Table 8.5 in HDMI spec */
+		
 		check_sum += (level_shift & 0xF) << 3 | (down_mix & 0x1) << 7;
 		check_sum &= 0xFF;
 		check_sum = (u8) (256 - check_sum);
 
 		audio_info_0_reg = 0;
-		/* CHECKSUM(check_sum) */
+		
 		audio_info_0_reg |= check_sum & 0xff;
-		/* CC(channel_count) */
+		
 		audio_info_0_reg |= (channel_count << 8) & 0x00000700;
 
 		DSS_REG_W(io, HDMI_AUDIO_INFO0, audio_info_0_reg);
 
-		/*
-		 * Set these flags
-		 * AUDIO_INFO_UPDATE |
-		 * AUDIO_INFO_SOURCE |
-		 * AUDIO_INFO_CONT   |
-		 * AUDIO_INFO_SEND
-		 */
 		audio_info_ctrl_reg |= 0x000000F0;
 	} else {
-		/*Clear these flags
-		 * ~(AUDIO_INFO_UPDATE |
-		 *   AUDIO_INFO_SOURCE |
-		 *   AUDIO_INFO_CONT   |
-		 *   AUDIO_INFO_SEND)
-		 */
 		audio_info_ctrl_reg &= ~0x000000F0;
 	}
 	DSS_REG_W(io, HDMI_INFOFRAME_CTRL0, audio_info_ctrl_reg);
@@ -2665,6 +2566,7 @@ int msm_hdmi_register_mhl(struct platform_device *pdev,
 	ops->tmds_enabled = hdmi_tx_tmds_enabled;
 	ops->set_mhl_max_pclk = hdmi_tx_set_mhl_max_pclk;
 	ops->set_upstream_hpd = hdmi_tx_set_mhl_hpd;
+	ops->set_hev_vic = hdmi_tx_set_hev_vic;
 
 	hdmi_ctrl->ds_registered = true;
 
@@ -3159,6 +3061,23 @@ static int hdmi_tx_sysfs_enable_hpd(struct hdmi_tx_ctrl *hdmi_ctrl, int on)
 	return rc;
 } /* hdmi_tx_sysfs_enable_hpd */
 
+static int hdmi_tx_set_hev_vic(struct platform_device *pdev, uint8_t write_burst_vic)
+{
+	int rc = 0;
+	struct hdmi_tx_ctrl *hdmi_ctrl = NULL;
+
+	hdmi_ctrl = platform_get_drvdata(pdev);
+
+	if (!hdmi_ctrl) {
+		DEV_ERR("%s: invalid input\n", __func__);
+		return -EINVAL;
+	}
+
+	hdmi_ctrl->mhl_write_burst_vic = write_burst_vic;
+
+	return rc;
+}
+
 static int hdmi_tx_set_mhl_hpd(struct platform_device *pdev, uint8_t on)
 {
 	int rc = 0;
@@ -3221,18 +3140,8 @@ static irqreturn_t hdmi_tx_isr(int irq, void *data)
 			(DSS_REG_R(io, HDMI_HPD_INT_STATUS) & BIT(1)) >> 1;
 		spin_unlock_irqrestore(&hdmi_ctrl->hpd_state_lock, flags);
 
-		/*
-		 * Ack the current hpd interrupt and stop listening to
-		 * new hpd interrupt.
-		 */
 		DSS_REG_W(io, HDMI_HPD_INT_CTRL, BIT(0));
 
-		/*
-		 * If suspend has already triggered, don't start the hpd work
-		 * to avoid a possible deadlock during suspend where hpd off
-		 * waits for hpd interrupt to finish. Suspend thread will
-		 * eventually reset the HPD module.
-		 */
 		if (!hdmi_ctrl->panel_suspend)
 			queue_work(hdmi_ctrl->workq, &hdmi_ctrl->hpd_int_work);
 	}
@@ -3450,11 +3359,6 @@ static int hdmi_tx_panel_event_handler(struct mdss_panel_data *panel_data,
 			return -EPERM;
 		}
 
-		/*
-		 * return value of 1 lets mdss know that panel
-		 * needs a reconfig due to new resolution and
-		 * it will issue close and open subsequently.
-		 */
 		if (new_vic != hdmi_ctrl->video_resolution)
 			rc = 1;
 		else
@@ -3484,7 +3388,6 @@ static int hdmi_tx_panel_event_handler(struct mdss_panel_data *panel_data,
 					__func__);
 				hdmi_tx_send_cable_notification(hdmi_ctrl,
 					false);
-				rc = -EPERM;
 			} else {
 				DEV_DBG("%s: cable present after resume\n",
 					__func__);
@@ -3494,13 +3397,19 @@ static int hdmi_tx_panel_event_handler(struct mdss_panel_data *panel_data,
 
 	case MDSS_EVENT_UNBLANK:
 		rc = hdmi_tx_power_on(panel_data);
-		if (rc)
+		if (rc) {
 			DEV_ERR("%s: hdmi_tx_power_on failed. rc=%d\n",
 				__func__, rc);
+			hdmi_tx_set_audio_switch_node(hdmi_ctrl, 0);
+			hdmi_tx_wait_for_audio_engine(hdmi_ctrl);
+
+			hdmi_tx_send_cable_notification(hdmi_ctrl, false);
+		}
 		break;
 
 	case MDSS_EVENT_PANEL_ON:
-		rc = hdmi_tx_start_hdcp(hdmi_ctrl);
+		if (hdmi_ctrl->panel_power_on)
+			rc = hdmi_tx_start_hdcp(hdmi_ctrl);
 		if (rc)
 			DEV_ERR("%s: hdcp start failed rc=%d\n", __func__, rc);
 
@@ -3682,9 +3591,8 @@ static void hdmi_tx_put_dt_clk_data(struct device *dev,
 		module_power->clk_config = NULL;
 	}
 	module_power->num_clk = 0;
-} /* hdmi_tx_put_dt_clk_data */
+} 
 
-/* todo: once clk are moved to device tree then change this implementation */
 static int hdmi_tx_get_dt_clk_data(struct device *dev,
 	struct dss_module_power *mp, u32 module_type)
 {
@@ -3699,7 +3607,7 @@ static int hdmi_tx_get_dt_clk_data(struct device *dev,
 
 	switch (module_type) {
 	case HDMI_TX_HPD_PM:
-		mp->num_clk = 4;
+		mp->num_clk = 5;
 		mp->clk_config = devm_kzalloc(dev, sizeof(struct dss_clk) *
 			mp->num_clk, GFP_KERNEL);
 		if (!mp->clk_config) {
@@ -3716,12 +3624,6 @@ static int hdmi_tx_get_dt_clk_data(struct device *dev,
 		mp->clk_config[1].type = DSS_CLK_OTHER;
 		mp->clk_config[1].rate = 19200000;
 
-		/*
-		 * This clock is required to clock MDSS interrupt registers
-		 * when HDMI is the only block turned on within MDSS. Since
-		 * rate for this clock is controlled by MDP driver, treat this
-		 * similar to AHB clock and do not set rate for it.
-		 */
 		snprintf(mp->clk_config[2].clk_name, 32, "%s", "mdp_core_clk");
 		mp->clk_config[2].type = DSS_CLK_AHB;
 		mp->clk_config[2].rate = 0;
@@ -3729,6 +3631,10 @@ static int hdmi_tx_get_dt_clk_data(struct device *dev,
 		snprintf(mp->clk_config[3].clk_name, 32, "%s", "alt_iface_clk");
 		mp->clk_config[3].type = DSS_CLK_AHB;
 		mp->clk_config[3].rate = 0;
+
+		snprintf(mp->clk_config[4].clk_name, 32, "%s", "rf_clk");
+		mp->clk_config[4].type = DSS_CLK_AHB;
+		mp->clk_config[4].rate = 0;
 		break;
 
 	case HDMI_TX_CORE_PM:
@@ -4186,18 +4092,14 @@ static void hdmi_tx_audio_tear_down(struct hdmi_tx_ctrl *hdmi_ctrl)
 
 		lpa_dma = readl_relaxed(lpa_base + LPASS_LPAIF_RDDMA_PER_CNT0);
 
-		/* Disable audio packet transmission */
+		
 		DSS_REG_W(io, HDMI_AUDIO_PKT_CTRL,
 			DSS_REG_R(io, HDMI_AUDIO_PKT_CTRL) & ~BIT(0));
 
-		/* Wait for LPA DMA Engine to be idle */
+		
 		while (i < LPA_DMA_IDLE_MAX) {
 			u32 val;
 
-			/*
-			 * sleep for minimum HW recommended time
-			 * for HW status to update.
-			 */
 			msleep(20);
 
 			val = readl_relaxed(lpa_base +
@@ -4221,6 +4123,22 @@ static void hdmi_tx_audio_tear_down(struct hdmi_tx_ctrl *hdmi_ctrl)
 		iounmap(lpa_base);
 	}
 }
+
+#ifdef CONFIG_HTC_MHL_DETECTION_8620
+static void mhl_cable_detect(void)
+{
+	mutex_lock(&hpd_disconnect_mutex);
+	DEV_INFO("%s: mhl remove",__func__ );
+	hdmi_tx_set_audio_switch_node(hdmi_ctrl_mhl, 0);
+	hdmi_tx_send_cable_notification(hdmi_ctrl_mhl, false);
+	mutex_unlock(&hpd_disconnect_mutex);
+}
+
+static struct t_mhl_disconnect_notifier mhl_status_notifier = {
+	.name = "hdmi_cable_state",
+	.func = mhl_cable_detect,
+};
+#endif
 
 static int hdmi_tx_probe(struct platform_device *pdev)
 {
@@ -4328,6 +4246,11 @@ static int hdmi_tx_probe(struct platform_device *pdev)
 
 		hdmi_tx_audio_tear_down(hdmi_ctrl);
 	}
+
+#ifdef CONFIG_HTC_MHL_DETECTION_8620
+	hdmi_ctrl_mhl = hdmi_ctrl;
+	mhl_disconnect_register_notifier(&mhl_status_notifier);
+#endif
 
 	return rc;
 

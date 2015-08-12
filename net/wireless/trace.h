@@ -208,9 +208,6 @@
 		}						\
 	} while (0)
 
-/*************************************************************
- *			rdev->ops traces		     *
- *************************************************************/
 
 TRACE_EVENT(rdev_suspend,
 	TP_PROTO(struct wiphy *wiphy, struct cfg80211_wowlan *wow),
@@ -1904,9 +1901,6 @@ TRACE_EVENT(rdev_set_ap_chanwidth,
 		  WIPHY_PR_ARG, NETDEV_PR_ARG, CHAN_DEF_PR_ARG)
 );
 
-/*************************************************************
- *	     cfg80211 exported functions traces		     *
- *************************************************************/
 
 TRACE_EVENT(cfg80211_return_bool,
 	TP_PROTO(bool ret),
@@ -2559,6 +2553,29 @@ TRACE_EVENT(cfg80211_ft_event,
 	),
 	TP_printk(WIPHY_PR_FMT ", " NETDEV_PR_FMT ", target_ap: " MAC_PR_FMT,
 		  WIPHY_PR_ARG, NETDEV_PR_ARG, MAC_PR_ARG(target_ap))
+);
+
+DEFINE_EVENT(wiphy_netdev_mac_evt, rdev_key_mgmt_set_pmk,
+	TP_PROTO(struct wiphy *wiphy, struct net_device *netdev, const u8 *pmk),
+	TP_ARGS(wiphy, netdev, pmk)
+);
+
+TRACE_EVENT(cfg80211_authorization_event,
+	TP_PROTO(struct wiphy *wiphy, struct net_device *netdev,
+		 enum nl80211_authorization_status auth_status),
+	TP_ARGS(wiphy, netdev, auth_status),
+	TP_STRUCT__entry(
+		WIPHY_ENTRY
+		NETDEV_ENTRY
+		__field(enum nl80211_authorization_status, auth_status)
+	),
+	TP_fast_assign(
+		WIPHY_ASSIGN;
+		NETDEV_ASSIGN;
+		__entry->auth_status = auth_status;
+	),
+	TP_printk(WIPHY_PR_FMT ", " NETDEV_PR_FMT ", auth_status: %d",
+		  WIPHY_PR_ARG, NETDEV_PR_ARG, __entry->auth_status)
 );
 
 #endif /* !__RDEV_OPS_TRACE || TRACE_HEADER_MULTI_READ */

@@ -29,7 +29,7 @@
 #endif
 
 #define XLOG_DEFAULT_PANIC 1
-#define XLOG_DEFAULT_REGDUMP 0x2 /* dump in RAM */
+#define XLOG_DEFAULT_REGDUMP 0x2 
 
 #define MDSS_XLOG_ENTRY	256
 #define MDSS_XLOG_MAX_DATA 6
@@ -103,7 +103,6 @@ void mdss_xlog(const char *name, int line, int flag, ...)
 	spin_unlock_irqrestore(&xlock, flags);
 }
 
-/* always dump the last entries which are not dumped yet */
 static bool __mdss_xlog_dump_calc_range(void)
 {
 	static u32 next;
@@ -373,6 +372,8 @@ static void mdss_xlog_dump_array(struct mdss_debug_base *blk_arr[],
 				mdss_dbg_xlog.enable_reg_dump);
 	}
 
+	mdss_dump_debug_bus();
+
 	mdss_xlog_dump_all();
 
 	if (dead && mdss_dbg_xlog.panic_on_err)
@@ -429,6 +430,7 @@ void mdss_xlog_tout_handler_default(bool queue, const char *name, ...)
 		/* schedule work to dump later */
 		mdss_dbg_xlog.work_panic = dead;
 		schedule_work(&mdss_dbg_xlog.xlog_dump_work);
+		flush_work(&mdss_dbg_xlog.xlog_dump_work);
 	} else {
 		mdss_xlog_dump_array(blk_arr, blk_len, dead, name);
 	}

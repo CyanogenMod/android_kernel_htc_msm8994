@@ -22,7 +22,6 @@
 
 static struct snd_soc_dai_ops msm_fe_dai_ops = {};
 
-/* Conventional and unconventional sample rate supported */
 static unsigned int supported_sample_rates[] = {
 	8000, 11025, 12000, 16000, 22050, 24000, 32000, 44100, 48000,
 	88200, 96000, 176400, 192000
@@ -697,6 +696,16 @@ static struct snd_soc_dai_driver msm_fe_dais[] = {
 		.probe = fe_dai_probe,
 	},
 	{
+		.playback = {
+			.stream_name = "Tertiary MI2S_RX Hostless Playback",
+			.aif_name = "TERT_MI2S_DL_HL",
+			.rates = SNDRV_PCM_RATE_8000_48000,
+			.formats = SNDRV_PCM_FMTBIT_S16_LE,
+			.channels_min = 1,
+			.channels_max = 2,
+			.rate_min = 8000,
+			.rate_max = 48000,
+		},
 		.capture = {
 			.stream_name = "Tertiary MI2S_TX Hostless Capture",
 			.aif_name = "TERT_MI2S_UL_HL",
@@ -709,7 +718,7 @@ static struct snd_soc_dai_driver msm_fe_dais[] = {
 			.rate_max = 48000,
 		},
 		.ops = &msm_fe_dai_ops,
-		.name = "TERT_MI2S_TX_HOSTLESS",
+		.name = "TERT_MI2S_HOSTLESS",
 		.probe = fe_dai_probe,
 	},
 	{
@@ -728,8 +737,18 @@ static struct snd_soc_dai_driver msm_fe_dais[] = {
 		.probe = fe_dai_probe,
 	},
 	{
+		.playback = {
+			.stream_name = "QUAT_MI2S_HOSTLESS Playback",
+			.aif_name = "QUAT_MI2S_DL_HL",
+			.rates = SNDRV_PCM_RATE_8000_48000,
+			.formats = SNDRV_PCM_FMTBIT_S16_LE | SNDRV_PCM_FMTBIT_S24_LE,
+			.channels_min = 1,
+			.channels_max = 2,
+			.rate_min = 8000,
+			.rate_max = 48000,
+		},
 		.capture = {
-			.stream_name = "Quaternary MI2S_TX Hostless Capture",
+			.stream_name = "QUAT_MI2S_HOSTLESS Capture",
 			.aif_name = "QUAT_MI2S_UL_HL",
 			.rates = SNDRV_PCM_RATE_8000_48000,
 			.formats = (SNDRV_PCM_FMTBIT_S16_LE |
@@ -740,7 +759,7 @@ static struct snd_soc_dai_driver msm_fe_dais[] = {
 			.rate_max = 48000,
 		},
 		.ops = &msm_fe_dai_ops,
-		.name = "QUAT_MI2S_TX_HOSTLESS",
+		.name = "QUAT_MI2S_HOSTLESS",
 		.probe = fe_dai_probe,
 	},
 	{
@@ -940,6 +959,21 @@ static struct snd_soc_dai_driver msm_fe_dais[] = {
 		},
 		.ops = &msm_fe_dai_ops,
 		.name = "QCHAT",
+		.probe = fe_dai_probe,
+	},
+	{
+		.playback = {
+			.stream_name = "MM_STUB Playback",
+			.aif_name = "MM_STUB_DL",
+			.rates = SNDRV_PCM_RATE_8000_48000,
+			.formats = SNDRV_PCM_FMTBIT_S16_LE,
+			.channels_min = 1,
+			.channels_max = 2,
+			.rate_min = 8000,
+			.rate_max = 48000,
+		},
+		.ops = &msm_fe_dai_ops,
+		.name = "MM_STUB",
 		.probe = fe_dai_probe,
 	},
 	{
@@ -1258,6 +1292,5 @@ static void __exit msm_fe_dai_exit(void)
 }
 module_exit(msm_fe_dai_exit);
 
-/* Module information */
 MODULE_DESCRIPTION("MSM Frontend DAI driver");
 MODULE_LICENSE("GPL v2");

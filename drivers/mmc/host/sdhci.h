@@ -20,9 +20,6 @@
 
 #include <linux/mmc/sdhci.h>
 
-/*
- * Controller registers
- */
 
 #define SDHCI_DMA_ADDRESS	0x00
 #define SDHCI_ARGUMENT2		SDHCI_DMA_ADDRESS
@@ -226,20 +223,17 @@
 #define  SDHCI_MAX_CURRENT_180_SHIFT	16
 #define   SDHCI_MAX_CURRENT_MULTIPLIER	4
 
-/* 4C-4F reserved for more max current */
 
 #define SDHCI_SET_ACMD12_ERROR	0x50
 #define SDHCI_SET_INT_ERROR	0x52
 
 #define SDHCI_ADMA_ERROR	0x54
 
-/* 55-57 reserved */
 
 #define SDHCI_HI_SHIFT 32
-#define SDHCI_ADMA_ADDRESS_LOW	0x58 /* addr[0:31] */
-#define SDHCI_ADMA_ADDRESS_HIGH	0x5C /* addr[32:63] */
+#define SDHCI_ADMA_ADDRESS_LOW	0x58 
+#define SDHCI_ADMA_ADDRESS_HIGH	0x5C 
 
-/* 60-FB reserved */
 
 #define SDHCI_PRESET_FOR_SDR12 0x66
 #define SDHCI_PRESET_FOR_SDR25 0x68
@@ -264,16 +258,10 @@
 #define   SDHCI_SPEC_200	1
 #define   SDHCI_SPEC_300	2
 
-/*
- * End of controller registers.
- */
 
 #define SDHCI_MAX_DIV_SPEC_200	256
 #define SDHCI_MAX_DIV_SPEC_300	2046
 
-/*
- * Host SDMA buffer boundary. Valid values from 4K to 512K in powers of 2.
- */
 #define SDHCI_DEFAULT_BOUNDARY_SIZE  (512 * 1024)
 #define SDHCI_DEFAULT_BOUNDARY_ARG   (ilog2(SDHCI_DEFAULT_BOUNDARY_SIZE) - 12)
 
@@ -298,6 +286,7 @@ struct sdhci_ops {
 	void (*platform_send_init_74_clocks)(struct sdhci_host *host,
 					     u8 power_mode);
 	unsigned int    (*get_ro)(struct sdhci_host *host);
+	int    (*get_cd)(struct sdhci_host *host);
 	void	(*platform_reset_enter)(struct sdhci_host *host, u8 mask);
 	void	(*platform_reset_exit)(struct sdhci_host *host, u8 mask);
 	int	(*set_uhs_signaling)(struct sdhci_host *host, unsigned int uhs);
@@ -431,5 +420,5 @@ extern int sdhci_runtime_suspend_host(struct sdhci_host *host);
 extern int sdhci_runtime_resume_host(struct sdhci_host *host);
 #endif
 
-void sdhci_cfg_irq(struct sdhci_host *host, bool enable, bool sync);
-#endif /* __SDHCI_HW_H */
+void sdhci_cfg_irq(struct sdhci_host *host, bool enable);
+#endif 

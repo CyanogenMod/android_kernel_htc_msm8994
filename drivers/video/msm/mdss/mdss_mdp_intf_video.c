@@ -24,16 +24,13 @@
 #include "mdss_debug.h"
 #include "mdss_mdp_trace.h"
 
-/* wait for at least 2 vsyncs for lowest refresh rate (24hz) */
 #define VSYNC_TIMEOUT_US 100000
 
-/* Poll time to do recovery during active region */
 #define POLL_TIME_USEC_FOR_LN_CNT 500
 
 #define MDP_INTR_MASK_INTF_VSYNC(intf_num) \
 	(1 << (2 * (intf_num - MDSS_MDP_INTF0) + MDSS_MDP_IRQ_INTF_VSYNC))
 
-/* intf timing settings */
 struct intf_timing_params {
 	u32 width;
 	u32 height;
@@ -138,11 +135,6 @@ static void mdss_mdp_video_intf_recovery(void *data, int event)
 		return;
 	}
 
-	/*
-	 * Currently, only intf_fifo_overflow is
-	 * supported for recovery sequence for video
-	 * mode DSI interface
-	 */
 	if (event != MDP_INTF_DSI_VIDEO_FIFO_OVERFLOW) {
 		pr_warn("%s: unsupported recovery event:%d\n",
 					__func__, event);
@@ -158,16 +150,11 @@ static void mdss_mdp_video_intf_recovery(void *data, int event)
 			pinfo->mipi.dsi_pclk_rate :
 			pinfo->clk_rate);
 
-	clk_rate /= 1000;	/* in kHz */
+	clk_rate /= 1000;	
 	if (!clk_rate) {
 		pr_err("Unable to get proper clk_rate\n");
 		return;
 	}
-	/*
-	 * calculate clk_period as pico second to maintain good
-	 * accuracy with high pclk rate and this number is in 17 bit
-	 * range.
-	 */
 	clk_period = 1000000000 / clk_rate;
 	if (!clk_period) {
 		pr_err("Unable to calculate clock period\n");
@@ -180,14 +167,10 @@ static void mdss_mdp_video_intf_recovery(void *data, int event)
 		 pinfo->lcdc.h_pulse_width +
 		 pinfo->xres) * clk_period;
 
-	/* delay in micro seconds */
+	
 	delay = (time_of_line * (min_ln_cnt +
 			pinfo->lcdc.v_front_porch)) / 1000000;
 
-	/*
-	 * Wait for max delay before
-	 * polling to check active region
-	 */
 	if (delay > POLL_TIME_USEC_FOR_LN_CNT)
 		delay = POLL_TIME_USEC_FOR_LN_CNT;
 
@@ -289,9 +272,9 @@ static int mdss_mdp_video_timegen_setup(struct mdss_mdp_ctl *ctl,
 		hsync_polarity = 0;
 		vsync_polarity = 0;
 	}
-	polarity_ctl = (den_polarity << 2)   | /*  DEN Polarity  */
-		       (vsync_polarity << 1) | /* VSYNC Polarity */
-		       (hsync_polarity << 0);  /* HSYNC Polarity */
+	polarity_ctl = (den_polarity << 2)   | 
+		       (vsync_polarity << 1) | 
+		       (hsync_polarity << 0);  
 
 	mdp_video_write(ctx, MDSS_MDP_REG_INTF_HSYNC_CTL, hsync_ctl);
 	mdp_video_write(ctx, MDSS_MDP_REG_INTF_VSYNC_PERIOD_F0,
@@ -665,14 +648,38 @@ static void recover_underrun_work(struct work_struct *work)
 static void mdss_mdp_video_underrun_intr_done(void *arg)
 {
 	struct mdss_mdp_ctl *ctl = arg;
+	struct mdss_mdp_perf_params *new_perf;
+	struct mdss_mdp_perf_params *cur_perf;
+
 	if (unlikely(!ctl))
 		return;
+
+	new_perf = &ctl->new_perf;
+	cur_perf = &ctl->cur_perf;
 
 	ctl->underrun_cnt++;
 	MDSS_XLOG(ctl->num, ctl->underrun_cnt);
 	trace_mdp_video_underrun_done(ctl->num, ctl->underrun_cnt);
-	pr_debug("display underrun detected for ctl=%d count=%d\n", ctl->num,
+	pr_err("display underrun detected for ctl=%d count=%d\n", ctl->num,
 			ctl->underrun_cnt);
+
+	if (new_perf) {
+		pr_err("=======Underrun New perf=======\n");
+		pr_err("ctl=%d clk_rate=%u\n", ctl->num, new_perf->mdp_clk_rate);
+		pr_err("bw_overlap=%llu bw_prefill=%llu prefill_bytes=%d\n",
+			 new_perf->bw_overlap, new_perf->bw_prefill, new_perf->prefill_bytes);
+	} else {
+		pr_err("=======Underrun New perf is NULL=======\n");
+	}
+
+	if (cur_perf) {
+		pr_err("=======Underrun cur perf=======\n");
+		pr_err("ctl=%d clk_rate=%u\n", ctl->num, cur_perf->mdp_clk_rate);
+		pr_err("bw_overlap=%llu bw_prefill=%llu prefill_bytes=%d\n",
+			 cur_perf->bw_overlap, cur_perf->bw_prefill, cur_perf->prefill_bytes);
+	} else {
+		pr_err("=======Underrun cur perf is NULL=======\n");
+	}
 
 	if (ctl->opmode & MDSS_MDP_CTL_OP_PACK_3D_ENABLE)
 		schedule_work(&ctl->recover_work);
@@ -914,13 +921,6 @@ static int mdss_mdp_video_config_fps(struct mdss_mdp_ctl *ctl,
 				return -EINVAL;
 			}
 
-			/*
-			 * there is possibility that the time of mdp flush
-			 * bit set and the time of dsi flush bit are cross
-			 * vsync boundary. therefore wait4vsync is needed
-			 * to guarantee both flush bits are set within same
-			 * vsync period regardless of mdp revision.
-			 */
 			rc = mdss_mdp_video_dfps_wait4vsync(ctl);
 			if (rc < 0) {
 				pr_err("Error during wait4vsync\n");
@@ -957,10 +957,6 @@ static int mdss_mdp_video_config_fps(struct mdss_mdp_ctl *ctl,
 			if (sctx)
 				mdss_mdp_fetch_start_config(sctx, ctl);
 
-			/*
-			 * MDP INTF registers support DB on targets
-			 * starting from MDP v1.5.
-			 */
 			if (mdata->mdp_rev >= MDSS_MDP_HW_REV_105)
 				mdss_mdp_video_timegen_flush(ctl, sctx);
 
@@ -1148,10 +1144,6 @@ static void mdss_mdp_fetch_start_config(struct mdss_mdp_video_ctx *ctx,
 		return;
 	}
 
-	/*
-	 * Fetch should always be outside the active lines. If the fetching
-	 * is programmed within active region, hardware behavior is unknown.
-	 */
 	v_total = mdss_panel_get_vtotal(pinfo);
 	h_total = mdss_panel_get_htotal(pinfo, true);
 
@@ -1373,12 +1365,6 @@ void mdss_mdp_switch_to_cmd_mode(struct mdss_mdp_ctl *ctl, int prep)
 	if (!(frame_rate >= 24 && frame_rate <= 240))
 		frame_rate = 24;
 	frame_rate = ((1000/frame_rate) + 1);
-	/*
-	 * In order for panel to switch to cmd mode, we need
-	 * to wait for one more video frame to be sent after
-	 * issuing the switch command. We do this before
-	 * turning off the timeing engine.
-	 */
 	msleep(frame_rate);
 	mdss_mdp_turn_off_time_engine(ctl, ctx, frame_rate);
 	mdss_bus_bandwidth_ctrl(false);

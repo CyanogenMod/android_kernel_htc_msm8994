@@ -40,10 +40,8 @@
 #include "msm_iommu_pagetable.h"
 
 #ifdef CONFIG_IOMMU_LPAE
-/* bitmap of the page sizes currently supported */
 #define MSM_IOMMU_PGSIZES	(SZ_4K | SZ_64K | SZ_2M | SZ_32M | SZ_1G)
 #else
-/* bitmap of the page sizes currently supported */
 #define MSM_IOMMU_PGSIZES	(SZ_4K | SZ_64K | SZ_1M | SZ_16M)
 #endif
 
@@ -292,10 +290,6 @@ static void check_tlb_sync_state(struct msm_iommu_drvdata const *drvdata,
 
 #else
 
-/*
- * For targets without VBIF or for targets with the VBIF check disabled
- * we directly just crash to capture the issue
- */
 static void check_halt_state(struct msm_iommu_drvdata const *drvdata)
 {
 	BUG();
@@ -331,17 +325,8 @@ void iommu_halt(struct msm_iommu_drvdata const *iommu_drvdata)
 void iommu_resume(const struct msm_iommu_drvdata *iommu_drvdata)
 {
 	if (iommu_drvdata->halt_enabled) {
-		/*
-		 * Ensure transactions have completed before releasing
-		 * the halt
-		 */
 		mb();
 		SET_MICRO_MMU_CTRL_HALT_REQ(iommu_drvdata->base, 0);
-		/*
-		 * Ensure write is complete before continuing to ensure
-		 * we don't turn off clocks while transaction is still
-		 * pending.
-		 */
 		mb();
 	}
 }
@@ -417,25 +402,19 @@ fail:
 	return ret;
 }
 
-/*
- * May only be called for non-secure iommus
- */
 static void __reset_iommu(struct msm_iommu_drvdata *iommu_drvdata)
 {
 	int i, smt_size, res;
 	unsigned long val;
 	void __iomem *base = iommu_drvdata->base;
 
-	/* SMMU_ACR is an implementation defined register.
-	 * Resetting is not required for some implementation.
-	 */
 	if (iommu_drvdata->model != MMU_500)
 		SET_ACR(base, 0);
 	SET_CR2(base, 0);
 	SET_GFAR(base, 0);
 	SET_GFSRRESTORE(base, 0);
 
-	/* Invalidate the entire non-secure TLB */
+	
 	SET_TLBIALLNSNH(base, 0);
 	SET_TLBGSYNC(base, 0);
 	res = readl_tight_poll_timeout(GLB_REG(TLBGSTATUS, base), val,
@@ -482,9 +461,6 @@ static void __program_iommu_secure(struct msm_iommu_drvdata *iommu_drvdata)
 	SET_NSCR0_CLIENTPD(base, 0);
 }
 
-/*
- * May only be called for non-secure iommus
- */
 static void __program_iommu(struct msm_iommu_drvdata *drvdata)
 {
 	__reset_iommu(drvdata);
@@ -525,17 +501,13 @@ void program_iommu_bfb_settings(void __iomem *base,
 			SET_GLOBAL_REG(base, bfb_settings->regs[i],
 					     bfb_settings->data[i]);
 
-	mb(); /* Make sure writes complete before returning */
+	mb(); 
 }
 
 static void __reset_context(struct msm_iommu_drvdata *iommu_drvdata, int ctx)
 {
 	void __iomem *base = iommu_drvdata->cb_base;
 
-	/* Don't set ACTLR to zero because if context bank is in
-	 * bypass mode (say after iommu_detach), still this ACTLR
-	 * value matters for micro-TLB caching.
-	 */
 	if (iommu_drvdata->model != MMU_500)
 		SET_ACTLR(base, ctx, 0);
 	SET_FAR(base, ctx, 0);
@@ -599,27 +571,23 @@ static void msm_iommu_setup_memory_remap(void __iomem *base, unsigned int ctx)
 
 static void msm_iommu_setup_pg_l2_redirect(void __iomem *base, unsigned int ctx)
 {
-	/*
-	 * Configure page tables as inner-cacheable and shareable to reduce
-	 * the TLB miss penalty.
-	 */
-	SET_CB_TTBCR_SH0(base, ctx, 3); /* Inner shareable */
-	SET_CB_TTBCR_ORGN0(base, ctx, 1); /* outer cachable*/
-	SET_CB_TTBCR_IRGN0(base, ctx, 1); /* inner cachable*/
-	SET_CB_TTBCR_T0SZ(base, ctx, 0); /* 0GB-4GB */
+	SET_CB_TTBCR_SH0(base, ctx, 3); 
+	SET_CB_TTBCR_ORGN0(base, ctx, 1); 
+	SET_CB_TTBCR_IRGN0(base, ctx, 1); 
+	SET_CB_TTBCR_T0SZ(base, ctx, 0); 
 
 
-	SET_CB_TTBCR_SH1(base, ctx, 3); /* Inner shareable */
-	SET_CB_TTBCR_ORGN1(base, ctx, 1); /* outer cachable*/
-	SET_CB_TTBCR_IRGN1(base, ctx, 1); /* inner cachable*/
-	SET_CB_TTBCR_T1SZ(base, ctx, 0); /* TTBR1 not used */
+	SET_CB_TTBCR_SH1(base, ctx, 3); 
+	SET_CB_TTBCR_ORGN1(base, ctx, 1); 
+	SET_CB_TTBCR_IRGN1(base, ctx, 1); 
+	SET_CB_TTBCR_T1SZ(base, ctx, 0); 
 }
 
 #else
 
 static void msm_iommu_setup_ctx(void __iomem *base, unsigned int ctx)
 {
-	/* Turn on TEX Remap */
+	
 	SET_CB_SCTLR_TRE(base, ctx, 1);
 }
 
@@ -631,14 +599,11 @@ static void msm_iommu_setup_memory_remap(void __iomem *base, unsigned int ctx)
 
 static void msm_iommu_setup_pg_l2_redirect(void __iomem *base, unsigned int ctx)
 {
-	/* Configure page tables as inner-cacheable and shareable to reduce
-	 * the TLB miss penalty.
-	 */
 	SET_CB_TTBR0_S(base, ctx, 1);
 	SET_CB_TTBR0_NOS(base, ctx, 1);
-	SET_CB_TTBR0_IRGN1(base, ctx, 0); /* WB, WA */
+	SET_CB_TTBR0_IRGN1(base, ctx, 0); 
 	SET_CB_TTBR0_IRGN0(base, ctx, 1);
-	SET_CB_TTBR0_RGN(base, ctx, 1);   /* WB, WA */
+	SET_CB_TTBR0_RGN(base, ctx, 1);   
 }
 
 #endif
@@ -721,34 +686,31 @@ static void __program_context(struct msm_iommu_drvdata *iommu_drvdata,
 
 		SET_CBAR_N(base, ctx, 0);
 
-		/* Stage 1 Context with Stage 2 bypass */
+		
 		SET_CBAR_TYPE(base, ctx, 1);
 
-		/* Route page faults to the non-secure interrupt */
+		
 		SET_CBAR_IRPTNDX(base, ctx, 1);
 
-		/* Set VMID to non-secure HLOS */
+		
 		SET_CBAR_VMID(base, ctx, 3);
 
-		/* Bypass is treated as inner-shareable */
+		
 		SET_CBAR_BPSHCFG(base, ctx, 2);
 
-		/* Do not downgrade memory attributes */
+		
 		SET_CBAR_MEMATTR(base, ctx, 0x0A);
 
 	}
 
 	msm_iommu_assign_ASID(iommu_drvdata, ctx_drvdata, priv);
 
-	/* Ensure that ASID assignment has completed before we use
-	 * ASID for TLB invalidation. Here, mb() is required because
-	 * both these registers are separated by more than 1KB. */
 	mb();
 	SET_TLBIASID(iommu_drvdata->cb_base, ctx_drvdata->num,
 					ctx_drvdata->asid);
 	__sync_tlb(iommu_drvdata, ctx_drvdata->num, priv);
 
-	/* Enable the MMU */
+	
 	SET_CB_SCTLR_M(cb_base, ctx, 1);
 	mb();
 }
@@ -947,8 +909,6 @@ static void msm_iommu_detach_dev(struct iommu_domain *domain,
 
 	__reset_context(iommu_drvdata, ctx_drvdata->num);
 
-	/*
-	 * Only reset the M2V tables on the very last detach */
 	if (!is_secure && iommu_drvdata->ctx_attach_count == 1) {
 		iommu_halt(iommu_drvdata);
 		__release_smg(iommu_drvdata->base);
@@ -1383,11 +1343,6 @@ irqreturn_t msm_iommu_fault_handler_v2(int irq, void *dev_id)
 		pr_err("Unexpected IOMMU page fault!\n");
 		pr_err("name = %s\n", drvdata->name);
 		pr_err("Power is OFF. Unable to read page fault information\n");
-		/*
-		 * We cannot determine which context bank caused the issue so
-		 * we just return handled here to ensure IRQ handler code is
-		 * happy
-		 */
 		ret = IRQ_HANDLED;
 		goto fail;
 	}

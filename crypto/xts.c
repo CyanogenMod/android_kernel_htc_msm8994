@@ -38,19 +38,14 @@ static int setkey(struct crypto_tfm *parent, const u8 *key,
 	u32 *flags = &parent->crt_flags;
 	int err;
 
-	/* key consists of keys of equal size concatenated, therefore
-	 * the length must be even */
 	if (keylen % 2) {
-		/* tell the user why there was an error */
+		
 		*flags |= CRYPTO_TFM_RES_BAD_KEY_LEN;
 		return -EINVAL;
 	}
 
-	/* we need two cipher instances: one to compute the initial 'tweak'
-	 * by encrypting the IV (usually the 'plain' iv) and the other
-	 * one to encrypt and decrypt the data */
 
-	/* tweak cipher, uses Key2 i.e. the second half of *key */
+	
 	crypto_cipher_clear_flags(child, CRYPTO_TFM_REQ_MASK);
 	crypto_cipher_set_flags(child, crypto_tfm_get_flags(parent) &
 				       CRYPTO_TFM_REQ_MASK);
@@ -172,7 +167,7 @@ int xts_crypt(struct blkcipher_desc *desc, struct scatterlist *sdst,
 {
 	const unsigned int bsize = XTS_BLOCK_SIZE;
 	const unsigned int max_blks = req->tbuflen / bsize;
-	struct blkcipher_walk walk;
+	struct blkcipher_walk walk={};
 	unsigned int nblocks;
 	be128 *src, *dst, *t;
 	be128 *t_buf = req->tbuf;

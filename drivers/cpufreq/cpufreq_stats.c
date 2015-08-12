@@ -255,10 +255,6 @@ static void cpufreq_stats_create_table(unsigned int cpu)
 	struct cpufreq_policy *policy;
 	struct cpufreq_frequency_table *table;
 
-	/*
-	 * "likely(!policy)" because normally cpufreq_stats will be registered
-	 * before cpufreq driver
-	 */
 	policy = cpufreq_cpu_get(cpu);
 	if (likely(!policy))
 		return;
@@ -307,7 +303,7 @@ static int cpufreq_stat_notifier_policy(struct notifier_block *nb,
 	else if (val == CPUFREQ_REMOVE_POLICY)
 		__cpufreq_stats_free_table(policy);
 
-	return ret;
+	return (ret == -EBUSY)? 0 : ret;
 }
 
 static int cpufreq_stat_notifier_trans(struct notifier_block *nb,

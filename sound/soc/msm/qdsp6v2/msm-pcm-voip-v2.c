@@ -32,12 +32,16 @@
 #include "q6voice.h"
 #include "audio_ocmem.h"
 
+#undef pr_info
+#undef pr_err
+#define pr_info(fmt, ...) pr_aud_info(fmt, ##__VA_ARGS__)
+#define pr_err(fmt, ...) pr_aud_err(fmt, ##__VA_ARGS__)
+
 #define SHARED_MEM_BUF 2
 #define VOIP_MAX_Q_LEN 10
 #define VOIP_MAX_VOC_PKT_SIZE 4096
 #define VOIP_MIN_VOC_PKT_SIZE 320
 
-/* Length of the DSP frame info header added to the voc packet. */
 #define DSP_FRAME_HDR_LEN 1
 
 #define MODE_IS127		0x2
@@ -105,10 +109,6 @@ enum voip_state {
 struct voip_frame_hdr {
 	uint32_t timestamp;
 	union {
-		/*
-		 * Bits 0-3: Frame type
-		 * [optional] Bits 16-19: Frame rate
-		 */
 		uint32_t frame_type;
 		uint32_t packet_rate;
 	};
@@ -316,13 +316,12 @@ static int msm_pcm_voip_probe(struct snd_soc_platform *platform)
 	return 0;
 }
 
-/* sample rate supported */
 static unsigned int supported_sample_rates[] = {8000, 16000};
 
 static void voip_ssr_cb_fn(uint32_t opcode, void *private_data)
 {
 
-	/* Notify ASoC to send next playback/Capture to unblock write/read */
+	
 	struct voip_drv_info *prtd = private_data;
 
 	if (opcode == 0xFFFFFFFF) {
@@ -347,7 +346,6 @@ static void voip_ssr_cb_fn(uint32_t opcode, void *private_data)
 	}
 }
 
-/* capture path */
 static void voip_process_ul_pkt(uint8_t *voc_pkt,
 				uint32_t pkt_len,
 				uint32_t timestamp,
@@ -371,10 +369,6 @@ static void voip_process_ul_pkt(uint8_t *voc_pkt,
 		switch (prtd->mode) {
 		case MODE_AMR_WB:
 		case MODE_AMR: {
-			/* Remove the DSP frame info header. Header format:
-			 * Bits 0-3: Frame rate
-			 * Bits 4-7: Frame type
-			 */
 			buf_node->frame.frm_hdr.timestamp = timestamp;
 			buf_node->frame.frm_hdr.frame_type =
 						((*voc_pkt) & 0xF0) >> 4;
@@ -391,10 +385,6 @@ static void voip_process_ul_pkt(uint8_t *voc_pkt,
 		case MODE_4GV_NB:
 		case MODE_4GV_WB:
 		case MODE_4GV_NW: {
-			/* Remove the DSP frame info header.
-			 * Header format:
-			 * Bits 0-3: frame rate
-			 */
 			buf_node->frame.frm_hdr.timestamp = timestamp;
 			buf_node->frame.frm_hdr.packet_rate = (*voc_pkt) & 0x0F;
 			voc_pkt = voc_pkt + DSP_FRAME_HDR_LEN;
@@ -409,28 +399,12 @@ static void voip_process_ul_pkt(uint8_t *voc_pkt,
 		}
 		case MODE_G711:
 		case MODE_G711A:{
-			/* G711 frames are 10ms each, but the DSP works with
-			 * 20ms frames and sends two 10ms frames per buffer.
-			 * Extract the two frames and put them in separate
-			 * buffers.
-			 */
-			/* Remove the first DSP frame info header.
-			 * Header format: G711A
-			 * Bits 0-1: Frame type
-			 * Bits 2-3: Frame rate
-			 *
-			 * Header format: G711
-			 * Bits 2-3: Frame rate
-			 */
 			if (prtd->mode == MODE_G711A)
 				buf_node->frame.frm_hdr.frame_type =
 							(*voc_pkt) & 0x03;
 			buf_node->frame.frm_hdr.timestamp = timestamp;
 			voc_pkt = voc_pkt + DSP_FRAME_HDR_LEN;
 
-			/* There are two frames in the buffer. Length of the
-			 * first frame:
-			 */
 			buf_node->frame.pktlen = (pkt_len -
 						  2 * DSP_FRAME_HDR_LEN) / 2;
 
@@ -441,9 +415,6 @@ static void voip_process_ul_pkt(uint8_t *voc_pkt,
 
 			list_add_tail(&buf_node->list, &prtd->out_queue);
 
-			/* Get another buffer from the free Q and fill in the
-			 * second frame.
-			 */
 			if (!list_empty(&prtd->free_out_queue)) {
 				buf_node =
 					list_first_entry(&prtd->free_out_queue,
@@ -451,11 +422,6 @@ static void voip_process_ul_pkt(uint8_t *voc_pkt,
 							 list);
 				list_del(&buf_node->list);
 
-				/* Remove the second DSP frame info header.
-				 * Header format:
-				 * Bits 0-1: Frame type
-				 * Bits 2-3: Frame rate
-				 */
 
 				if (prtd->mode == MODE_G711A)
 					buf_node->frame.frm_hdr.frame_type =
@@ -463,9 +429,6 @@ static void voip_process_ul_pkt(uint8_t *voc_pkt,
 				buf_node->frame.frm_hdr.timestamp = timestamp;
 				voc_pkt = voc_pkt + DSP_FRAME_HDR_LEN;
 
-				/* There are two frames in the buffer. Length
-				 * of the second frame:
-				 */
 				buf_node->frame.pktlen = (pkt_len -
 						2 * DSP_FRAME_HDR_LEN) / 2;
 
@@ -505,7 +468,6 @@ static void voip_process_ul_pkt(uint8_t *voc_pkt,
 	wake_up(&prtd->out_wait);
 }
 
-/* playback path */
 static void voip_process_dl_pkt(uint8_t *voc_pkt, void *private_data)
 {
 	struct voip_buf_node *buf_node = NULL;
@@ -530,13 +492,8 @@ static void voip_process_dl_pkt(uint8_t *voc_pkt, void *private_data)
 		case MODE_AMR_WB: {
 			*((uint32_t *)voc_pkt) = buf_node->frame.pktlen +
 							DSP_FRAME_HDR_LEN;
-			/* Advance to the header of voip packet */
+			
 			voc_pkt = voc_pkt + sizeof(uint32_t);
-			/*
-			 * Add the DSP frame info header. Header format:
-			 * Bits 0-3: Frame rate
-			 * Bits 4-7: Frame type
-			 */
 			*voc_pkt = ((buf_node->frame.frm_hdr.frame_type &
 				   0x0F) << 4);
 			frame_rate = (buf_node->frame.frm_hdr.frame_type &
@@ -564,12 +521,8 @@ static void voip_process_dl_pkt(uint8_t *voc_pkt, void *private_data)
 		case MODE_4GV_NW: {
 			*((uint32_t *)voc_pkt) = buf_node->frame.pktlen +
 							 DSP_FRAME_HDR_LEN;
-			/* Advance to the header of voip packet */
+			
 			voc_pkt = voc_pkt + sizeof(uint32_t);
-			/*
-			 * Add the DSP frame info header. Header format:
-			 * Bits 0-3 : Frame rate
-			 */
 			*voc_pkt = buf_node->frame.frm_hdr.packet_rate & 0x0F;
 			voc_pkt = voc_pkt + DSP_FRAME_HDR_LEN;
 
@@ -582,13 +535,6 @@ static void voip_process_dl_pkt(uint8_t *voc_pkt, void *private_data)
 		}
 		case MODE_G711:
 		case MODE_G711A:{
-			/* G711 frames are 10ms each but the DSP expects 20ms
-			 * worth of data, so send two 10ms frames per buffer.
-			 */
-			/* Add the first DSP frame info header. Header format:
-			 * Bits 0-1: Frame type
-			 * Bits 2-3: Frame rate
-			 */
 			voc_addr = voc_pkt;
 			voc_pkt = voc_pkt + sizeof(uint32_t);
 
@@ -606,17 +552,12 @@ static void voip_process_dl_pkt(uint8_t *voc_pkt, void *private_data)
 			list_add_tail(&buf_node->list, &prtd->free_in_queue);
 
 			if (!list_empty(&prtd->in_queue)) {
-				/* Get the second buffer. */
+				
 				buf_node = list_first_entry(&prtd->in_queue,
 							struct voip_buf_node,
 							list);
 				list_del(&buf_node->list);
 
-				/* Add the second DSP frame info header.
-				 * Header format:
-				 * Bits 0-1: Frame type
-				 * Bits 2-3: Frame rate
-				 */
 				*voc_pkt = ((prtd->rate_type & 0x0F) << 2) |
 				(buf_node->frame.frm_hdr.frame_type & 0x03);
 				voc_pkt = voc_pkt + DSP_FRAME_HDR_LEN;
@@ -631,9 +572,6 @@ static void voip_process_dl_pkt(uint8_t *voc_pkt, void *private_data)
 				list_add_tail(&buf_node->list,
 					      &prtd->free_in_queue);
 			} else {
-				/* Only 10ms worth of data is available, signal
-				 * erasure frame.
-				 */
 				*voc_pkt = ((prtd->rate_type & 0x0F) << 2) |
 					    (MVS_G711A_ERASURE & 0x03);
 
@@ -662,7 +600,7 @@ static void voip_process_dl_pkt(uint8_t *voc_pkt, void *private_data)
 	} else {
 		*((uint32_t *)voc_pkt) = 0;
 		spin_unlock_irqrestore(&prtd->dsp_lock, dsp_flags);
-		pr_err("DL data not available\n");
+		pr_debug("DL data not available\n");
 	}
 	wake_up(&prtd->in_wait);
 }

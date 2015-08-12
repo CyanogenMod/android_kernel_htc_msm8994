@@ -57,12 +57,6 @@ void dbs_check_cpu(struct dbs_data *dbs_data, int cpu)
 
 		j_cdbs = dbs_data->cdata->get_cpu_cdbs(j);
 
-		/*
-		 * For the purpose of ondemand, waiting for disk IO is
-		 * an indication that you're performance critical, and
-		 * not that the system is actually idle. So do not add
-		 * the iowait time to the cpu idle time.
-		 */
 		if (dbs_data->cdata->governor == GOV_ONDEMAND)
 			io_busy = od_tuners->io_is_busy;
 		cur_idle_time = get_cpu_idle_time(j, &cur_wall_time, io_busy);
@@ -81,10 +75,6 @@ void dbs_check_cpu(struct dbs_data *dbs_data, int cpu)
 
 			cur_nice = kcpustat_cpu(j).cpustat[CPUTIME_NICE] -
 					 cdbs->prev_cpu_nice;
-			/*
-			 * Assumption: nice time between sampling periods will
-			 * be less than 2^32 jiffies for 32 bit sys
-			 */
 			cur_nice_jiffies = (unsigned long)
 					cputime64_to_jiffies64(cur_nice);
 
@@ -123,13 +113,6 @@ void gov_queue_work(struct dbs_data *dbs_data, struct cpufreq_policy *policy,
 		return;
 
 	if (!all_cpus) {
-		/*
-		 * Use raw_smp_processor_id() to avoid preemptible warnings.
-		 * We know that this is only called with all_cpus == false from
-		 * works that have been queued with *_work_on() functions and
-		 * those works are canceled during CPU_DOWN_PREPARE so they
-		 * can't possibly run on any other CPU.
-		 */
 		__gov_queue_work(raw_smp_processor_id(), dbs_data, delay);
 	} else {
 		for_each_cpu(i, policy->cpus)
@@ -150,7 +133,6 @@ static inline void gov_cancel_work(struct dbs_data *dbs_data,
 	}
 }
 
-/* Will return if we need to evaluate cpu load again or not */
 bool need_load_eval(struct cpu_dbs_common_info *cdbs,
 		unsigned int sampling_rate)
 {
@@ -363,13 +345,15 @@ int cpufreq_governor_dbs(struct cpufreq_policy *policy,
 
 	case CPUFREQ_GOV_LIMITS:
 		mutex_lock(&cpu_cdbs->timer_mutex);
-		if (policy->max < cpu_cdbs->cur_policy->cur)
-			__cpufreq_driver_target(cpu_cdbs->cur_policy,
-					policy->max, CPUFREQ_RELATION_H);
-		else if (policy->min > cpu_cdbs->cur_policy->cur)
-			__cpufreq_driver_target(cpu_cdbs->cur_policy,
-					policy->min, CPUFREQ_RELATION_L);
-		dbs_check_cpu(dbs_data, cpu);
+		if (cpu_cdbs->cur_policy) {
+			if (policy->max < cpu_cdbs->cur_policy->cur)
+				__cpufreq_driver_target(cpu_cdbs->cur_policy,
+						policy->max, CPUFREQ_RELATION_H);
+			else if (policy->min > cpu_cdbs->cur_policy->cur)
+				__cpufreq_driver_target(cpu_cdbs->cur_policy,
+						policy->min, CPUFREQ_RELATION_L);
+			dbs_check_cpu(dbs_data, cpu);
+		}
 		mutex_unlock(&cpu_cdbs->timer_mutex);
 		break;
 	}

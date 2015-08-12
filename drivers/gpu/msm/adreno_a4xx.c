@@ -25,64 +25,59 @@
 
 #define SP_TP_PWR_ON BIT(20)
 
-/*
- * Set of registers to dump for A4XX on snapshot.
- * Registers in pairs - first value is the start offset, second
- * is the stop offset (inclusive)
- */
 
 const unsigned int a4xx_registers[] = {
-	/* RBBM */
+	
 	0x0000, 0x0002, 0x0004, 0x0021, 0x0023, 0x0024, 0x0026, 0x0026,
 	0x0028, 0x002B, 0x002E, 0x0034, 0x0037, 0x0044, 0x0047, 0x0066,
 	0x0068, 0x0095, 0x009C, 0x0170, 0x0174, 0x01AF,
-	/* CP */
-	0x0200, 0x0226, 0x0228, 0x0233, 0x0240, 0x0250, 0x04C0, 0x04D0,
+	
+	0x0200, 0x0226, 0x0228, 0x0233, 0x0240, 0x0258, 0x04C0, 0x04D0,
 	0x04D2, 0x04DD, 0x0500, 0x050B, 0x0578, 0x058F,
-	/* VSC */
+	
 	0x0C00, 0x0C03, 0x0C08, 0x0C41, 0x0C50, 0x0C51,
-	/* GRAS */
+	
 	0x0C80, 0x0C81, 0x0C88, 0x0C8F,
-	/* RB */
+	
 	0x0CC0, 0x0CC0, 0x0CC4, 0x0CD2,
-	/* PC */
+	
 	0x0D00, 0x0D0C, 0x0D10, 0x0D17, 0x0D20, 0x0D23,
-	/* VFD */
+	
 	0x0E40, 0x0E4A,
-	/* VPC */
+	
 	0x0E60, 0x0E61, 0x0E63, 0x0E68,
-	/* UCHE */
+	
 	0x0E80, 0x0E84, 0x0E88, 0x0E95,
-	/* GRAS CTX 0 */
+	
 	0x2000, 0x2004, 0x2008, 0x2067, 0x2070, 0x2078, 0x207B, 0x216E,
-	/* PC CTX 0 */
+	
 	0x21C0, 0x21C6, 0x21D0, 0x21D0, 0x21D9, 0x21D9, 0x21E5, 0x21E7,
-	/* VFD CTX 0 */
+	
 	0x2200, 0x2204, 0x2208, 0x22A9,
-	/* GRAS CTX 1 */
+	
 	0x2400, 0x2404, 0x2408, 0x2467, 0x2470, 0x2478, 0x247B, 0x256E,
-	/* PC CTX 1 */
+	
 	0x25C0, 0x25C6, 0x25D0, 0x25D0, 0x25D9, 0x25D9, 0x25E5, 0x25E7,
-	/* VFD CTX 1 */
+	
 	0x2600, 0x2604, 0x2608, 0x26A9,
 };
 
 const unsigned int a4xx_registers_count = ARRAY_SIZE(a4xx_registers) / 2;
 
 const unsigned int a4xx_sp_tp_registers[] = {
-	/* SP */
+	
 	0x0EC0, 0x0ECF,
-	/* TPL1 */
+	
 	0x0F00, 0x0F0B,
-	/* SP CTX 0 */
+	
 	0x22C0, 0x22C1, 0x22C4, 0x22E5, 0x22E8, 0x22F8, 0x2300, 0x2306,
 	0x230C, 0x2312, 0x2318, 0x2339, 0x2340, 0x2360,
-	/* TPL1 CTX 0 */
+	
 	0x2380, 0x2382, 0x2384, 0x238F, 0x23A0, 0x23A6,
-	/* SP CTX 1 */+
+	+
 	0x26C0, 0x26C1, 0x26C4, 0x26E5, 0x26E8, 0x26F8, 0x2700, 0x2706,
 	0x270C, 0x2712, 0x2718, 0x2739, 0x2740, 0x2760,
-	/* TPL1 CTX 1 */
+	
 	0x2780, 0x2782, 0x2784, 0x278F, 0x27A0, 0x27A6,
 };
 
@@ -197,10 +192,6 @@ const struct adreno_vbif_snapshot_registers a4xx_vbif_snapshot_registers[] = {
 const unsigned int a4xx_vbif_snapshot_reg_cnt =
 				ARRAY_SIZE(a4xx_vbif_snapshot_registers);
 
-/*
- * Define registers for a4xx that contain addresses used by the
- * cp parser logic
- */
 const unsigned int a4xx_cp_addr_regs[ADRENO_CP_ADDR_MAX] = {
 	ADRENO_REG_DEFINE(ADRENO_CP_ADDR_VSC_PIPE_DATA_ADDRESS_0,
 				A4XX_VSC_PIPE_DATA_ADDRESS_0),
@@ -348,10 +339,6 @@ static const struct adreno_vbif_platform a4xx_vbif_platforms[] = {
 	{ adreno_is_a418, a430_vbif },
 };
 
-/*
- * a4xx_is_sptp_idle() - A430 SP/TP should be off to be considered idle
- * @adreno_dev: The adreno device pointer
- */
 static bool a4xx_is_sptp_idle(struct adreno_device *adreno_dev)
 {
 	unsigned int reg;
@@ -359,23 +346,16 @@ static bool a4xx_is_sptp_idle(struct adreno_device *adreno_dev)
 	if (!ADRENO_FEATURE(adreno_dev, ADRENO_SPTP_PC))
 		return true;
 
-	/* If SP/TP pc isn't enabled, don't worry about power */
+	
 	kgsl_regread(device, A4XX_CP_POWER_COLLAPSE_CNTL, &reg);
 	if (!(reg & 0x10))
 		return true;
 
-	/* Check that SP/TP is off */
+	
 	kgsl_regread(device, A4XX_RBBM_POWER_STATUS, &reg);
 	return !(reg & SP_TP_PWR_ON);
 }
 
-/*
- * a4xx_regulator_enable() - Enable any necessary HW regulators
- * @adreno_dev: The adreno device pointer
- *
- * Some HW blocks may need their regulators explicitly enabled
- * on a restart.  Clocks must be on during this call.
- */
 static void a4xx_regulator_enable(struct adreno_device *adreno_dev)
 {
 	unsigned int reg;
@@ -391,28 +371,16 @@ static void a4xx_regulator_enable(struct adreno_device *adreno_dev)
 	} while (!(reg & SP_TP_PWR_ON));
 }
 
-/*
- * a4xx_regulator_disable() - Disable any necessary HW regulators
- * @adreno_dev: The adreno device pointer
- *
- * Some HW blocks may need their regulators explicitly disabled
- * on a power down to prevent current spikes.  Clocks must be on
- * during this call.
- */
 static void a4xx_regulator_disable(struct adreno_device *adreno_dev)
 {
 	struct kgsl_device *device = &adreno_dev->dev;
 	if (!(adreno_is_a430(adreno_dev) || adreno_is_a418(adreno_dev)))
 		return;
 
-	/* Set the default register values; set SW_COLLAPSE to 1 */
+	
 	kgsl_regwrite(device, A4XX_RBBM_POWER_CNTL_IP, 0x778001);
 }
 
-/*
- * a4xx_enable_pc() - Enable the SP/TP block power collapse
- * @adreno_dev: The adreno device pointer
- */
 static void a4xx_enable_pc(struct adreno_device *adreno_dev)
 {
 	struct kgsl_device *device = &adreno_dev->dev;
@@ -424,13 +392,6 @@ static void a4xx_enable_pc(struct adreno_device *adreno_dev)
 	trace_adreno_sp_tp((unsigned long) __builtin_return_address(0));
 };
 
-/*
- * a4xx_enable_ppd() - Enable the Peak power detect logic in the h/w
- * @adreno_dev: The adreno device pointer
- *
- * A430 can detect peak current conditions inside h/w and throttle
- * the workload to ALUs to mitigate it.
- */
 static void a4xx_enable_ppd(struct adreno_device *adreno_dev)
 {
 	struct kgsl_device *device = &adreno_dev->dev;
@@ -449,42 +410,32 @@ static void a4xx_enable_ppd(struct adreno_device *adreno_dev)
 	kgsl_regwrite(device, A4XX_RBBM_PPD_V2_TP_CONFIG, 0xE4525111);
 	kgsl_regwrite(device, A4XX_RBBM_PPD_RAMP_V2_CONTROL, 0x0000000B);
 
-	/* Enable PPD*/
+	
 	kgsl_regwrite(device, A4XX_RBBM_PPD_CTRL, 0x1002E40C);
 };
 
-/*
- * a4xx_pwrlevel_change_settings() - Program the hardware during power level
- * transitions
- * @adreno_dev: The adreno device pointer
- * @mask_throttle: flag to check if PPD throttle should be masked
- */
 static void a4xx_pwrlevel_change_settings(struct adreno_device *adreno_dev,
 						bool mask_throttle)
 {
 	struct kgsl_device *device = &adreno_dev->dev;
 
-	/* PPD programming only for A430v2 */
+	
 	if (!ADRENO_FEATURE(adreno_dev, ADRENO_PPD) ||
 		!test_bit(ADRENO_PPD_CTRL, &adreno_dev->pwrctrl_flag) ||
 		!adreno_is_a430v2(adreno_dev))
 		return;
 
 	if (mask_throttle) {
-		/* Going to Non-Turbo mode - mask the throttle and reset */
+		
 		kgsl_regwrite(device, A4XX_RBBM_PPD_CTRL, 0x1002E40E);
 		kgsl_regwrite(device, A4XX_RBBM_PPD_CTRL, 0x1002E40C);
 	} else {
-		/* Going to Turbo mode - unmask the throttle and reset */
+		
 		kgsl_regwrite(device, A4XX_RBBM_PPD_CTRL, 0x1002E40A);
 		kgsl_regwrite(device, A4XX_RBBM_PPD_CTRL, 0x1002E408);
 	}
 }
 
-/*
- * a4xx_enable_hwcg() - Program the clock control registers
- * @device: The adreno device pointer
- */
 static void a4xx_enable_hwcg(struct kgsl_device *device)
 {
 	struct adreno_device *adreno_dev = ADRENO_DEVICE(device);
@@ -585,19 +536,6 @@ static void a4xx_enable_hwcg(struct kgsl_device *device)
 	kgsl_regwrite(device, A4XX_RBBM_CLOCK_CTL_HLSQ , 0x00000000);
 	kgsl_regwrite(device, A4XX_RBBM_CLOCK_HYST_HLSQ, 0x00000000);
 	kgsl_regwrite(device, A4XX_RBBM_CLOCK_DELAY_HLSQ, 0x00220000);
-	/*
-	 * Due to a HW timing issue, top level HW clock gating is causing
-	 * register read/writes to be dropped in adreno a430.
-	 * This timing issue started happening because of SP/TP power collapse.
-	 * On targets that do not have SP/TP PC there is no timing issue.
-	 * The HW timing issue could be fixed by
-	 * a) disabling SP/TP power collapse
-	 * b) or disabling HW clock gating.
-	 * Disabling HW clock gating + NAP enabled combination has
-	 * minimal power impact. So this option is chosen over disabling
-	 * SP/TP power collapse.
-	 * Revisions of A430 which chipid 2 and above do not have the issue.
-	 */
 	if (adreno_is_a430(adreno_dev) &&
 		(ADRENO_CHIPID_PATCH(adreno_dev->chipid) < 2))
 		kgsl_regwrite(device, A4XX_RBBM_CLOCK_CTL, 0);
@@ -606,21 +544,15 @@ static void a4xx_enable_hwcg(struct kgsl_device *device)
 	kgsl_regwrite(device, A4XX_RBBM_CLOCK_CTL2, 0);
 }
 
-/**
- * a4xx_protect_init() - Initializes register protection on a4xx
- * @adreno_dev: Pointer to the device structure
- * Performs register writes to enable protected access to sensitive
- * registers
- */
 static void a4xx_protect_init(struct adreno_device *adreno_dev)
 {
 	struct kgsl_device *device = &adreno_dev->dev;
 	int index = 0;
 	struct kgsl_protected_registers *iommu_regs;
 
-	/* enable access protection to privileged registers */
+	
 	kgsl_regwrite(device, A4XX_CP_PROTECT_CTRL, 0x00000007);
-	/* RBBM registers */
+	
 	adreno_set_protected_registers(adreno_dev, &index, 0x4, 2);
 	adreno_set_protected_registers(adreno_dev, &index, 0x8, 3);
 	adreno_set_protected_registers(adreno_dev, &index, 0x10, 4);
@@ -636,30 +568,27 @@ static void a4xx_protect_init(struct adreno_device *adreno_dev)
 			   A4XX_RBBM_SECVID_TRUST_CONTROL, 1);
 	}
 
-	/* CP registers */
+	
 	adreno_set_protected_registers(adreno_dev, &index, 0x200, 7);
 	adreno_set_protected_registers(adreno_dev, &index, 0x580, 4);
 
-	/* RB registers */
+	
 	adreno_set_protected_registers(adreno_dev, &index, 0xCC0, 0);
 
-	/* HLSQ registers */
+	
 	adreno_set_protected_registers(adreno_dev, &index, 0xE00, 0);
 
-	/* VPC registers */
+	
 	adreno_set_protected_registers(adreno_dev, &index, 0xE60, 1);
 
 	if (adreno_is_a430(adreno_dev) || adreno_is_a420(adreno_dev) ||
 		adreno_is_a418(adreno_dev)) {
-		/*
-		 * Protect registers that might cause XPU violation if
-		 * accessed by GPU
-		 */
 		adreno_set_protected_registers(adreno_dev, &index, 0x2c00, 10);
 		adreno_set_protected_registers(adreno_dev, &index, 0x3300, 8);
+		adreno_set_protected_registers(adreno_dev, &index, 0x3400, 10);
 	}
 
-	/* SMMU registers */
+	
 	iommu_regs = kgsl_mmu_get_prot_regs(&device->mmu);
 	if (iommu_regs)
 		adreno_set_protected_registers(adreno_dev, &index,
@@ -684,66 +613,54 @@ static void a4xx_start(struct adreno_device *adreno_dev)
 
 	adreno_vbif_start(adreno_dev, a4xx_vbif_platforms,
 			ARRAY_SIZE(a4xx_vbif_platforms));
-	/* Make all blocks contribute to the GPU BUSY perf counter */
+	
 	kgsl_regwrite(device, A4XX_RBBM_GPU_BUSY_MASKED, 0xFFFFFFFF);
 
-	/* Tune the hystersis counters for SP and CP idle detection */
+	
 	kgsl_regwrite(device, A4XX_RBBM_SP_HYST_CNT, 0x10);
 	kgsl_regwrite(device, A4XX_RBBM_WAIT_IDLE_CLOCKS_CTL, 0x10);
 	if (adreno_is_a430(adreno_dev))
 		kgsl_regwrite(device, A4XX_RBBM_WAIT_IDLE_CLOCKS_CTL2, 0x30);
 
-	/*
-	 * Enable the RBBM error reporting bits.  This lets us get
-	 * useful information on failure
-	 */
 
 	kgsl_regwrite(device, A4XX_RBBM_AHB_CTL0, 0x00000001);
 
-	/* Enable AHB error reporting */
+	
 	kgsl_regwrite(device, A4XX_RBBM_AHB_CTL1, 0xA6FFFFFF);
 
-	/* Turn on the power counters */
+	
 	kgsl_regwrite(device, A4XX_RBBM_RBBM_CTL, 0x00000030);
 
-	/*
-	 * Turn on hang detection - this spews a lot of useful information
-	 * into the RBBM registers on a hang
-	 */
 	set_bit(ADRENO_DEVICE_HANG_INTR, &adreno_dev->priv);
 	gpudev->irq->mask |= (1 << A4XX_INT_MISC_HANG_DETECT);
 	kgsl_regwrite(device, A4XX_RBBM_INTERFACE_HANG_INT_CTL,
 			(1 << 30) | 0xFFFF);
 
-	/* Set the GMEM/OCMEM base address for A4XX */
+	
 	kgsl_regwrite(device, A4XX_RB_GMEM_BASE_ADDR,
 			(unsigned int)(adreno_dev->gmem_base >> 14));
 
-	/* Turn on performance counters */
+	
 	kgsl_regwrite(device, A4XX_RBBM_PERFCTR_CTL, 0x01);
-	/* Turn on the GPU busy counter and let it run free */
+	
 	memset(&adreno_dev->busy_data, 0, sizeof(adreno_dev->busy_data));
 
-	/* Enable VFD to access most of the UCHE (7 ways out of 8) */
+	
 	kgsl_regwrite(device, A4XX_UCHE_CACHE_WAYS_VFD, 0x07);
 
-	/* Disable L2 bypass to avoid UCHE out of bounds errors */
+	
 	kgsl_regwrite(device, UCHE_TRAP_BASE_LO, 0xffff0000);
 	kgsl_regwrite(device, UCHE_TRAP_BASE_HI, 0xffff0000);
 
-	/* On A420 cores turn on SKIP_IB2_DISABLE in addition to the default */
+	
 	if (adreno_is_a420(adreno_dev))
 		cp_debug |= (1 << 29);
-	/*
-	 * Set chicken bit to disable the speed up of bootstrap on A430
-	 * and its derivatives
-	 */
 	else
 		cp_debug |= (1 << 14);
 
 	kgsl_regwrite(device, A4XX_CP_DEBUG, cp_debug);
 
-	/* On A430 enable SP regfile sleep for power savings */
+	
 	if (!adreno_is_a420(adreno_dev)) {
 		kgsl_regwrite(device, A4XX_RBBM_SP_REGFILE_SLEEP_CNTL_0,
 				0x00000441);
@@ -752,10 +669,6 @@ static void a4xx_start(struct adreno_device *adreno_dev)
 	}
 
 	a4xx_enable_hwcg(device);
-	/*
-	 * For A420 set RBBM_CLOCK_DELAY_HLSQ.CGC_HLSQ_TP_EARLY_CYC >= 2
-	 * due to timing issue with HLSQ_TP_CLK_EN
-	 */
 	if (adreno_is_a420(adreno_dev)) {
 		unsigned int val;
 		kgsl_regread(device, A4XX_RBBM_CLOCK_DELAY_HLSQ, &val);
@@ -764,8 +677,8 @@ static void a4xx_start(struct adreno_device *adreno_dev)
 		kgsl_regwrite(device, A4XX_RBBM_CLOCK_DELAY_HLSQ, val);
 	}
 
-	/* A430 offers a bigger chunk of CP_STATE_DEBUG registers */
-	if (adreno_is_a430(adreno_dev))
+	
+	if (!adreno_is_a420(adreno_dev))
 		a4xx_snap_sizes.cp_state_deb = 0x34;
 
 	a4xx_protect_init(adreno_dev);
@@ -827,16 +740,12 @@ int a4xx_perfcounter_enable_vbif_pwr(struct adreno_device *adreno_dev,
 
 	reg = &counters->groups[KGSL_PERFCOUNTER_GROUP_VBIF_PWR].regs[counter];
 
-	/*
-	 * since power registers dont have select register, the enable
-	 * reg is stored here
-	 */
 	kgsl_regwrite(device, reg->select + A4XX_VBIF_PERF_PWR_CLR_REG_EN_OFF,
 			1);
 	kgsl_regwrite(device, reg->select + A4XX_VBIF_PERF_PWR_CLR_REG_EN_OFF,
 			0);
 	kgsl_regwrite(device, reg->select, 1);
-	/* reset the saved value field */
+	
 	counters->groups[KGSL_PERFCOUNTER_GROUP_VBIF_PWR]
 				.regs[counter].value = 0;
 	return 0;
@@ -905,11 +814,6 @@ static uint64_t a4xx_perfcounter_read(struct adreno_device *adreno_dev,
 	return a3xx_perfcounter_read(adreno_dev, group, counter);
 }
 
-/*
- * a4xx_err_callback() - Callback for a4xx error interrupts
- * @adreno_dev: Pointer to device
- * @bit: Interrupt bit
- */
 void a4xx_err_callback(struct adreno_device *adreno_dev, int bit)
 {
 	struct kgsl_device *device = &adreno_dev->dev;
@@ -919,17 +823,13 @@ void a4xx_err_callback(struct adreno_device *adreno_dev, int bit)
 	case A4XX_INT_RBBM_AHB_ERROR: {
 		kgsl_regread(device, A4XX_RBBM_AHB_ERROR_STATUS, &reg);
 
-		/*
-		 * Return the word address of the erroring register so that it
-		 * matches the register specification
-		 */
 		KGSL_DRV_CRIT(device,
 			"RBBM | AHB bus error | %s | addr=%x | ports=%x:%x\n",
 			reg & (1 << 28) ? "WRITE" : "READ",
 			(reg & 0xFFFFF) >> 2, (reg >> 20) & 0x3,
 			(reg >> 24) & 0xF);
 
-		/* Clear the error */
+		
 		kgsl_regwrite(device, A4XX_RBBM_AHB_CMD, (1 << 4));
 		return;
 	}
@@ -967,10 +867,6 @@ void a4xx_err_callback(struct adreno_device *adreno_dev, int bit)
 		kgsl_regread(device, A4XX_CP_HW_FAULT, &reg);
 		KGSL_DRV_CRIT_RATELIMIT(device,
 			"CP | Ringbuffer HW fault | status=%x\n", reg);
-		/*
-		 * mask off this interrupt since it can spam, it will be
-		 * turned on again when device resets
-		 */
 		adreno_writereg(adreno_dev, ADRENO_REG_RBBM_INT_0_MASK,
 			gpudev->irq->mask & ~(1 << A4XX_INT_CP_HW_FAULT));
 		break;
@@ -1009,7 +905,6 @@ void a4xx_err_callback(struct adreno_device *adreno_dev, int bit)
 	}
 }
 
-/* Register offset defines for A4XX, in order of enum adreno_regs */
 static unsigned int a4xx_register_offsets[ADRENO_REG_REGISTER_MAX] = {
 	ADRENO_REG_DEFINE(ADRENO_REG_CP_ME_RAM_WADDR, A4XX_CP_ME_RAM_WADDR),
 	ADRENO_REG_DEFINE(ADRENO_REG_CP_ME_RAM_DATA, A4XX_CP_ME_RAM_DATA),
@@ -1099,20 +994,11 @@ static struct adreno_perfcount_register a4xx_perfcounters_cp[] = {
 		A4XX_RBBM_PERFCTR_CP_7_HI, 0, A4XX_CP_PERFCTR_CP_SEL_7 },
 };
 
-/*
- * Special list of CP registers for 420 to account for flaws.  This array is
- * inserted into the tables during perfcounter init
- */
 static struct adreno_perfcount_register a420_perfcounters_cp[] = {
 	{ KGSL_PERFCOUNTER_NOT_USED, 0, 0, A4XX_RBBM_PERFCTR_CP_0_LO,
 		A4XX_RBBM_PERFCTR_CP_0_HI, 0, A4XX_CP_PERFCTR_CP_SEL_0 },
 	{ KGSL_PERFCOUNTER_NOT_USED, 0, 0, A4XX_RBBM_PERFCTR_CP_1_LO,
 		A4XX_RBBM_PERFCTR_CP_1_HI, 1, A4XX_CP_PERFCTR_CP_SEL_1 },
-	/*
-	 * The selector registers for 3, 5, and 7 are swizzled on the hardware.
-	 * CP_4 and CP_6 are duped to SEL_2 and SEL_3 so we don't enable them
-	 * here
-	 */
 	{ KGSL_PERFCOUNTER_NOT_USED, 0, 0, A4XX_RBBM_PERFCTR_CP_3_LO,
 		A4XX_RBBM_PERFCTR_CP_3_HI, 3, A4XX_CP_PERFCTR_CP_SEL_2 },
 	{ KGSL_PERFCOUNTER_NOT_USED, 0, 0, A4XX_RBBM_PERFCTR_CP_5_LO,
@@ -1402,10 +1288,6 @@ struct adreno_ft_perf_counters a4xx_ft_perf_counters[] = {
 	{KGSL_PERFCOUNTER_GROUP_TSE, TSE_INPUT_PRIM_NUM},
 };
 
-/*
- * On A420 a number of perfcounters are un-usable. The following defines the
- * array of countables that do not work and should not be used
- */
 static const unsigned int a420_pc_invalid_countables[] = {
 	PC_INSTANCES, PC_VERTEX_HITS, PC_GENERATED_FIBERS, PC_GENERATED_WAVES,
 };
@@ -1504,10 +1386,6 @@ static int a4xx_perfcounter_init(struct adreno_device *adreno_dev)
 		if (counters == NULL)
 			return -EINVAL;
 
-		/*
-		 * The CP counters on A420 are... special.  Some of the counters
-		 * are swizzled so only a subset of them are usable
-		 */
 
 		if (counters) {
 			counters->groups[KGSL_PERFCOUNTER_GROUP_CP].regs =
@@ -1516,10 +1394,6 @@ static int a4xx_perfcounter_init(struct adreno_device *adreno_dev)
 				ARRAY_SIZE(a420_perfcounters_cp);
 		}
 
-		/*
-		 * Also on A420 a number of the countables are not functional so
-		 * we maintain a blacklist of countables to protect the user
-		 */
 
 		gpudev->invalid_countables = a420_perfctr_invalid_countables;
 	}
@@ -1586,17 +1460,6 @@ static const unsigned int _a4xx_pwron_fixup_fs_instructions[] = {
 	0x00000000, 0x00000000, 0x00000000, 0x00000000,
 };
 
-/**
- * adreno_a4xx_pwron_fixup_init() - Initalize a special command buffer to run a
- * post-power collapse shader workaround
- * @adreno_dev: Pointer to a adreno_device struct
- *
- * Some targets require a special workaround shader to be executed after
- * power-collapse.  Construct the IB once at init time and keep it
- * handy
- *
- * Returns: 0 on success or negative on error
- */
 int adreno_a4xx_pwron_fixup_init(struct adreno_device *adreno_dev)
 {
 	unsigned int *cmds;
@@ -1696,14 +1559,10 @@ int adreno_a4xx_pwron_fixup_init(struct adreno_device *adreno_dev)
 	*cmds++ = cp_type3_packet(CP_WAIT_FOR_IDLE, 1);
 	*cmds++ = 0x00000000;
 
-	/*
-	 * Remember the number of dwords in the command buffer for when we
-	 * program the indirect buffer call in the ringbuffer
-	 */
 	adreno_dev->pwron_fixup_dwords =
 		(cmds - (unsigned int *) adreno_dev->pwron_fixup.hostptr);
 
-	/* Mark the flag in ->priv to show that we have the fix */
+	
 	set_bit(ADRENO_DEVICE_PWRON_FIXUP, &adreno_dev->priv);
 	return 0;
 }

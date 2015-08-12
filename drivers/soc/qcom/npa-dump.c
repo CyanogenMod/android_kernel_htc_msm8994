@@ -76,19 +76,8 @@ static int npa_file_read(struct seq_file *m, void *unused)
 	if (ret)
 		return ret;
 
-	/**
-	 * | Version (uint32) | Timestamp (uint64) | NPA Dump Size (uint32) |
-	 * | Resource Name (char[variable]) | Unit (char[4]) |
-	 *      Active Max (uint32) | Active State (uint32) |
-	 *      Request State (uint32) |
-	 *  | Client Name (char[4]) | Type (char[4]) | Request State (uint32) |
-	 *  | Client Name (char[4]) | Type (char[4]) | Request State (uint32) |
-	 *   ...
-	 *  | Client Name (char[4]) | Type (char[4]) | Request State (uint32) |
-	 *  | NULL (uint32) |
-	 */
 
-	/* Header */
+	
 	memcpy_fromio(&ver, pos, sizeof(ver));
 	ts = ver.timestamp[0] | ver.timestamp[1] << sizeof(u32);
 	seq_printf(m, "Version = %u Timestamp = 0x%llx Size = %u\n",
@@ -99,10 +88,6 @@ static int npa_file_read(struct seq_file *m, void *unused)
 		i = 0;
 		p = pos;
 		memset(name, 0, RESOURCE_NAME_MAX);
-		/**
-		 * Read the resource name (null terminated),
-		 * aligned on a 4 byte boundary.
-		 */
 		do {
 			name[i] = readb_relaxed(p++);
 			if (i % 4 == 0)
@@ -155,7 +140,7 @@ static int npa_dump_probe(struct platform_device *pdev)
 	struct resource *res;
 	void __iomem *npa_base, *rpm_base;
 	struct dentry *dent;
-	int ret;
+	int ret = 0;
 
 	/* Get the location of the NPA log's start address offset */
 	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
@@ -165,6 +150,8 @@ static int npa_dump_probe(struct platform_device *pdev)
 
 	/* Offset the log's start address from the RPM phys address */
 	res = platform_get_resource(pdev, IORESOURCE_MEM, 1);
+	if(!res) return -EINVAL;
+
 	npa_base = devm_ioremap(&pdev->dev,
 				res->start + readl_relaxed(rpm_base),
 				resource_size(res));

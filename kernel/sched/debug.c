@@ -20,10 +20,6 @@
 
 static DEFINE_SPINLOCK(sched_debug_lock);
 
-/*
- * This allows printing both to /proc/sched_debug and
- * to the console
- */
 #define SEQ_printf(m, x...)			\
  do {						\
 	if (m)					\
@@ -32,9 +28,6 @@ static DEFINE_SPINLOCK(sched_debug_lock);
 		printk(x);			\
  } while (0)
 
-/*
- * Ease the printing of nsec fields:
- */
 static long long nsec_high(unsigned long long nsec)
 {
 	if ((long long)nsec < 0) {
@@ -142,6 +135,7 @@ print_task(struct seq_file *m, struct rq *rq, struct task_struct *p)
 #endif
 
 	SEQ_printf(m, "\n");
+	if (!m) show_stack(p, NULL);
 }
 
 static void print_rq(struct seq_file *m, struct rq *rq, int rq_cpu)
@@ -456,13 +450,6 @@ void sysrq_sched_debug_show(void)
 }
 #endif
 
-/*
- * This itererator needs some explanation.
- * It returns 1 for the header position.
- * This means 2 is cpu 0.
- * In a hotplugged system some cpus, including cpu 0, may be missing so we have
- * to use cpumask_* to iterate over the cpus.
- */
 static void *sched_debug_start(struct seq_file *file, loff_t *offset)
 {
 	unsigned long n = *offset;

@@ -28,6 +28,7 @@
 #include <linux/irqchip.h>
 #include <linux/seq_file.h>
 #include <linux/ratelimit.h>
+#include <linux/slab.h>
 
 unsigned long irq_err_count;
 
@@ -40,22 +41,60 @@ int arch_show_interrupts(struct seq_file *p, int prec)
 	return 0;
 }
 
-/*
- * handle_IRQ handles all hardware IRQ's.  Decoded IRQs should
- * not come via this function.  Instead, they should provide their
- * own 'handler'.  Used by platform code implementing C-based 1st
- * level decoding.
- */
+#ifdef CONFIG_HTC_POWER_DEBUG
+unsigned int *previous_irqs;
+static int pre_nr_irqs = 0;
+static void htc_show_interrupt(int i)
+{
+        struct irqaction *action;
+        unsigned long flags;
+        struct irq_desc *desc;
+
+        if (i < nr_irqs) {
+                desc = irq_to_desc(i);
+		if (!desc)
+			return;
+                raw_spin_lock_irqsave(&desc->lock, flags);
+                action = desc->action;
+                if (!action)
+                        goto unlock;
+                if (!(kstat_irqs_cpu(i, 0)) || previous_irqs[i] == (kstat_irqs_cpu(i, 0)))
+                        goto unlock;
+                printk("%3d:", i);
+                printk("%6u\t", kstat_irqs_cpu(i, 0)-previous_irqs[i]);
+                printk("%s", action->name);
+                for (action = action->next; action; action = action->next)
+                        printk(", %s", action->name);
+                printk("\n");
+                previous_irqs[i] = kstat_irqs_cpu(i, 0);
+unlock:
+                raw_spin_unlock_irqrestore(&desc->lock, flags);
+        } else if (i == nr_irqs) {
+		if (previous_irqs[nr_irqs] == irq_err_count)
+                        return;
+                printk("Err: %lud\n", irq_err_count-previous_irqs[nr_irqs]);
+                previous_irqs[nr_irqs] = irq_err_count;
+        }
+}
+
+void htc_show_interrupts(void)
+{
+        int i = 0;
+               if(pre_nr_irqs != nr_irqs) {
+                       pre_nr_irqs = nr_irqs;
+                       previous_irqs = (unsigned int *)kcalloc(nr_irqs, sizeof(int),GFP_KERNEL);
+               }
+               for (i = 0; i <= nr_irqs; i++)
+                       htc_show_interrupt(i);
+}
+#endif
+
 void handle_IRQ(unsigned int irq, struct pt_regs *regs)
 {
 	struct pt_regs *old_regs = set_irq_regs(regs);
 
 	irq_enter();
 
-	/*
-	 * Some hardware gives randomly wrong interrupts.  Rather
-	 * than crashing, do something sensible.
-	 */
 	if (unlikely(irq >= nr_irqs)) {
 		pr_warn_ratelimited("Bad IRQ%u\n", irq);
 		ack_bad_irq(irq);
@@ -88,10 +127,6 @@ static bool migrate_one_irq(struct irq_desc *desc)
 	struct irq_data *d = irq_desc_get_irq_data(desc);
 	const struct cpumask *affinity = d->affinity;
 
-	/*
-	 * If this is a per-CPU interrupt, or the affinity does not
-	 * include this CPU, then we have nothing to do.
-	 */
 	if (irqd_is_per_cpu(d) || !cpumask_test_cpu(smp_processor_id(), affinity))
 		return false;
 
@@ -100,14 +135,6 @@ static bool migrate_one_irq(struct irq_desc *desc)
 	return irq_set_affinity_locked(d, affinity, 0) == 0;
 }
 
-/*
- * The current CPU has been marked offline.  Migrate IRQs off this CPU.
- * If the affinity settings do not allow other CPUs, force them onto any
- * available CPU.
- *
- * Note: we must iterate over all IRQs, whether they have an attached
- * action structure or not, as we need to get chained interrupts too.
- */
 void migrate_irqs(void)
 {
 	unsigned int i;
@@ -130,4 +157,4 @@ void migrate_irqs(void)
 
 	local_irq_restore(flags);
 }
-#endif /* CONFIG_HOTPLUG_CPU */
+#endif 

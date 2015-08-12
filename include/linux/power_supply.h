@@ -20,16 +20,10 @@
 struct device;
 
 /*
- * All voltages, currents, charges, energies, time and temperatures in uV,
- * µA, µAh, µWh, seconds and tenths of degree Celsius unless otherwise
- * stated. It's driver's job to convert its raw values to units in which
- * this class operates.
- */
-
-/*
- * For systems where the charger determines the maximum battery capacity
- * the min and max fields should be used to present these values to user
- * space. Unused/unknown fields will not appear in sysfs.
+ * This is recommended structure to specify static power supply parameters.
+ * Generic one, parametrizable for different power supplies. Power supply
+ * class itself does not use it, but that's what implementing most platform
+ * drivers, should try reuse for consistency.
  */
 
 enum {
@@ -106,6 +100,7 @@ enum power_supply_property {
 	POWER_SUPPLY_PROP_VOLTAGE_NOW,
 	POWER_SUPPLY_PROP_VOLTAGE_AVG,
 	POWER_SUPPLY_PROP_VOLTAGE_OCV,
+	POWER_SUPPLY_PROP_OVERLOAD,
 	POWER_SUPPLY_PROP_INPUT_VOLTAGE_REGULATION,
 	POWER_SUPPLY_PROP_CURRENT_MAX,
 	POWER_SUPPLY_PROP_INPUT_CURRENT_MAX,
@@ -172,16 +167,19 @@ enum power_supply_property {
 	POWER_SUPPLY_PROP_FLASH_CURRENT_MAX,
 	POWER_SUPPLY_PROP_UPDATE_NOW,
 	POWER_SUPPLY_PROP_ESR_COUNT,
+	POWER_SUPPLY_PROP_OTG_PULSE_SKIP_ENABLE,
 	POWER_SUPPLY_PROP_SAFETY_TIMER_ENABLE,
 	POWER_SUPPLY_PROP_CHARGE_DONE,
 	POWER_SUPPLY_PROP_FLASH_ACTIVE,
-	/* Local extensions of type int64_t */
+	
 	POWER_SUPPLY_PROP_CHARGE_COUNTER_EXT,
-	/* Properties of type `const char *' */
+	
 	POWER_SUPPLY_PROP_MODEL_NAME,
 	POWER_SUPPLY_PROP_MANUFACTURER,
 	POWER_SUPPLY_PROP_SERIAL_NUMBER,
 	POWER_SUPPLY_PROP_BATTERY_TYPE,
+	POWER_SUPPLY_PROP_HOT_TEMP,
+	POWER_SUPPLY_PROP_COLD_TEMP,
 };
 
 enum power_supply_type {
@@ -259,12 +257,6 @@ struct power_supply {
 #endif
 };
 
-/*
- * This is recommended structure to specify static power supply parameters.
- * Generic one, parametrizable for different power supplies. Power supply
- * class itself does not use it, but that's what implementing most platform
- * drivers, should try reuse for consistency.
- */
 
 struct power_supply_info {
 	const char *name;
@@ -351,7 +343,6 @@ static inline int power_supply_powers(struct power_supply *psy,
 							{ return -ENOSYS; }
 #endif
 
-/* For APM emulation, think legacy userspace. */
 extern struct class *power_supply_class;
 
 static inline bool power_supply_is_amp_property(enum power_supply_property psp)

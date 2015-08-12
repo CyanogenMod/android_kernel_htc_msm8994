@@ -81,9 +81,6 @@ static void wcd9xxx_irq_sync_unlock(struct irq_data *data)
 	}
 
 	for (i = 0; i < ARRAY_SIZE(wcd9xxx_res->irq_masks_cur); i++) {
-		/* If there's been a change in the mask write it back
-		 * to the hardware.
-		 */
 		if (wcd9xxx_res->irq_masks_cur[i] !=
 					wcd9xxx_res->irq_masks_cache[i]) {
 
@@ -165,18 +162,6 @@ bool wcd9xxx_lock_sleep(
 {
 	enum wcd9xxx_pm_state os;
 
-	/*
-	 * wcd9xxx_{lock/unlock}_sleep will be called by wcd9xxx_irq_thread
-	 * and its subroutines only motly.
-	 * but btn0_lpress_fn is not wcd9xxx_irq_thread's subroutine and
-	 * It can race with wcd9xxx_irq_thread.
-	 * So need to embrace wlock_holders with mutex.
-	 *
-	 * If system didn't resume, we can simply return false so codec driver's
-	 * IRQ handler can return without handling IRQ.
-	 * As interrupt line is still active, codec will have another IRQ to
-	 * retry shortly.
-	 */
 	mutex_lock(&wcd9xxx_res->pm_lock);
 	if (wcd9xxx_res->wlock_holders++ == 0) {
 		pr_debug("%s: holding wake lock\n", __func__);
@@ -213,10 +198,6 @@ void wcd9xxx_unlock_sleep(
 	if (--wcd9xxx_res->wlock_holders == 0) {
 		pr_debug("%s: releasing wake lock pm_state %d -> %d\n",
 			 __func__, wcd9xxx_res->pm_state, WCD9XXX_PM_SLEEPABLE);
-		/*
-		 * if wcd9xxx_lock_sleep failed, pm_state would be still
-		 * WCD9XXX_PM_ASLEEP, don't overwrite
-		 */
 		if (likely(wcd9xxx_res->pm_state == WCD9XXX_PM_AWAKE))
 			wcd9xxx_res->pm_state = WCD9XXX_PM_SLEEPABLE;
 		pm_qos_update_request(&wcd9xxx_res->pm_qos_req,
@@ -307,21 +288,12 @@ static irqreturn_t wcd9xxx_irq_thread(int irq, void *data)
 		goto err_disable_irq;
 	}
 
-	/* Apply masking */
+	
 	for (i = 0; i < num_irq_regs; i++)
 		status[i] &= ~wcd9xxx_res->irq_masks_cur[i];
 
 	memcpy(status1, status, sizeof(status1));
 
-	/* Find out which interrupt was triggered and call that interrupt's
-	 * handler function
-	 *
-	 * Since codec has only one hardware irq line which is shared by
-	 * codec's different internal interrupts, so it's possible master irq
-	 * handler dispatches multiple nested irq handlers after breaking
-	 * order.  Dispatch interrupts in the order that is maintained by
-	 * the interrupt table.
-	 */
 	for (i = 0; i < wcd9xxx_res->intr_table_size; i++) {
 		irqdata = wcd9xxx_res->intr_table[i];
 		if (status[BIT_BYTE(irqdata.intr_num)] &
@@ -332,14 +304,6 @@ static irqreturn_t wcd9xxx_irq_thread(int irq, void *data)
 		}
 	}
 
-	/*
-	 * As a failsafe if unhandled irq is found, clear it to prevent
-	 * interrupt storm.
-	 * Note that we can say there was an unhandled irq only when no irq
-	 * handled by nested irq handler since Taiko supports qdsp as irqs'
-	 * destination for few irqs.  Therefore driver shouldn't clear pending
-	 * irqs when few handled while few others not.
-	 */
 	if (unlikely(!memcmp(status, status1, sizeof(status)))) {
 		if (__ratelimit(&ratelimit)) {
 			pr_warn("%s: Unhandled irq found\n", __func__);
@@ -530,10 +494,6 @@ int wcd9xxx_request_irq(struct wcd9xxx_core_resource *wcd9xxx_res,
 
 	virq = phyirq_to_virq(wcd9xxx_res, irq);
 
-	/*
-	 * ARM needs us to explicitly flag the IRQ as valid
-	 * and will set them noprobe when we do so.
-	 */
 #if defined(CONFIG_ARM) || defined(CONFIG_ARM64)
 	set_irq_flags(virq, IRQF_VALID);
 #else
@@ -604,12 +564,6 @@ int __init wcd9xxx_irq_of_init(struct device_node *node,
 	if (!data)
 		return -ENOMEM;
 
-	/*
-	 * wcd9xxx_intc interrupt controller supports N to N irq mapping with
-	 * single cell binding with irq numbers(offsets) only.
-	 * Use irq_domain_simple_ops that has irq_domain_simple_map and
-	 * irq_domain_xlate_onetwocell.
-	 */
 	data->domain = irq_domain_add_linear(node, WCD9XXX_MAX_NUM_IRQS,
 					     &irq_domain_simple_ops, data);
 	if (!data->domain) {

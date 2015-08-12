@@ -134,19 +134,6 @@ static void clean_txn_info(struct qmi_handle *handle);
 static void *qmi_req_resp_log_ctx;
 static void *qmi_ind_log_ctx;
 
-/**
- * qmi_log() - Pass log data to IPC logging framework
- * @handle:	The pointer to the qmi_handle
- * @cntl_flg:	Indicates the type(request/response/indications) of the message
- * @txn_id:	Transaction ID of the message.
- * @msg_id:	Message ID of the incoming/outgoing message.
- * @msg_len:	Total size of the message.
- *
- * This function builds the data the would be passed on to the IPC logging
- * framework. The data that would be passed corresponds to the information
- * that is exchanged between the IPC Router and kernel modules during
- * request/response/indication transactions.
- */
 
 static void qmi_log(struct qmi_handle *handle,
 			unsigned char cntl_flag, uint16_t txn_id,
@@ -171,16 +158,6 @@ static void qmi_log(struct qmi_handle *handle,
 			ops_type = "TX";
 	}
 
-	/*
-	 * IPC Logging format is as below:-
-	 * <Type of module>(CLNT or  SERV)	:
-	 * <Opertaion Type> (Transmit/ RECV)	:
-	 * <Control Flag> (Req/Resp/Ind)	:
-	 * <Transaction ID>			:
-	 * <Message ID>				:
-	 * <Message Length>			:
-	 * <Service ID>				:
-	 */
 	if (qmi_req_resp_log_ctx &&
 		((cntl_flag == QMI_REQUEST_CONTROL_FLAG) ||
 		(cntl_flag == QMI_RESPONSE_CONTROL_FLAG))) {
@@ -195,18 +172,6 @@ static void qmi_log(struct qmi_handle *handle,
 	}
 }
 
-/**
- * add_req_handle() - Create and Add a request handle to the connection
- * @conn_h: Connection handle over which the request has arrived.
- * @msg_id: Message ID of the request.
- * @txn_id: Transaction ID of the request.
- *
- * @return: Pointer to request handle on success, NULL on error.
- *
- * This function creates a request handle to track the request that arrives
- * on a connection. This function then adds it to the connection's request
- * handle list.
- */
 static struct req_handle *add_req_handle(struct qmi_svc_clnt_conn *conn_h,
 					 uint16_t msg_id, uint16_t txn_id)
 {
@@ -225,16 +190,6 @@ static struct req_handle *add_req_handle(struct qmi_svc_clnt_conn *conn_h,
 	return req_h;
 }
 
-/**
- * verify_req_handle() - Verify the validity of a request handle
- * @conn_h: Connection handle over which the request has arrived.
- * @req_h: Request handle to be verified.
- *
- * @return: true on success, false on failure.
- *
- * This function is used to check if the request handle is present in
- * the connection handle.
- */
 static bool verify_req_handle(struct qmi_svc_clnt_conn *conn_h,
 			      struct req_handle *req_h)
 {
@@ -247,12 +202,6 @@ static bool verify_req_handle(struct qmi_svc_clnt_conn *conn_h,
 	return false;
 }
 
-/**
- * rmv_req_handle() - Remove and destroy the request handle
- * @req_h: Request handle to be removed and destroyed.
- *
- * @return: 0.
- */
 static int rmv_req_handle(struct req_handle *req_h)
 {
 	list_del(&req_h->list);
@@ -260,20 +209,6 @@ static int rmv_req_handle(struct req_handle *req_h)
 	return 0;
 }
 
-/**
- * add_svc_clnt_conn() - Create and add a connection handle to a service
- * @handle: QMI handle in which the service is hosted.
- * @clnt_addr: Address of the client connecting with the service.
- * @clnt_addr_len: Length of the client address.
- *
- * @return: Pointer to connection handle on success, NULL on error.
- *
- * This function is used to create a connection handle that binds the service
- * with a client. This function is called on a service's QMI handle when a
- * client sends its first message to the service.
- *
- * This function must be called with handle->handle_lock locked.
- */
 static struct qmi_svc_clnt_conn *add_svc_clnt_conn(
 	struct qmi_handle *handle, void *clnt_addr, size_t clnt_addr_len)
 {
@@ -303,21 +238,6 @@ static struct qmi_svc_clnt_conn *add_svc_clnt_conn(
 	return conn_h;
 }
 
-/**
- * find_svc_clnt_conn() - Find the existence of a client<->service connection
- * @handle: Service's QMI handle.
- * @clnt_addr: Address of the client to be present in the connection.
- * @clnt_addr_len: Length of the client address.
- *
- * @return: Pointer to connection handle if the matching connection is found,
- *          NULL if the connection is not found.
- *
- * This function is used to find the existence of a client<->service connection
- * handle in a service's QMI handle. This function tries to match the client
- * address in the existing connections.
- *
- * This function must be called with handle->handle_lock locked.
- */
 static struct qmi_svc_clnt_conn *find_svc_clnt_conn(
 	struct qmi_handle *handle, void *clnt_addr, size_t clnt_addr_len)
 {
@@ -330,18 +250,6 @@ static struct qmi_svc_clnt_conn *find_svc_clnt_conn(
 	return NULL;
 }
 
-/**
- * verify_svc_clnt_conn() - Verify the existence of a connection handle
- * @handle: Service's QMI handle.
- * @conn_h: Connection handle to be verified.
- *
- * @return: true on success, false on failure.
- *
- * This function is used to verify the existence of a connection in the
- * connection list maintained by the service.
- *
- * This function must be called with handle->handle_lock locked.
- */
 static bool verify_svc_clnt_conn(struct qmi_handle *handle,
 				 struct qmi_svc_clnt_conn *conn_h)
 {
@@ -354,14 +262,6 @@ static bool verify_svc_clnt_conn(struct qmi_handle *handle,
 	return false;
 }
 
-/**
- * rmv_svc_clnt_conn() - Remove the connection handle info from the service
- * @conn_h: Connection handle to be removed.
- *
- * This function removes a connection handle from a service's QMI handle.
- *
- * This function must be called with handle->handle_lock locked.
- */
 static void rmv_svc_clnt_conn(struct qmi_svc_clnt_conn *conn_h)
 {
 	struct req_handle *req_h, *temp_req_h;
@@ -385,17 +285,6 @@ static void rmv_svc_clnt_conn(struct qmi_svc_clnt_conn *conn_h)
 	kfree(conn_h);
 }
 
-/**
- * qmi_event_notify() - Notification function to QMI client/service interface
- * @event: Type of event that gets notified.
- * @oob_data: Any out-of-band data associated with event.
- * @oob_data_len: Length of the out-of-band data, if any.
- * @priv: Private data.
- *
- * This function is called by the underlying transport to notify the QMI
- * interface regarding any incoming event. This function is registered by
- * QMI interface when it opens a port/handle with the underlying transport.
- */
 static void qmi_event_notify(unsigned event, void *oob_data,
 			     size_t oob_data_len, void *priv)
 {
@@ -503,14 +392,6 @@ static void qmi_notify_event_worker(struct work_struct *work)
 	kfree(notify_work);
 }
 
-/**
- * clnt_resume_tx_worker() - Handle the Resume_Tx event
- * @work : Pointer to the work strcuture.
- *
- * This function handles the resume_tx event for any QMI client that
- * exists in the kernel space. This function parses the pending_txn_list of
- * the handle and attempts a send for each transaction in that list.
- */
 static void clnt_resume_tx_worker(struct work_struct *work)
 {
 	struct delayed_work *rtx_work = to_delayed_work(work);
@@ -560,14 +441,6 @@ out_clnt_handle_rtx:
 	mutex_unlock(&handle->handle_lock);
 }
 
-/**
- * svc_resume_tx_worker() - Handle the Resume_Tx event
- * @work : Pointer to the work strcuture.
- *
- * This function handles the resume_tx event for any QMI service that
- * exists in the kernel space. This function parses the pending_txn_list of
- * the connection handle and attempts a send for each transaction in that list.
- */
 static void svc_resume_tx_worker(struct work_struct *work)
 {
 	struct delayed_work *rtx_work = to_delayed_work(work);
@@ -604,15 +477,6 @@ out_svc_handle_rtx:
 	mutex_unlock(&conn_h->pending_txn_lock);
 }
 
-/**
- * handle_rmv_server() - Handle the server exit event
- * @handle: Client handle on which the server exit event is received.
- * @ctl_msg: Information about the server that is exiting.
- *
- * @return: 0 on success, standard Linux error codes on failure.
- *
- * This function must be called with handle->handle_lock locked.
- */
 static int handle_rmv_server(struct qmi_handle *handle,
 			     union rr_control_msg *ctl_msg)
 {
@@ -636,15 +500,6 @@ static int handle_rmv_server(struct qmi_handle *handle,
 	return 0;
 }
 
-/**
- * handle_rmv_client() - Handle the client exit event
- * @handle: Service handle on which the client exit event is received.
- * @ctl_msg: Information about the client that is exiting.
- *
- * @return: 0 on success, standard Linux error codes on failure.
- *
- * This function must be called with handle->handle_lock locked.
- */
 static int handle_rmv_client(struct qmi_handle *handle,
 			     union rr_control_msg *ctl_msg)
 {
@@ -665,15 +520,6 @@ static int handle_rmv_client(struct qmi_handle *handle,
 	return 0;
 }
 
-/**
- * handle_ctl_msg: Worker function to handle the control events
- * @work: Work item to map the QMI handle.
- *
- * This function is a worker function to handle the incoming control
- * events like REMOVE_SERVER/REMOVE_CLIENT. The work item is unique
- * to a handle and the workker function handles the control events on
- * a specific handle.
- */
 static void handle_ctl_msg(struct work_struct *work)
 {
 	struct delayed_work *ctl_work = to_delayed_work(work);
@@ -941,12 +787,6 @@ static int qmi_encode_and_send_req(struct qmi_txn **ret_txn_handle,
 			  encoded_req_len);
 	encoded_req_len += QMI_HEADER_SIZE;
 
-	/*
-	 * Check if this port has transactions queued to its pending list
-	 * and if there are any pending transactions then add the current
-	 * transaction to the pending list rather than sending it. This avoids
-	 * out-of-order message transfers.
-	 */
 	if (!list_empty(&handle->pending_txn_list)) {
 		rc = -EAGAIN;
 		goto append_pend_txn;
@@ -1067,23 +907,6 @@ int qmi_send_req_nowait(struct qmi_handle *handle,
 }
 EXPORT_SYMBOL(qmi_send_req_nowait);
 
-/**
- * qmi_encode_and_send_resp() - Encode and send QMI response
- * @handle: QMI service handle sending the response.
- * @conn_h: Connection handle to which the response is sent.
- * @req_h: Request handle for which the response is sent.
- * @resp_desc: Message Descriptor describing the response structure.
- * @resp: Response structure.
- * @resp_len: Length of the response structure.
- *
- * @return: 0 on success, standard Linux error codes on failure.
- *
- * This function encodes and sends a response message from a service to
- * a client identified from the connection handle. The request for which
- * the response is sent is identified from the connection handle.
- *
- * This function must be called with handle->handle_lock locked.
- */
 static int qmi_encode_and_send_resp(struct qmi_handle *handle,
 	struct qmi_svc_clnt_conn *conn_h, struct req_handle *req_h,
 	struct msg_desc *resp_desc, void *resp, unsigned int resp_len)
@@ -1153,12 +976,6 @@ static int qmi_encode_and_send_resp(struct qmi_handle *handle,
 
 	qmi_log(handle, cntl_flag, txn_handle->txn_id,
 			resp_desc->msg_id, encoded_resp_len);
-	/*
-	 * Check if this svc_clnt has transactions queued to its pending list
-	 * and if there are any pending transactions then add the current
-	 * transaction to the pending list rather than sending it. This avoids
-	 * out-of-order message transfers.
-	 */
 	mutex_lock(&conn_h->pending_txn_lock);
 	if (list_empty(&conn_h->pending_txn_list))
 		rc = msm_ipc_router_send_msg(
@@ -1188,17 +1005,6 @@ encode_and_send_resp_err0:
 	return rc;
 }
 
-/**
- * qmi_send_resp() - Send response to a request
- * @handle: QMI handle from which the response is sent.
- * @clnt: Client to which the response is sent.
- * @req_handle: Request for which the response is sent.
- * @resp_desc: Descriptor explaining the response structure.
- * @resp: Pointer to the response structure.
- * @resp_len: Length of the response structure.
- *
- * @return: 0 on success, < 0 on error.
- */
 int qmi_send_resp(struct qmi_handle *handle, void *conn_handle,
 		  void *req_handle, struct msg_desc *resp_desc,
 		  void *resp, unsigned int resp_len)
@@ -1223,17 +1029,6 @@ int qmi_send_resp(struct qmi_handle *handle, void *conn_handle,
 }
 EXPORT_SYMBOL(qmi_send_resp);
 
-/**
- * qmi_send_resp_from_cb() - Send response to a request from request_cb
- * @handle: QMI handle from which the response is sent.
- * @clnt: Client to which the response is sent.
- * @req_handle: Request for which the response is sent.
- * @resp_desc: Descriptor explaining the response structure.
- * @resp: Pointer to the response structure.
- * @resp_len: Length of the response structure.
- *
- * @return: 0 on success, < 0 on error.
- */
 int qmi_send_resp_from_cb(struct qmi_handle *handle, void *conn_handle,
 			  void *req_handle, struct msg_desc *resp_desc,
 			  void *resp, unsigned int resp_len)
@@ -1256,16 +1051,6 @@ int qmi_send_resp_from_cb(struct qmi_handle *handle, void *conn_handle,
 }
 EXPORT_SYMBOL(qmi_send_resp_from_cb);
 
-/**
- * qmi_send_ind() - Send unsolicited event/indication to a client
- * @handle: QMI handle from which the indication is sent.
- * @clnt: Client to which the indication is sent.
- * @ind_desc: Descriptor explaining the indication structure.
- * @ind: Pointer to the indication structure.
- * @ind_len: Length of the indication structure.
- *
- * @return: 0 on success, < 0 on error.
- */
 int qmi_send_ind(struct qmi_handle *handle, void *conn_handle,
 		 struct msg_desc *ind_desc, void *ind, unsigned int ind_len)
 {
@@ -1289,16 +1074,6 @@ int qmi_send_ind(struct qmi_handle *handle, void *conn_handle,
 }
 EXPORT_SYMBOL(qmi_send_ind);
 
-/**
- * qmi_send_ind_from_cb() - Send indication to a client from registration_cb
- * @handle: QMI handle from which the indication is sent.
- * @clnt: Client to which the indication is sent.
- * @ind_desc: Descriptor explaining the indication structure.
- * @ind: Pointer to the indication structure.
- * @ind_len: Length of the indication structure.
- *
- * @return: 0 on success, < 0 on error.
- */
 int qmi_send_ind_from_cb(struct qmi_handle *handle, void *conn_handle,
 		struct msg_desc *ind_desc, void *ind, unsigned int ind_len)
 {
@@ -1320,12 +1095,6 @@ int qmi_send_ind_from_cb(struct qmi_handle *handle, void *conn_handle,
 }
 EXPORT_SYMBOL(qmi_send_ind_from_cb);
 
-/**
- * translate_err_code() - Translate Linux error codes into QMI error codes
- * @err: Standard Linux error codes to be translated.
- *
- * @return: Return QMI error code.
- */
 static int translate_err_code(int err)
 {
 	int rc;
@@ -1353,21 +1122,6 @@ static int translate_err_code(int err)
 	return rc;
 }
 
-/**
- * send_err_resp() - Send the error response
- * @handle: Service handle from which the response is sent.
- * @conn_h: Client<->Service connection on which the response is sent.
- * @addr: Client address to which the error response is sent.
- * @msg_id: Request message id for which the error response is sent.
- * @txn_id: Request Transaction ID for which the error response is sent.
- * @err: Error code to be sent.
- *
- * @return: 0 on success, standard Linux error codes on failure.
- *
- * This function is used to send an error response from within the QMI
- * service interface. This function is called when the service returns
- * an error to the QMI interface while handling a request.
- */
 static int send_err_resp(struct qmi_handle *handle,
 			 struct qmi_svc_clnt_conn *conn_h, void *addr,
 			 uint16_t msg_id, uint16_t txn_id, int err)
@@ -1423,12 +1177,6 @@ static int send_err_resp(struct qmi_handle *handle,
 
 	qmi_log(handle, QMI_RESPONSE_CONTROL_FLAG, txn_id,
 			msg_id, encoded_resp_len);
-	/*
-	 * Check if this svc_clnt has transactions queued to its pending list
-	 * and if there are any pending transactions then add the current
-	 * transaction to the pending list rather than sending it. This avoids
-	 * out-of-order message transfers.
-	 */
 	if (!conn_h) {
 		dest_addr = (struct msm_ipc_addr *)addr;
 		goto tx_err_resp;
@@ -1463,18 +1211,6 @@ encode_and_send_err_resp_err0:
 	return rc;
 }
 
-/**
- * handle_qmi_request() - Handle the QMI request
- * @handle: QMI service handle on which the request has arrived.
- * @req_msg: Request message to be handled.
- * @txn_id: Transaction ID of the request message.
- * @msg_id: Message ID of the request message.
- * @msg_len: Message Length of the request message.
- * @src_addr: Address of the source which sent the request.
- * @src_addr_len: Length of the source address.
- *
- * @return: 0 on success, standard Linux error codes on failure.
- */
 static int handle_qmi_request(struct qmi_handle *handle,
 			      unsigned char *req_msg, uint16_t txn_id,
 			      uint16_t msg_id, uint16_t msg_len,
@@ -1922,11 +1658,6 @@ int qmi_svc_event_notifier_unregister(uint32_t service_id,
 }
 EXPORT_SYMBOL(qmi_svc_event_notifier_unregister);
 
-/**
- * qmi_log_init() - Init function for IPC Logging
- *
- * Initialize log contexts for QMI request/response/indications.
- */
 void qmi_log_init(void)
 {
 	qmi_req_resp_log_ctx =
@@ -1942,13 +1673,6 @@ void qmi_log_init(void)
 				"logging for Indications", __func__);
 }
 
-/**
- * qmi_svc_register() - Register a QMI service with a QMI handle
- * @handle: QMI handle on which the service has to be registered.
- * @ops_options: Service specific operations and options.
- *
- * @return: 0 if successfully registered, < 0 on error.
- */
 int qmi_svc_register(struct qmi_handle *handle, void *ops_options)
 {
 	struct qmi_svc_ops_options *svc_ops_options;
@@ -1975,12 +1699,7 @@ int qmi_svc_register(struct qmi_handle *handle, void *ops_options)
 	INIT_LIST_HEAD(&handle->conn_list);
 	mutex_unlock(&handle->handle_lock);
 
-	/*
-	 * Unlocked the handle_lock, because NEW_SERVER message will end up
-	 * in this handle's control port, which requires holding the same
-	 * mutex. Also it is safe to call register_server unlocked.
-	 */
-	/* Register the service */
+	
 	instance_id = ((svc_ops_options->service_vers & 0xFF) |
 		       ((svc_ops_options->service_ins & 0xFF) << 8));
 	svc_name.addrtype = MSM_IPC_ADDR_NAME;
@@ -2002,7 +1721,6 @@ int qmi_svc_register(struct qmi_handle *handle, void *ops_options)
 }
 EXPORT_SYMBOL(qmi_svc_register);
 
-
 /**
  * qmi_svc_unregister() - Unregister the service from a QMI handle
  * @handle: QMI handle from which the service has to be unregistered.
@@ -2019,11 +1737,6 @@ int qmi_svc_unregister(struct qmi_handle *handle)
 	mutex_lock(&handle->handle_lock);
 	handle->handle_type = QMI_CLIENT_HANDLE;
 	mutex_unlock(&handle->handle_lock);
-	/*
-	 * Unlocked the handle_lock, because REMOVE_SERVER message will end up
-	 * in this handle's control port, which requires holding the same
-	 * mutex. Also it is safe to call register_server unlocked.
-	 */
 	msm_ipc_router_unregister_server(
 		(struct msm_ipc_port *)handle->src_port);
 

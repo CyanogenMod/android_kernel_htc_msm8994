@@ -26,10 +26,8 @@
 #include "audio_utils.h"
 
 
-/* Buffer with meta*/
 #define PCM_BUF_SIZE		(4096 + sizeof(struct meta_in))
 
-/* Maximum 5 frames in buffer with meta */
 #define FRAME_SIZE		(1 + ((1536+sizeof(struct meta_out_dsp)) * 5))
 
 #define AAC_FORMAT_ADTS 65535
@@ -234,11 +232,6 @@ static long aac_in_ioctl_shared(struct file *file, unsigned int cmd, void *arg)
 		}
 
 		min_bitrate = ((cfg->sample_rate)*(cfg->channels))/2;
-		/* This calculation should be based on AAC mode. But we cannot
-		 * get AAC mode in this setconfig. min_bitrate's logical max
-		 * value is 24000. So if min_bitrate is higher than 24000,
-		 * choose 24000.
-		 */
 		if (min_bitrate > 24000)
 			min_bitrate = 24000;
 		max_bitrate = 6*(cfg->sample_rate)*(cfg->channels);
@@ -452,9 +445,6 @@ static long aac_in_compat_ioctl(struct file *file, unsigned int cmd,
 		cfg.sample_rate = cfg_32.sample_rate;
 		cfg.bit_rate = cfg_32.bit_rate;
 		cfg.stream_format = cfg_32.stream_format;
-		/* The command should be converted from 32 bit to normal
-		 * before the shared ioctl is called as shared ioctl
-		 * can process only normal commands */
 		cmd = AUDIO_SET_AAC_ENC_CONFIG;
 		rc = aac_in_ioctl_shared(file, cmd, &cfg);
 		if (rc)
@@ -578,9 +568,6 @@ static int aac_in_open(struct inode *inode, struct file *file)
 	init_waitqueue_head(&audio->read_wait);
 	init_waitqueue_head(&audio->write_wait);
 
-	/* Settings will be re-config at AUDIO_SET_CONFIG,
-	* but at least we need to have initial config
-	*/
 	audio->str_cfg.buffer_size = FRAME_SIZE;
 	audio->str_cfg.buffer_count = FRAME_NUM;
 	audio->min_frame_size = 1536;

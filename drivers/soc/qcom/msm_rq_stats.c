@@ -10,9 +10,6 @@
  * GNU General Public License for more details.
  *
  */
-/*
- * Qualcomm MSM Runqueue Stats and cpu utilization Interface for Userspace
- */
 #include <linux/kernel.h>
 #include <linux/init.h>
 #include <linux/module.h>
@@ -37,6 +34,7 @@
 #define DEFAULT_DEF_TIMER_JIFFIES 5
 
 struct notifier_block freq_transition;
+struct notifier_block policy_change;
 struct notifier_block cpu_hotplug;
 
 struct cpu_load_data {
@@ -76,19 +74,14 @@ static int update_average_load(unsigned int freq, unsigned int cpu)
 
 	cur_load = 100 * (wall_time - idle_time) / wall_time;
 
-	/* Calculate the scaled load across CPU */
+	
 	load_at_max_freq = (cur_load * freq) / pcpu->policy_max;
 
 	if (!pcpu->avg_load_maxfreq) {
-		/* This is the first sample in this window*/
+		
 		pcpu->avg_load_maxfreq = load_at_max_freq;
 		pcpu->window_size = wall_time;
 	} else {
-		/*
-		 * The is already a sample available in this window.
-		 * Compute weighted average with prev entry, so that we get
-		 * the precise weighted load.
-		 */
 		pcpu->avg_load_maxfreq =
 			((pcpu->avg_load_maxfreq * pcpu->window_size) +
 			(load_at_max_freq * wall_time)) /
@@ -150,6 +143,22 @@ static void update_related_cpus(void)
 		cpumask_copy(this_cpu->related_cpus, cpu_policy.cpus);
 	}
 }
+
+static int policy_change_handler(struct notifier_block *nb,
+			unsigned long val, void *data)
+{
+	struct cpufreq_policy *policy = data;
+	switch (val) {
+		case CPUFREQ_NOTIFY:
+		{
+			struct cpu_load_data *pcpu = &per_cpu(cpuload, policy->cpu);
+			pcpu->policy_max = policy->max;
+			break;
+		}
+	}
+	return NOTIFY_OK;
+}
+
 static int cpu_hotplug_handler(struct notifier_block *nb,
 			unsigned long val, void *data)
 {
@@ -368,9 +377,12 @@ static int __init msm_rq_stats_init(void)
 		cpumask_copy(pcpu->related_cpus, cpu_policy.cpus);
 	}
 	freq_transition.notifier_call = cpufreq_transition_handler;
+	policy_change.notifier_call = policy_change_handler;
 	cpu_hotplug.notifier_call = cpu_hotplug_handler;
 	cpufreq_register_notifier(&freq_transition,
 					CPUFREQ_TRANSITION_NOTIFIER);
+	cpufreq_register_notifier(&policy_change,
+					CPUFREQ_POLICY_NOTIFIER);
 	register_hotcpu_notifier(&cpu_hotplug);
 
 	return ret;

@@ -496,6 +496,11 @@ config USB_DWC3_MSM
 	  device and otg modes of operation. For more information please
 	  refer to http://www.qualcomm.com/chipsets.
 
+config USB_ANDROID_ECM
+	boolean "Android gadget ECM function"
+	depends on USB_G_ANDROID
+	help
+
 config USB_DWC3_OMAP
 	tristate "DesignWare USB3.0 (DRD) Controller for OMAP"
 	depends on ARCH_OMAP

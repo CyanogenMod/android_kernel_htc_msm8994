@@ -28,6 +28,11 @@
 #include <sound/msm-dai-q6-v2.h>
 #include <sound/pcm_params.h>
 
+#undef pr_info
+#undef pr_err
+#define pr_info(fmt, ...) pr_aud_info(fmt, ##__VA_ARGS__)
+#define pr_err(fmt, ...) pr_aud_err(fmt, ##__VA_ARGS__)
+
 #define MSM_DAI_PRI_AUXPCM_DT_DEV_ID 1
 #define MSM_DAI_SEC_AUXPCM_DT_DEV_ID 2
 
@@ -88,21 +93,15 @@ struct msm_dai_q6_mi2s_dai_data {
 };
 
 struct msm_dai_q6_auxpcm_dai_data {
-	/* BITMAP to track Rx and Tx port usage count */
+	
 	DECLARE_BITMAP(auxpcm_port_status, STATUS_MAX);
-	struct mutex rlock; /* auxpcm dev resource lock */
-	u16 rx_pid; /* AUXPCM RX AFE port ID */
-	u16 tx_pid; /* AUXPCM TX AFE port ID */
-	struct afe_clk_cfg clk_cfg; /* hold LPASS clock configuration */
-	struct msm_dai_q6_dai_data bdai_data; /* incoporate base DAI data */
+	struct mutex rlock; 
+	u16 rx_pid; 
+	u16 tx_pid; 
+	struct afe_clk_cfg clk_cfg; 
+	struct msm_dai_q6_dai_data bdai_data; 
 };
 
-/* MI2S format field for AFE_PORT_CMD_I2S_CONFIG command
- *  0: linear PCM
- *  1: non-linear PCM
- *  2: PCM data in IEC 60968 container
- *  3: compressed data in IEC 60958 container
- */
 static const char *const mi2s_format[] = {
 	"LPCM",
 	"Compr",
@@ -116,9 +115,6 @@ static const struct soc_enum mi2s_config_enum[] = {
 
 static u16 msm_dai_q6_max_num_slot(int frame_rate)
 {
-	/* Max num of slots is bits per frame divided
-	 * by bits per sample which is 16
-	 */
 	switch (frame_rate) {
 	case AFE_PORT_PCM_BITS_PER_FRAME_8:
 		return 0;
@@ -1124,10 +1120,6 @@ static int msm_dai_q6_psuedo_port_hw_params(struct snd_pcm_hw_params *params,
 	return 0;
 }
 
-/* Current implementation assumes hw_param is called once
- * This may not be the case but what to do when ADM and AFE
- * port are already opened and parameter changes
- */
 static int msm_dai_q6_hw_params(struct snd_pcm_substream *substream,
 				struct snd_pcm_hw_params *params,
 				struct snd_soc_dai *dai)
@@ -1264,12 +1256,6 @@ static int msm_dai_q6_set_channel_map(struct snd_soc_dai *dai,
 	case SLIMBUS_3_RX:
 	case SLIMBUS_4_RX:
 	case SLIMBUS_6_RX:
-		/*
-		 * channel number to be between 128 and 255.
-		 * For RX port use channel numbers
-		 * from 138 to 144 for pre-Taiko
-		 * from 144 to 159 for Taiko
-		 */
 		if (!rx_slot) {
 			pr_err("%s: rx slot not found\n", __func__);
 			return -EINVAL;
@@ -1294,12 +1280,6 @@ static int msm_dai_q6_set_channel_map(struct snd_soc_dai *dai,
 	case SLIMBUS_4_TX:
 	case SLIMBUS_5_TX:
 	case SLIMBUS_6_TX:
-		/*
-		 * channel number to be between 128 and 255.
-		 * For TX port use channel numbers
-		 * from 128 to 137 for pre-Taiko
-		 * from 128 to 143 for Taiko
-		 */
 		if (!tx_slot) {
 			pr_err("%s: tx slot not found\n", __func__);
 			return -EINVAL;
@@ -1332,17 +1312,6 @@ static struct snd_soc_dai_ops msm_dai_q6_ops = {
 	.set_channel_map = msm_dai_q6_set_channel_map,
 };
 
-/*
- * For single CPU DAI registration, the dai id needs to be
- * set explicitly in the dai probe as ASoC does not read
- * the cpu->driver->id field rather it assigns the dai id
- * from the device name that is in the form %s.%d. This dai
- * id should be assigned to back-end AFE port id and used
- * during dai prepare. For multiple dai registration, it
- * is not required to call this function, however the dai->
- * driver->id field must be defined and set to corresponding
- * AFE Port id.
- */
 static inline void msm_dai_q6_set_dai_id(struct snd_soc_dai *dai)
 {
 	if (!dai->driver->id) {
@@ -2372,9 +2341,6 @@ static int msm_dai_q6_mi2s_prepare(struct snd_pcm_substream *substream,
 		dai->id, port_id, dai_data->channels, dai_data->rate);
 
 	if (!test_bit(STATUS_PORT_STARTED, dai_data->status_mask)) {
-		/* PORT START should be set if prepare called
-		 * in active state.
-		 */
 		rc = afe_port_start(port_id, &dai_data->port_config,
 				    dai_data->rate);
 
@@ -2404,6 +2370,15 @@ static int msm_dai_q6_mi2s_hw_params(struct snd_pcm_substream *substream,
 		&mi2s_dai_data->rx_dai : &mi2s_dai_data->tx_dai);
 	struct msm_dai_q6_dai_data *dai_data = &mi2s_dai_config->mi2s_dai_data;
 	struct afe_param_id_i2s_cfg *i2s = &dai_data->port_config.i2s;
+
+	u16 port_id = 0;
+
+	if (msm_mi2s_get_port_id(dai->id, substream->stream,
+				 &port_id) != 0) {
+		dev_err(dai->dev, "%s: Invalid Port ID 0x%x\n",
+				__func__, port_id);
+		return -EINVAL;
+	}
 
 	dai_data->channels = params_channels(params);
 	switch (dai_data->channels) {
@@ -2481,7 +2456,7 @@ static int msm_dai_q6_mi2s_hw_params(struct snd_pcm_substream *substream,
 			__func__, params_format(params));
 		return -EINVAL;
 	}
-
+	pr_info("%s: port 0x%x bit %d rate %d\n",__func__,port_id,dai_data->bitwidth,dai_data->rate);
 	dai_data->port_config.i2s.i2s_cfg_minor_version =
 			AFE_API_VERSION_I2S_CONFIG;
 	dai_data->port_config.i2s.sample_rate = dai_data->rate;
@@ -2615,7 +2590,6 @@ static struct snd_soc_dai_ops msm_dai_q6_mi2s_ops = {
 	.shutdown	= msm_dai_q6_mi2s_shutdown,
 };
 
-/* Channel min and max are initialized base on platform data */
 static struct snd_soc_dai_driver msm_dai_q6_mi2s_dai[] = {
 	{
 		.playback = {
@@ -3392,6 +3366,5 @@ static void __exit msm_dai_q6_exit(void)
 }
 module_exit(msm_dai_q6_exit);
 
-/* Module information */
 MODULE_DESCRIPTION("MSM DSP DAI driver");
 MODULE_LICENSE("GPL v2");

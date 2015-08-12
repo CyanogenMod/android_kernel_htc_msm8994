@@ -49,13 +49,15 @@
 #define ONDEMAND_REGULATOR true
 #define STATIC_REGULATOR (!ONDEMAND_REGULATOR)
 
-/* Number of return values needs to be checked for each
- * registration of Slimbus of I2C bus for each codec
- */
 #define NUM_WCD9XXX_REG_RET	9
 
 #define SLIM_USR_MC_REPEAT_CHANGE_VALUE 0x0
 #define SLIM_REPEAT_WRITE_MAX_SLICE 16
+
+#undef pr_info
+#undef pr_err
+#define pr_info(fmt, ...) pr_aud_info(fmt, ##__VA_ARGS__)
+#define pr_err(fmt, ...) pr_aud_err(fmt, ##__VA_ARGS__)
 
 struct wcd9xxx_i2c {
 	struct i2c_client *client;
@@ -380,13 +382,6 @@ int wcd9xxx_slim_write_repeat(struct wcd9xxx *wcd9xxx, unsigned short reg,
 }
 EXPORT_SYMBOL(wcd9xxx_slim_write_repeat);
 
-/*
- * wcd9xxx_slim_reserve_bw: API to reserve the slimbus bandwidth
- * @wcd9xxx: Handle to the wcd9xxx core
- * @bw_ops: value of the bandwidth that is requested
- * @commit: Flag to indicate if bandwidth change is to be commited
- *	    right away
- */
 int wcd9xxx_slim_reserve_bw(struct wcd9xxx *wcd9xxx,
 		u32 bw_ops, bool commit)
 {
@@ -401,9 +396,6 @@ int wcd9xxx_slim_reserve_bw(struct wcd9xxx *wcd9xxx,
 }
 EXPORT_SYMBOL(wcd9xxx_slim_reserve_bw);
 
-/* Interface specifies whether the write is to the interface or general
- * registers.
- */
 static int wcd9xxx_slim_write_device(struct wcd9xxx *wcd9xxx,
 		unsigned short reg, int bytes, void *src, bool interface)
 {
@@ -701,10 +693,6 @@ static int wcd9xxx_num_irq_regs(const struct wcd9xxx *wcd9xxx)
 		((wcd9xxx->codec_type->num_irqs % 8) ? 1 : 0);
 }
 
-/*
- * Interrupt table for v1 corresponds to newer version
- * codecs (wcd9304 and wcd9310)
- */
 static const struct intr_data intr_tbl_v1[] = {
 	{WCD9XXX_IRQ_SLIMBUS, false},
 	{WCD9XXX_IRQ_MBHC_INSERTION, true},
@@ -732,10 +720,6 @@ static const struct intr_data intr_tbl_v1[] = {
 	{WCD9XXX_IRQ_RESERVED_1, false},
 };
 
-/*
- * Interrupt table for v2 corresponds to newer version
- * codecs (wcd9320 and wcd9306)
- */
 static const struct intr_data intr_tbl_v2[] = {
 	{WCD9XXX_IRQ_SLIMBUS, false},
 	{WCD9XXX_IRQ_MBHC_INSERTION, true},
@@ -772,10 +756,6 @@ static const struct intr_data intr_tbl_v2[] = {
 	{WCD9XXX_IRQ_VBAT_MONITOR_RELEASE, false},
 };
 
-/*
- * Interrupt table for v3 corresponds to newer version
- * codecs (wcd9330)
- */
 static const struct intr_data intr_tbl_v3[] = {
 	{WCD9XXX_IRQ_SLIMBUS, false},
 	{WCD9XXX_IRQ_MBHC_INSERTION, true},
@@ -987,10 +967,6 @@ static ssize_t codec_debug_read(struct file *file, char __user *ubuf,
 	return ret_cnt;
 }
 
-/*
- * Place inside CONFIG_DEBUG section as this function is only used by debugfs
- * function
- */
 static void wcd9xxx_set_reset_pin_state(struct wcd9xxx *wcd9xxx,
 					struct wcd9xxx_pdata *pdata,
 					bool active)
@@ -1616,10 +1592,6 @@ static int wcd9xxx_dt_parse_micbias_info(struct device *dev,
 	wcd9xxx_read_of_property_u32(dev, "qcom,cdc-micbias-cfilt3-mv",
 				&micbias->cfilt3_mv);
 
-	/* Read micbias values for codec. Does not matter even if a few
-	 * micbias values are not defined in the Device Tree. Codec will
-	 * anyway not use those values
-	 */
 	if (!(wcd9xxx_read_of_property_u32(dev, "qcom,cdc-micbias1-cfilt-sel",
 				&prop_val)))
 		micbias->bias1_cfilt_sel = (u8)prop_val;
@@ -1743,18 +1715,6 @@ err:
 
 }
 
-/*
- * wcd9xxx_validate_dmic_sample_rate:
- *	Given the dmic_sample_rate and mclk rate, validate the
- *	dmic_sample_rate. If dmic rate is found to be invalid,
- *	assign the dmic rate as undefined, so individual codec
- *	drivers can use thier own defaults
- * @dev: the device for which the dmic is to be configured
- * @dmic_sample_rate: The input dmic_sample_rate
- * @mclk_rate: The input codec mclk rate
- * @dmic_rate_type: String to indicate the type of dmic sample
- *		    rate, used for debug/error logging.
- */
 static u32 wcd9xxx_validate_dmic_sample_rate(struct device *dev,
 		u32 dmic_sample_rate, u32 mclk_rate,
 		const char *dmic_rate_type)
@@ -2061,6 +2021,10 @@ static int wcd9xxx_slim_probe(struct slim_device *slim)
 	if (ret) {
 		pr_err("%s: failed to get slimbus %s logical address: %d\n",
 		       __func__, wcd9xxx->slim->name, ret);
+#ifdef CONFIG_HTC_DEBUG_DSP
+		pr_info("%s:trigger ramdump to keep status\n",__func__);
+		BUG();
+#endif
 		goto err_reset;
 	}
 	wcd9xxx->read_dev = wcd9xxx_slim_read_device;
@@ -2084,6 +2048,10 @@ static int wcd9xxx_slim_probe(struct slim_device *slim)
 	if (ret) {
 		pr_err("%s: failed to get slimbus %s logical address: %d\n",
 		       __func__, wcd9xxx->slim->name, ret);
+#ifdef CONFIG_HTC_DEBUG_DSP
+		pr_info("%s:trigger ramdump to keep status\n",__func__);
+		BUG();
+#endif
 		goto err_slim_add;
 	}
 	wcd9xxx_inf_la = wcd9xxx->slim_slave->laddr;

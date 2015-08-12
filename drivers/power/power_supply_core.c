@@ -20,7 +20,6 @@
 #include <linux/thermal.h>
 #include "power_supply.h"
 
-/* exported for the APM Power driver, APM emulation */
 struct class *power_supply_class;
 EXPORT_SYMBOL_GPL(power_supply_class);
 
@@ -52,15 +51,6 @@ static bool __power_supply_is_supplied_by(struct power_supply *supplier,
 	return false;
 }
 
-/**
- * power_supply_set_voltage_limit - set current limit
- * @psy:	the power supply to control
- * @limit:	current limit in uV from the power supply.
- *		0 will disable the power supply.
- *
- * This function will set a maximum supply current from a source
- * and it will disable the charger when limit is 0.
- */
 int power_supply_set_voltage_limit(struct power_supply *psy, int limit)
 {
 	const union power_supply_propval ret = {limit,};
@@ -72,7 +62,6 @@ int power_supply_set_voltage_limit(struct power_supply *psy, int limit)
 	return -ENXIO;
 }
 EXPORT_SYMBOL(power_supply_set_voltage_limit);
-
 
 /**
  * power_supply_set_current_limit - set current limit
@@ -95,11 +84,6 @@ int power_supply_set_current_limit(struct power_supply *psy, int limit)
 }
 EXPORT_SYMBOL_GPL(power_supply_set_current_limit);
 
-/**
- * power_supply_set_charging_enabled - enable or disable charging
- * @psy:	the power supply to control
- * @enable:	sets enable property of power supply
- */
 int power_supply_set_charging_enabled(struct power_supply *psy, bool enable)
 {
 	const union power_supply_propval ret = {enable,};
@@ -113,11 +97,6 @@ int power_supply_set_charging_enabled(struct power_supply *psy, bool enable)
 }
 EXPORT_SYMBOL_GPL(power_supply_set_charging_enabled);
 
-/**
- * power_supply_set_present - set present state of the power supply
- * @psy:	the power supply to control
- * @enable:	sets present property of power supply
- */
 int power_supply_set_present(struct power_supply *psy, bool enable)
 {
 	const union power_supply_propval ret = {enable,};
@@ -130,11 +109,6 @@ int power_supply_set_present(struct power_supply *psy, bool enable)
 }
 EXPORT_SYMBOL_GPL(power_supply_set_present);
 
-/**
- * power_supply_set_online - set online state of the power supply
- * @psy:	the power supply to control
- * @enable:	sets online property of power supply
- */
 int power_supply_set_online(struct power_supply *psy, bool enable)
 {
 	const union power_supply_propval ret = {enable,};
@@ -146,7 +120,6 @@ int power_supply_set_online(struct power_supply *psy, bool enable)
 	return -ENXIO;
 }
 EXPORT_SYMBOL_GPL(power_supply_set_online);
-
 
 /** power_supply_set_health_state - set health state of the power supply
  * @psy:       the power supply to control
@@ -162,7 +135,6 @@ int power_supply_set_health_state(struct power_supply *psy, int health)
 	return -ENXIO;
 }
 EXPORT_SYMBOL(power_supply_set_health_state);
-
 
 /**
  * power_supply_set_scope - set scope of the power supply
@@ -181,11 +153,6 @@ int power_supply_set_scope(struct power_supply *psy, int scope)
 }
 EXPORT_SYMBOL_GPL(power_supply_set_scope);
 
-/**
- * power_supply_set_usb_otg - set otg of the usb power supply
- * @psy:	the usb power supply to control
- * @scope:	value to set the otg property to
- */
 int power_supply_set_usb_otg(struct power_supply *psy, int otg)
 {
 	const union power_supply_propval ret = {otg, };
@@ -197,11 +164,6 @@ int power_supply_set_usb_otg(struct power_supply *psy, int otg)
 }
 EXPORT_SYMBOL(power_supply_set_usb_otg);
 
-/**
- * power_supply_set_supply_type - set type of the power supply
- * @psy:	the power supply to control
- * @supply_type:	sets type property of power supply
- */
 int power_supply_set_supply_type(struct power_supply *psy,
 				enum power_supply_type supply_type)
 {
@@ -215,11 +177,6 @@ int power_supply_set_supply_type(struct power_supply *psy,
 }
 EXPORT_SYMBOL_GPL(power_supply_set_supply_type);
 
-/**
- * power_supply_set_charge_type - set charge type of the power supply
- * @psy:	the power supply to control
- * @enable:	sets charge type property of power supply
- */
 int power_supply_set_charge_type(struct power_supply *psy, int charge_type)
 {
 	const union power_supply_propval ret = {charge_type,};
@@ -232,12 +189,6 @@ int power_supply_set_charge_type(struct power_supply *psy, int charge_type)
 }
 EXPORT_SYMBOL_GPL(power_supply_set_charge_type);
 
-/**
- * power_supply_set_hi_power_state - set power state for power_supply
- * @psy:	the power supply to control
- * @value:	value to be passed to the power_supply
- *
- */
 int power_supply_set_hi_power_state(struct power_supply *psy, int value)
 {
 	const union power_supply_propval ret = {value, };
@@ -249,12 +200,6 @@ int power_supply_set_hi_power_state(struct power_supply *psy, int value)
 }
 EXPORT_SYMBOL(power_supply_set_hi_power_state);
 
-/**
- * power_supply_set_low_power_state - set power state for power_supply
- * @psy:	the power supply to control
- * @value:	value to be passed to the power_supply
- *
- */
 int power_supply_set_low_power_state(struct power_supply *psy, int value)
 {
 	const union power_supply_propval ret = {value, };
@@ -295,7 +240,8 @@ static void power_supply_changed_work(struct work_struct *work)
 		class_for_each_device(power_supply_class, NULL, psy,
 				      __power_supply_changed_work);
 
-		power_supply_update_leds(psy);
+		
+		
 
 		kobject_uevent(&psy->dev->kobj, KOBJ_CHANGE);
 		spin_lock_irqsave(&psy->changed_lock, flags);
@@ -378,23 +324,12 @@ static int power_supply_find_supply_from_node(struct device_node *supply_node)
 	struct device *dev;
 	struct class_dev_iter iter;
 
-	/*
-	 * Use iterator to see if any other device is registered.
-	 * This is required since class_for_each_device returns 0
-	 * if there are no devices registered.
-	 */
 	class_dev_iter_init(&iter, power_supply_class, NULL, NULL);
 	dev = class_dev_iter_next(&iter);
 
 	if (!dev)
 		return -EPROBE_DEFER;
 
-	/*
-	 * We have to treat the return value as inverted, because if
-	 * we return error on not found, then it won't continue looking.
-	 * So we trick it by returning error on success to stop looking
-	 * once the matching device is found.
-	 */
 	error = class_for_each_device(power_supply_class, NULL, supply_node,
 				       __power_supply_find_supply_from_node);
 
@@ -504,10 +439,6 @@ int power_supply_is_system_supplied(void)
 	error = class_for_each_device(power_supply_class, NULL, &count,
 				      __power_supply_is_system_supplied);
 
-	/*
-	 * If no power class device was found at all, most probably we are
-	 * running on a desktop system, so assume we are on mains power.
-	 */
 	if (count == 0)
 		return 1;
 
@@ -557,7 +488,7 @@ static void power_supply_dev_release(struct device *dev)
 
 #ifdef CONFIG_THERMAL
 static int power_supply_read_temp(struct thermal_zone_device *tzd,
-		unsigned long *temp)
+		long *temp)
 {
 	struct power_supply *psy;
 	union power_supply_propval val;
@@ -602,7 +533,6 @@ static void psy_unregister_thermal(struct power_supply *psy)
 	thermal_zone_device_unregister(psy->tzd);
 }
 
-/* thermal cooling device callbacks */
 static int ps_get_max_charge_cntl_limit(struct thermal_cooling_device *tcd,
 					unsigned long *state)
 {

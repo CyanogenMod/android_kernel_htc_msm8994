@@ -1424,10 +1424,6 @@ static int __from_user_gamut_cfg_data(
 			MDP_GAMUT_TABLE_NUM * sizeof(uint32_t)))
 		return 0;
 
-	/* The Gamut LUT data contains 3 static arrays for R, G, and B
-	 * gamut data. Each these arrays contains pointers dynamic arrays
-	 * which hold the gamut LUTs for R, G, and B. Must copy the array of
-	 * pointers from 32 bit to 64 bit addresses. */
 	for (i = 0; i < MDP_GAMUT_TABLE_NUM; i++) {
 		if (get_user(data, &gamut_cfg32->r_tbl[i]) ||
 		    put_user(compat_ptr(data), &gamut_cfg->r_tbl[i]))
@@ -2746,16 +2742,6 @@ int mdss_compat_overlay_ioctl(struct fb_info *info, unsigned int cmd,
 	return ret;
 }
 
-/*
- * mdss_fb_compat_ioctl() - MDSS Framebuffer compat ioctl function
- * @info:	pointer to framebuffer info
- * @cmd:	ioctl command
- * @arg:	argument to ioctl
- *
- * This function adds the compat translation layer for framebuffer
- * ioctls to allow 32-bit userspace call ioctls on the mdss
- * framebuffer device driven in 64-bit kernel.
- */
 int mdss_fb_compat_ioctl(struct fb_info *info, unsigned int cmd,
 			 unsigned long arg)
 {

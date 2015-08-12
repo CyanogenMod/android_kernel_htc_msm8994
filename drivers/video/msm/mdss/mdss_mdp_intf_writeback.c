@@ -20,10 +20,6 @@
 #include "mdss_mdp_trace.h"
 #include "mdss_debug.h"
 
-/*
- * if BWC enabled and format is H1V2 or 420, do not use site C or I.
- * Hence, set the bits 29:26 in format register, as zero.
- */
 #define BWC_FMT_MASK	0xC3FFFFFF
 #define MDSS_DEFAULT_OT_SETTING    0x10
 
@@ -177,10 +173,10 @@ static int mdss_mdp_writeback_format_setup(struct mdss_mdp_writeback_ctx *ctx,
 
 	if (ctx->type != MDSS_MDP_WRITEBACK_TYPE_ROTATOR && fmt->is_yuv) {
 		mdss_mdp_csc_setup(MDSS_MDP_BLOCK_WB, ctx->wb_num,
-				   MDSS_MDP_CSC_RGB2YUV);
-		opmode |= (1 << 8) |	/* CSC_EN */
-			  (0 << 9) |	/* SRC_DATA=RGB */
-			  (1 << 10);	/* DST_DATA=YCBCR */
+				   MDSS_MDP_CSC_RGB2YUV_601);
+		opmode |= (1 << 8) |	
+			  (0 << 9) |	
+			  (1 << 10);	
 
 		switch (chroma_samp) {
 		case MDSS_MDP_CHROMA_RGB:
@@ -497,16 +493,8 @@ static bool mdss_mdp_traffic_shaper_helper(struct mdss_mdp_ctl *ctl,
 			ctl->traffic_shaper_mdp_clk = clk_rate;
 			bw_rate = perf.bw_overlap;
 
-			/*
-			 * Bandwidth vote accounts for both read and write
-			 * rotator, divide by 2 to get only the write bandwidth.
-			 */
 			do_div(bw_rate, 2);
 
-			/*
-			 * Calculating bytes per clock in 4.4 form
-			 * allowing up to 1/16 granularity.
-			 */
 			do_div(bw_rate,
 				(clk_rate >>
 				 MDSS_MDP_REG_TRAFFIC_SHAPER_FIXPOINT_FACTOR));

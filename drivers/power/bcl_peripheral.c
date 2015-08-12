@@ -343,7 +343,7 @@ static int bcl_access_monitor_enable(bool enable)
 			switch (perph_data->state) {
 			case BCL_PARAM_MONITOR:
 				disable_irq(perph_data->irq_num);
-				/* Fall through to clear the poll work */
+				
 			case BCL_PARAM_INACTIVE:
 			case BCL_PARAM_POLLING:
 				cancel_delayed_work_sync(
@@ -662,7 +662,7 @@ static irqreturn_t bcl_handle_ibat(int irq, void *data)
 			pr_err("Error clearing max/min reg. err:%d\n", ret);
 		thresh_value = perph_data->high_trip;
 		convert_adc_to_ibat_val(&thresh_value);
-		/* Account threshold trip from PBS threshold for dead time */
+		
 		thresh_value -= perph_data->inhibit_derating_ua;
 		if (perph_data->trip_val < thresh_value) {
 			pr_debug("False Ibat high trip. ibat:%d ibat_thresh_val:%d\n",
@@ -1015,10 +1015,6 @@ static int bcl_probe(struct spmi_device *spmi)
 			&bcl_perph->param[BCL_PARAM_VOLTAGE].state_trans_lock);
 		goto bcl_probe_exit;
 	}
-	/*
-	 * BCL is enabled by default in hardware.
-	 * Disable BCL monitoring till a valid threshold is set by APPS
-	 */
 	disable_irq_nosync(bcl_perph->param[BCL_PARAM_VOLTAGE].irq_num);
 	mutex_unlock(&bcl_perph->param[BCL_PARAM_VOLTAGE].state_trans_lock);
 
@@ -1102,4 +1098,3 @@ static void __exit bcl_perph_exit(void)
 fs_initcall(bcl_perph_init);
 module_exit(bcl_perph_exit);
 MODULE_ALIAS("platform:" BCL_DRIVER_NAME);
-

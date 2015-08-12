@@ -173,18 +173,6 @@ static int mdss_mdp_parse_dt_misc(struct platform_device *pdev);
 static int mdss_mdp_parse_dt_ad_cfg(struct platform_device *pdev);
 static int mdss_mdp_parse_dt_bus_scale(struct platform_device *pdev);
 static int mdss_mdp_parse_dt_ppb_off(struct platform_device *pdev);
-/**
- * mdss_mdp_vbif_axi_halt() - Halt MDSS AXI ports
- * @mdata: pointer to the global mdss data structure.
- *
- * Check if MDSS AXI ports connected to RealTime(RT) VBIF are idle or not. If
- * not send a halt request and wait for it be idle.
- *
- * This function can be called during deep suspend, display off or for
- * debugging purposes. On success it should be assumed that AXI ports connected
- * to RT VBIF are in idle state and would not fetch any more data. This function
- * cannot be called from interrupt context.
- */
 int mdss_mdp_vbif_axi_halt(struct mdss_data_type *mdata)
 {
 	bool is_idle;
@@ -221,10 +209,6 @@ int mdss_mdp_vbif_axi_halt(struct mdss_data_type *mdata)
 
 u32 mdss_mdp_fb_stride(u32 fb_index, u32 xres, int bpp)
 {
-	/* The adreno GPU hardware requires that the pitch be aligned to
-	   32 pixels for color buffers, so for the cases where the GPU
-	   is writing directly to fb0, the framebuffer pitch
-	   also needs to be 32 pixel aligned */
 
 	if (fb_index == 0)
 		return ALIGN(xres, 32) * bpp;
@@ -292,18 +276,13 @@ static int mdss_mdp_bus_scale_register(struct mdss_data_type *mdata)
 		mdata->reg_bus_hdl =
 			msm_bus_scale_register_client(reg_bus_pdata);
 		if (!mdata->reg_bus_hdl) {
-			/* Continue without reg_bus scaling */
+			
 			pr_warn("reg_bus_client register failed\n");
 		} else
 			pr_debug("register reg_bus_hdl=%x\n",
 					mdata->reg_bus_hdl);
 	}
 
-	/*
-	 * Following call will not result in actual vote rather update the
-	 * current index and ab/ib value. When continuous splash is enabled,
-	 * actual vote will happen when splash handoff is done.
-	 */
 	return mdss_bus_scale_set_quota(MDSS_MDP_RT, AB_QUOTA, IB_QUOTA);
 }
 
@@ -322,9 +301,6 @@ static void mdss_mdp_bus_scale_unregister(struct mdss_data_type *mdata)
 	}
 }
 
-/*
- * Caller needs to hold mdata->bus_bw_lock lock before calling this function.
- */
 static int mdss_mdp_bus_scale_set_quota(u64 ab_quota_rt, u64 ab_quota_nrt,
 		u64 ib_quota_rt, u64 ib_quota_nrt)
 {
@@ -418,7 +394,7 @@ static int mdss_mdp_bus_scale_set_quota(u64 ab_quota_rt, u64 ab_quota_nrt,
 
 	if ((mdss_res->bus_bw_cnt == 0) && mdss_res->curr_bw_uc_idx)
 		return 0;
-	else /* vote BW if bus_bw_cnt > 0 or uc_idx is zero */
+	else 
 		return msm_bus_scale_client_update_request(mdss_res->bus_hdl,
 			new_uc_idx);
 }
@@ -462,7 +438,6 @@ static inline u32 mdss_mdp_irq_mask(u32 intr_type, u32 intf_num)
 	return 1 << (intr_type + intf_num);
 }
 
-/* function assumes that mdp is clocked to access hw registers */
 void mdss_mdp_irq_clear(struct mdss_data_type *mdata,
 		u32 intr_type, u32 intf_num)
 {
@@ -575,16 +550,6 @@ void mdss_mdp_hist_irq_disable(u32 irq)
 	spin_unlock_irqrestore(&mdp_lock, irq_flags);
 }
 
-/**
- * mdss_mdp_irq_disable_nosync() - disable mdp irq
- * @intr_type:	mdp interface type
- * @intf_num:	mdp interface num
- *
- * This fucntion is called from interrupt context
- * mdp_lock is already held at up stream (mdss_irq_handler)
- * therefore spin_lock(&mdp_lock) is not allowed here
- *
-*/
 void mdss_mdp_irq_disable_nosync(u32 intr_type, u32 intf_num)
 {
 	u32 irq;
@@ -705,10 +670,6 @@ int mdss_iommu_ctrl(int enable)
 		__builtin_return_address(0), enable, mdata->iommu_ref_cnt);
 
 	if (enable) {
-		/*
-		 * delay iommu attach until continous splash screen has
-		 * finished handoff, as it may still be working with phys addr
-		 */
 		if (!mdata->iommu_attached && !mdata->handoff_pending) {
 			if (mdata->needs_iommu_bw_vote)
 				mdss_bus_scale_set_quota(MDSS_HW_IOMMU,
@@ -737,14 +698,6 @@ int mdss_iommu_ctrl(int enable)
 		return mdata->iommu_ref_cnt;
 }
 
-/**
- * mdss_mdp_idle_pc_restore() - Restore MDSS settings when exiting idle pc
- *
- * MDSS GDSC can be voted off during idle-screen usecase for MIPI DSI command
- * mode displays, referred to as MDSS idle power collapse. Upon subsequent
- * frame update, MDSS GDSC needs to turned back on and hw state needs to be
- * restored.
- */
 static int mdss_mdp_idle_pc_restore(void)
 {
 	struct mdss_data_type *mdata = mdss_mdp_get_mdata();
@@ -772,15 +725,6 @@ end:
 	return rc;
 }
 
-/**
- * mdss_bus_bandwidth_ctrl() -- place bus bandwidth request
- * @enable:	value of enable or disable
- *
- * Function place bus bandwidth request to allocate saved bandwidth
- * if enabled or free bus bandwidth allocation if disabled.
- * Bus bandwidth is required by mdp.For dsi, it only requires to send
- * dcs coammnd. It returns error if bandwidth request fails.
- */
 void mdss_bus_bandwidth_ctrl(int enable)
 {
 	struct mdss_data_type *mdata = mdss_mdp_get_mdata();
@@ -1182,30 +1126,30 @@ static u32 mdss_get_props(void)
 
 static void mdss_mdp_hw_rev_caps_init(struct mdss_data_type *mdata)
 {
-	/* prevent disable of prefill calculations */
+	
 	mdata->min_prefill_lines = 0xffff;
 
 	switch (mdata->mdp_rev) {
 	case MDSS_MDP_HW_REV_105:
 	case MDSS_MDP_HW_REV_109:
 		mdss_set_quirk(mdata, MDSS_QUIRK_BWCPANIC);
-		mdata->max_target_zorder = 7; /* excluding base layer */
+		mdata->max_target_zorder = 7; 
 		mdata->max_cursor_size = 128;
 		break;
 	case MDSS_MDP_HW_REV_110:
 		mdss_set_quirk(mdata, MDSS_QUIRK_BWCPANIC);
-		mdata->max_target_zorder = 4; /* excluding base layer */
+		mdata->max_target_zorder = 4; 
 		mdata->max_cursor_size = 128;
 		mdata->min_prefill_lines = 12;
 		mdata->props = mdss_get_props();
 		break;
 	case MDSS_MDP_HW_REV_107:
-		mdata->max_target_zorder = 4; /* excluding base layer */
+		mdata->max_target_zorder = 4; 
 		mdata->max_cursor_size = 64;
 		mdata->min_prefill_lines = 21;
 		break;
 	default:
-		mdata->max_target_zorder = 4; /* excluding base layer */
+		mdata->max_target_zorder = 4; 
 		mdata->max_cursor_size = 64;
 	}
 
@@ -1224,14 +1168,6 @@ static void mdss_hw_rev_init(struct mdss_data_type *mdata)
 	mdss_mdp_clk_ctrl(MDP_BLOCK_POWER_OFF);
 }
 
-/**
- * mdss_hw_init() - Initialize MDSS target specific register settings
- * @mdata: MDP private data
- *
- * Initialize basic MDSS hardware settings based on the board specific
- * parameters. This function does not explicitly turn on the MDP clocks
- * and so it must be called with the MDP clocks already enabled.
- */
 void mdss_hw_init(struct mdss_data_type *mdata)
 {
 	int i, j;
@@ -1322,14 +1258,6 @@ static u32 mdss_mdp_res_init(struct mdss_data_type *mdata)
 	return rc;
 }
 
-/**
- * mdss_mdp_footswitch_ctrl_splash() - clocks handoff for cont. splash screen
- * @on: 1 to start handoff, 0 to complete the handoff after first frame update
- *
- * MDSS Clocks and GDSC are already on during continous splash screen, but
- * increasing ref count will keep clocks from being turned off until handoff
- * has properly happend after frame update.
- */
 void mdss_mdp_footswitch_ctrl_splash(int on)
 {
 	int ret;
@@ -1699,13 +1627,6 @@ static int mdss_mdp_probe(struct platform_device *pdev)
 		pr_err("mdss_register_irq failed.\n");
 	mdss_res->mdss_util->mdp_probe_done = true;
 
-	/*
-	 * enable clocks and read mdp_rev as soon as possible once
-	 * kernel is up. Read the DISP_INTF_SEL register to check if
-	 * display was enabled in bootloader or not. If yes, let handoff
-	 * handle removing the extra clk/regulator votes else turn off
-	 * clk/regulators because purpose here is to get mdp_rev.
-	 */
 	mdss_mdp_footswitch_ctrl_splash(true);
 	mdss_hw_init(mdata);
 
@@ -2284,7 +2205,7 @@ static int mdss_mdp_parse_dt_pipe(struct platform_device *pdev)
 			mdata->ncursor_pipes);
 		if (rc)
 			goto parse_fail;
-		/* set the fetch id to an invalid value */
+		
 		for (i = 0; i < mdata->ncursor_pipes; i++)
 			ftch_id[i] = -1;
 		rc = mdss_mdp_pipe_addr_setup(mdata, mdata->cursor_pipes,
@@ -2553,10 +2474,6 @@ static int mdss_mdp_parse_dt_smp(struct platform_device *pdev)
 	const u32 *arr;
 
 	num = mdss_mdp_parse_dt_prop_len(pdev, "qcom,mdss-smp-data");
-	/*
-	 * This property is optional for targets with fix pixel ram. Rest
-	 * must provide no. of smp and size of each block.
-	 */
 	if (!num)
 		return 0;
 	else if (num != 2)
@@ -2812,41 +2729,21 @@ static int mdss_mdp_parse_dt_misc(struct platform_device *pdev)
 			slave_pingpong_off;
 	}
 
-	/*
-	 * 2x factor on AB because bus driver will divide by 2
-	 * due to 2x ports to BIMC
-	 */
 	mdata->ab_factor.numer = 2;
 	mdata->ab_factor.denom = 1;
 	mdss_mdp_parse_dt_fudge_factors(pdev, "qcom,mdss-ab-factor",
 		&mdata->ab_factor);
 
-	/*
-	 * 1.2 factor on ib as default value. This value is
-	 * experimentally determined and should be tuned in device
-	 * tree.
-	 */
 	mdata->ib_factor.numer = 6;
 	mdata->ib_factor.denom = 5;
 	mdss_mdp_parse_dt_fudge_factors(pdev, "qcom,mdss-ib-factor",
 		&mdata->ib_factor);
 
-	/*
-	 * Set overlap ib value equal to ib by default. This value can
-	 * be tuned in device tree to be different from ib.
-	 * This factor apply when the max bandwidth per pipe
-	 * is the overlap BW.
-	 */
 	mdata->ib_factor_overlap.numer = mdata->ib_factor.numer;
 	mdata->ib_factor_overlap.denom = mdata->ib_factor.denom;
 	mdss_mdp_parse_dt_fudge_factors(pdev, "qcom,mdss-ib-factor-overlap",
 		&mdata->ib_factor_overlap);
 
-	/*
-	 * 1x factor on ib_factor_cmd as default value. This value is
-	 * experimentally determined and should be tuned in device
-	 * tree
-	 */
 	mdata->ib_factor_cmd.numer = 1;
 	mdata->ib_factor_cmd.denom = 1;
 	mdss_mdp_parse_dt_fudge_factors(pdev, "qcom,mdss-ib-factor-cmd",
@@ -3078,31 +2975,12 @@ void mdss_mdp_batfet_ctrl(struct mdss_data_type *mdata, int enable)
 	}
 }
 
-/**
- * mdss_is_ready() - checks if mdss is probed and ready
- *
- * Checks if mdss resources have been initialized
- *
- * returns true if mdss is ready, else returns false
- */
 bool mdss_is_ready(void)
 {
 	return mdss_mdp_get_mdata() ? true : false;
 }
 EXPORT_SYMBOL(mdss_mdp_get_mdata);
 
-/**
- * mdss_panel_intf_type() - checks if a given intf type is primary
- * @intf_val: panel interface type of the individual controller
- *
- * Individual controller queries with MDP to check if it is
- * configured as the primary interface.
- *
- * returns a pointer to the configured structure mdss_panel_cfg
- * to the controller that's configured as the primary panel interface.
- * returns NULL on error or if @intf_val is not the configured
- * controller.
- */
 struct mdss_panel_cfg *mdss_panel_intf_type(int intf_val)
 {
 	if (!mdss_res || !mdss_res->pan_cfg.init_done)
@@ -3159,21 +3037,6 @@ int mdss_mdp_wait_for_xin_halt(u32 xin_id, bool is_vbif_nrt)
 	return rc;
 }
 
-/**
- * force_on_xin_clk() - enable/disable the force-on for the pipe clock
- * @bit_off: offset of the bit to enable/disable the force-on.
- * @reg_off: register offset for the clock control.
- * @enable: boolean to indicate if the force-on of the clock needs to be
- * enabled or disabled.
- *
- * This function returns:
- * true - if the clock is forced-on by this function
- * false - if the clock was already forced on
- * It is the caller responsibility to check if this function is forcing
- * the clock on; if so, it will need to remove the force of the clock,
- * otherwise it should avoid to remove the force-on.
- * Clocks must be on when calling this function.
- */
 bool force_on_xin_clk(u32 bit_off, u32 clk_ctl_reg_off, bool enable)
 {
 	u32 val;
@@ -3238,14 +3101,10 @@ static u32 get_ot_limit(u32 reg_off, u32 bit_off,
 		(params->reg_off_vbif_lim_conf == MMSS_VBIF_RD_LIM_CONF))
 		ot_lim = mdata->default_ot_rd_limit;
 
-	/*
-	 * If default ot is not set from dt,
-	 * then do not configure it.
-	 */
 	if (ot_lim == 0)
 		goto exit;
 
-	/* Modify the limits if the target and the use case requires it */
+	
 	apply_dynamic_ot_limit(&ot_lim, params);
 
 	is_vbif_nrt = mdss_mdp_is_vbif_nrt(mdata->mdp_rev);
@@ -3415,16 +3274,6 @@ vreg_set_voltage_fail:
 	return rc;
 }
 
-/**
- * mdss_mdp_footswitch_ctrl() - Disable/enable MDSS GDSC and CX/Batfet rails
- * @mdata: MDP private data
- * @on: 1 to turn on footswitch, 0 to turn off footswitch
- *
- * When no active references to the MDP device node and it's child nodes are
- * held, MDSS GDSC can be turned off. However, any any panels are still
- * active (but likely in an idle state), the vote for the CX and the batfet
- * rails should not be released.
- */
 static void mdss_mdp_footswitch_ctrl(struct mdss_data_type *mdata, int on)
 {
 	int ret;
@@ -3452,10 +3301,6 @@ static void mdss_mdp_footswitch_ctrl(struct mdss_data_type *mdata, int on)
 			pr_debug("Disable MDP FS\n");
 			active_cnt = atomic_read(&mdata->active_intf_cnt);
 			if (active_cnt != 0) {
-				/*
-				 * Turning off GDSC while overlays are still
-				 * active.
-				 */
 				mdata->idle_pc = true;
 				pr_debug("idle pc. active overlays=%d\n",
 					active_cnt);
@@ -3544,11 +3389,6 @@ static int mdss_mdp_pm_resume(struct device *dev)
 
 	dev_dbg(dev, "display pm resume\n");
 
-	/*
-	 * It is possible that the runtime status of the mdp device may
-	 * have been active when the system was suspended. Reset the runtime
-	 * status to suspended state after a complete system resume.
-	 */
 	pm_runtime_disable(dev);
 	pm_runtime_set_suspended(dev);
 	pm_runtime_enable(dev);
@@ -3673,10 +3513,6 @@ static struct platform_driver mdss_mdp_driver = {
 	.resume = mdss_mdp_resume,
 	.shutdown = NULL,
 	.driver = {
-		/*
-		 * Driver name must match the device name added in
-		 * platform.c.
-		 */
 		.name = "mdp",
 		.of_match_table = mdss_mdp_dt_match,
 		.pm = &mdss_mdp_pm_ops,
