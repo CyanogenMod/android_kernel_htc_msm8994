@@ -1250,7 +1250,7 @@ static ssize_t fuse_file_aio_write(struct kiocb *iocb, const struct iovec *iov,
 		return generic_file_aio_write(iocb, iov, nr_segs, pos);
 	}
 
-	WARN_ON(iocb->ki_pos != pos);
+	BUG_ON(iocb->ki_pos != pos);
 
 	trace_fuse_file_write(iocb->ki_filp->f_path.dentry, iocb->ki_left);
 	ocount = 0;
