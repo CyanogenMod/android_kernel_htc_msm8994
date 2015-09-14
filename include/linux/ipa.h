@@ -648,6 +648,14 @@ int teth_bridge_disconnect(enum ipa_client_type client);
 
 int teth_bridge_connect(struct teth_bridge_connect_params *connect_params);
 
+/*
+ * Tethering client info
+ */
+void ipa_set_client(int index, enum ipacm_client_enum client, bool uplink);
+
+enum ipacm_client_enum ipa_get_client(int pipe_idx);
+
+bool ipa_get_client_uplink(int pipe_idx);
 
 int odu_bridge_init(struct odu_bridge_params *params);
 
@@ -1159,6 +1167,25 @@ static inline int teth_bridge_connect(struct teth_bridge_connect_params
 {
 	return -EPERM;
 }
+
+/*
+ * Tethering client info
+ */
+static inline void ipa_set_client(int index, enum ipacm_client_enum client,
+	bool uplink)
+{
+}
+
+static inline enum ipacm_client_enum ipa_get_client(int pipe_idx)
+{
+	return -EPERM;
+}
+
+static inline bool ipa_get_client_uplink(int pipe_idx)
+{
+	return -EPERM;
+}
+
 
 static inline int odu_bridge_init(struct odu_bridge_params *params)
 {
