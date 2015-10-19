@@ -1693,7 +1693,6 @@ static int select_best_cpu(struct task_struct *p, int target, int reason,
 	int prefer_idle = -1;
 	int prefer_idle_override = 0;
 	int fallback_minload_cpu = -1;
-	u64 min_load_b = ULLONG_MAX;
 	cpumask_t search_cpus;
 	struct rq *trq;
 
