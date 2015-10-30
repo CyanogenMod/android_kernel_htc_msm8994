@@ -2562,6 +2562,11 @@ TRACE_EVENT(cfg80211_ft_event,
 		  WIPHY_PR_ARG, NETDEV_PR_ARG, MAC_PR_ARG(target_ap))
 );
 
+DEFINE_EVENT(wiphy_wdev_evt, rdev_abort_scan,
+	TP_PROTO(struct wiphy *wiphy, struct wireless_dev *wdev),
+	TP_ARGS(wiphy, wdev)
+);
+
 DEFINE_EVENT(wiphy_netdev_mac_evt, rdev_key_mgmt_set_pmk,
 	TP_PROTO(struct wiphy *wiphy, struct net_device *netdev, const u8 *pmk),
 	TP_ARGS(wiphy, netdev, pmk)
