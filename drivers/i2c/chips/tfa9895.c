@@ -158,6 +158,7 @@ unsigned char amp_off[1][3] = {
 
 static int tfa9895_i2c_write(char *txdata, int length)
 {
+	int i;
 	int rc;
 	struct i2c_msg msg[] = {
 		{
@@ -167,6 +168,10 @@ static int tfa9895_i2c_write(char *txdata, int length)
 			.buf = txdata,
 		},
 	};
+
+	for (i = 0; i < length; i++) {
+		printk(KERN_INFO "%s: TX: 0x%02x\n", __func__, txdata[i]);
+	}
 
 	rc = i2c_transfer(this_client->adapter, msg, 1);
 	if (rc < 0) {
@@ -179,6 +184,7 @@ static int tfa9895_i2c_write(char *txdata, int length)
 
 static int tfa9895_i2c_read(char *rxdata, int length)
 {
+	int i;
 	int rc;
 	struct i2c_msg msgs[] = {
 		{
@@ -193,6 +199,10 @@ static int tfa9895_i2c_read(char *rxdata, int length)
 	if (rc < 0) {
 		pr_err("%s: transfer error %d\n", __func__, rc);
 		return rc;
+	}
+
+	for (i = 0; i < length; i++) {
+		printk(KERN_INFO "%s: RX: 0x%02x\n", __func__, rxdata[i]);
 	}
 
 	return 0;
@@ -318,11 +328,11 @@ static long tfa9895_ioctl(struct file *file, unsigned int cmd,
 
 	switch (_IOC_NR(cmd)) {
 	case TFA9895_WRITE_CONFIG_NR:
-		pr_debug("%s: TFA9895_WRITE_CONFIG\n", __func__);
+		pr_info("%s: TFA9895_WRITE_CONFIG of size: %d\n", __func__, ((struct tfa9895_i2c_buffer *)buf)->size);
 		rc = tfa9895_i2c_write(((struct tfa9895_i2c_buffer *)buf)->buffer, ((struct tfa9895_i2c_buffer *)buf)->size);
 		break;
 	case TFA9895_READ_CONFIG_NR:
-		pr_debug("%s: TFA9895_READ_CONFIG\n", __func__);
+		pr_info("%s: TFA9895_READ_CONFIG of size: %d\n", __func__, ((struct tfa9895_i2c_buffer *)buf)->size);
 		rc = tfa9895_i2c_read(((struct tfa9895_i2c_buffer *)buf)->buffer, ((struct tfa9895_i2c_buffer *)buf)->size);
 		break;
 	case TFA9895_WRITE_L_CONFIG_NR:
