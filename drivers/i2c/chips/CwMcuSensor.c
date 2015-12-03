@@ -323,6 +323,7 @@ struct cwmcu_data {
 	bool mcu_sensor_ready;
 	bool dload_mode_enabled;
 
+	bool tap2wake;
 	u32 gesture_motion_param;
 	int power_key_pressed;
 
@@ -5363,6 +5364,53 @@ static ssize_t crash_count_show(struct device *dev,
 	return PAGE_SIZE - buf_remaining;
 }
 
+static ssize_t tap2wake_set(struct device *dev, struct device_attribute *attr,
+		const char *buf, size_t count)
+{
+	struct cwmcu_data *mcu_data = dev_get_drvdata(dev);
+
+	int val, i;
+	u8 data[GESTURE_MOTION_UPDATE_ATTRIBUTE_LEN];
+
+	sscanf(buf, "%du", &val);
+	if (val != 0 || val != 1) {
+		E("%s: invalid value %d received\n", __func__, val);
+	} else {
+		mcu_data->tap2wake = val;
+
+		if (mcu_data->tap2wake) {
+			mcu_data->gesture_motion_param = 0x00800010;
+			data[0] = 0x00;
+			data[1] = 0x80;
+			data[2] = 0x00;
+			data[3] = 0x10;
+		} else {
+			mcu_data->gesture_motion_param = 0x00000000;
+			data[0] = 0x00;
+			data[1] = 0x00;
+			data[2] = 0x00;
+			data[3] = 0x00;
+		}
+
+		cwmcu_powermode_switch(mcu_data, 1);
+		for (i = 0; i < GESTURE_MOTION_UPDATE_ATTRIBUTE_LEN; i++) {
+			CWMCU_i2c_write(mcu_data,
+					GESTURE_MOTION_UPDATE_ATTRIBUTE, &data[i], 1, 1);
+		}
+		cwmcu_powermode_switch(mcu_data, 0);
+	}
+
+	return count;
+}
+
+static ssize_t tap2wake_show(struct device *dev, struct device_attribute *attr,
+		char *buf)
+{
+	struct cwmcu_data *mcu_data = dev_get_drvdata(dev);
+
+	return sprintf(buf, "%d\n", mcu_data->tap2wake);
+}
+
 #ifdef SHUB_LOGGING_SUPPORT
 static ssize_t log_mask_show(struct device *dev, struct device_attribute *attr,char *buf);
 static ssize_t log_mask_store(struct device *dev, struct device_attribute *attr, const char *buf, size_t count);
@@ -5415,6 +5463,7 @@ static struct device_attribute attributes[] = {
 	__ATTR(sensor_placement, 0660, NULL, sensor_placement_store),
 	__ATTR(vibrate_ms, 0220, NULL, set_vibrate_ms),
 	__ATTR(crash_count, 0440, crash_count_show, NULL),
+	__ATTR(tap2wake, 0640, tap2wake_show, tap2wake_set),
 };
 
 
