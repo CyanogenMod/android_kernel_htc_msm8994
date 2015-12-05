@@ -107,7 +107,7 @@ DECLARE_DELAYED_WORK(sleep_workqueue, bluesleep_sleep_work);
 #define bluesleep_tx_idle()     schedule_delayed_work(&sleep_workqueue, 0)
 #define bluesleep_hsuart_clk_check()     schedule_delayed_work(&sleep_workqueue, msecs_to_jiffies(10))
 
-#define TX_TIMER_INTERVAL  1 
+#define TX_TIMER_INTERVAL  5 
 
 #define BT_PROTO		0x01    
 #define BT_TXDATA		0x02    
