@@ -24,6 +24,7 @@
 #include "adreno_ringbuffer.h"
 #include "adreno_trace.h"
 #include "kgsl_sharedmem.h"
+#include "kgsl_htc.h"
 
 #define CMDQUEUE_NEXT(_i, _s) (((_i) + 1) % (_s))
 
@@ -358,8 +359,10 @@ static struct kgsl_cmdbatch *_get_cmdbatch(struct adreno_context *drawctxt)
 		 * If syncpoints are pending start the canary timer if
 		 * it hasn't already been started
 		 */
-		if (!timer_pending(&cmdbatch->timer))
-			mod_timer(&cmdbatch->timer, jiffies + (5 * HZ));
+		if (!cmdbatch->timeout_jiffies) {
+			cmdbatch->timeout_jiffies = jiffies + 5 * HZ;
+			mod_timer(&cmdbatch->timer, cmdbatch->timeout_jiffies);
+		}
 
 		return ERR_PTR(-EAGAIN);
 	}
@@ -499,6 +502,7 @@ static int sendcmd(struct adreno_device *adreno_dev,
 		ret = kgsl_active_count_get(device);
 		if (ret) {
 			dispatcher->inflight--;
+			dispatch_q->inflight--;
 			mutex_unlock(&device->mutex);
 			return ret;
 		}
@@ -1597,8 +1601,10 @@ static int dispatcher_do_fault(struct kgsl_device *device)
 	int ret, i;
 	int fault;
 	int halt;
+	int keepfault, fault_pid = 0;
 
 	fault = atomic_xchg(&dispatcher->fault, 0);
+	keepfault = fault;
 	if (fault == 0)
 		return 0;
 	/*
@@ -1656,6 +1662,7 @@ static int dispatcher_do_fault(struct kgsl_device *device)
 
 	if (dispatch_q && (dispatch_q->tail != dispatch_q->head)) {
 		cmdbatch = dispatch_q->cmd_q[dispatch_q->head];
+		fault_pid = cmdbatch->context->proc_priv->pid;
 		trace_adreno_cmdbatch_fault(cmdbatch, fault);
 	}
 
@@ -1699,6 +1706,8 @@ static int dispatcher_do_fault(struct kgsl_device *device)
 	}
 
 	atomic_add(halt, &adreno_dev->halt);
+
+	adreno_fault_panic(device, fault_pid, keepfault);
 
 	return 1;
 }

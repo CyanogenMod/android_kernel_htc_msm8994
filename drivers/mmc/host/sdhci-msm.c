@@ -41,7 +41,12 @@
 #include <linux/iopoll.h>
 #include <linux/pinctrl/consumer.h>
 #include <linux/msm-bus.h>
+#include <linux/syscalls.h>
 
+#include <linux/proc_fs.h>
+#include <linux/seq_file.h>
+#include <linux/power/htc_charger.h>
+#include <asm/uaccess.h>
 #include "sdhci-pltfm.h"
 
 enum sdc_mpm_pin_state {
@@ -209,6 +214,9 @@ enum sdc_mpm_pin_state {
 #define NUM_TUNING_PHASES		16
 #define MAX_DRV_TYPES_SUPPORTED_HS200	3
 
+#define SDHCI_NORMAL_REMOVE		0x00
+#define SDHCI_COMMAND_REMOVE		0x10
+
 /* Timeout value to avoid infinite waiting for pwr_irq */
 #define MSM_PWR_IRQ_TIMEOUT_MS 5000
 
@@ -231,6 +239,8 @@ static const u32 tuning_block_128[] = {
 };
 
 static int disable_slots;
+static unsigned int special_removed = SDHCI_NORMAL_REMOVE;
+extern unsigned int disable_auto_sd;
 /* root can write, others read */
 module_param(disable_slots, int, S_IRUGO|S_IWUSR);
 
@@ -290,8 +300,10 @@ struct sdhci_msm_pin_data {
 struct sdhci_pinctrl_data {
 	struct pinctrl          *pctrl;
 	struct pinctrl_state    *pins_active;
+	struct pinctrl_state    *pins_active_sdr104;
 	struct pinctrl_state    *pins_sleep;
 };
+
 
 struct sdhci_msm_bus_voting_data {
 	struct msm_bus_scale_pdata *bus_pdata;
@@ -322,6 +334,8 @@ struct sdhci_msm_pltfm_data {
 	unsigned char sup_clk_cnt;
 	int mpm_sdiowakeup_int;
 	int sdiowakeup_irq;
+	int extended_debounce;
+	int slot_type;
 	enum pm_qos_req_type cpu_affinity_type;
 	u32 *cpu_affinity_mask;
 	unsigned int cpu_affinity_mask_tbl_sz;
@@ -358,6 +372,8 @@ struct sdhci_msm_host {
 	u32 clk_rate; /* Keeps track of current clock rate that is set */
 	bool tuning_done;
 	bool calibration_done;
+	struct proc_dir_entry   *speed_class;
+	struct proc_dir_entry   *sd_tray_state;
 	u8 saved_tuning_phase;
 	bool en_auto_cmd21;
 	struct device_attribute auto_cmd21_attr;
@@ -378,6 +394,178 @@ enum vdd_io_level {
 	 * sdhci_msm_set_vdd_io_vol() function.
 	 */
 	VDD_IO_SET_LEVEL,
+};
+
+extern int mmc_remove_sd_card(struct mmc_host *host);
+
+static ssize_t
+mmc_redetect_sd(struct device *dev, struct device_attribute *attr,
+               const char *buf, size_t count)
+{
+	struct sdhci_host *host = dev_get_drvdata(dev);
+	struct mmc_host *mmc = host->mmc;
+
+	if(sizeof(buf) <= 0)
+		return 0;
+
+	if (buf[0] == '0') {
+		if(mmc->card) {
+			mmc_remove_sd_card(mmc);
+			mmc_detect_change(mmc, 0);
+		}
+		printk("%s : needs to re-detect SD card\n", mmc_hostname(mmc));
+	} else if (buf[0] == '1') {
+		mmc->rescan_only_remove = 1;
+		if(mmc->card) {
+			sys_sync();
+			special_removed = SDHCI_COMMAND_REMOVE;
+			mmc_remove_sd_card(mmc);
+		}
+		printk("%s : needs to remove SD card\n", mmc_hostname(mmc));
+	} else if (buf[0] == '2') {
+		special_removed = SDHCI_NORMAL_REMOVE;
+		mmc->rescan_only_remove = 0;
+		mmc_detect_change(mmc, 0);
+		printk("%s : needs detect SD card\n", mmc_hostname(mmc));
+	}
+
+	return count;
+}
+
+static ssize_t
+mmc_show_status(struct device *dev, struct device_attribute *attr, char *buf)
+{
+	struct sdhci_host *host = dev_get_drvdata(dev);
+
+	if (disable_auto_sd)
+		return snprintf(buf, PAGE_SIZE, "%d", (!!host->mmc->card) | special_removed);
+	else
+		return snprintf(buf, PAGE_SIZE, "%d", !!host->mmc->card);
+}
+
+static DEVICE_ATTR(redetect, 0700, mmc_show_status, mmc_redetect_sd);
+
+static char *mmc_type_str(unsigned int slot_type)
+{
+	switch (slot_type) {
+		case MMC_TYPE_MMC:		return "MMC";
+		case MMC_TYPE_SD:		return "SD";
+		case MMC_TYPE_SDIO:		return "SDIO";
+		case MMC_TYPE_SD_COMBO:	return "SD COMBO";
+		case MMC_TYPE_NA:
+		default:			return "Unknown type";
+	}
+}
+
+
+static int is_mmc_platform(struct sdhci_msm_pltfm_data *pdata)
+{
+	if (pdata && pdata->slot_type == MMC_TYPE_MMC)
+		return 1;
+
+	return 0;
+}
+
+
+
+static int is_sd_platform(struct sdhci_msm_pltfm_data *pdata)
+{
+	if (pdata && pdata->slot_type == MMC_TYPE_SD)
+		return 1;
+
+	return 0;
+}
+
+
+
+int mmc_is_sd_host(struct mmc_host *mmc)
+{
+	struct sdhci_host *host = mmc_priv(mmc);
+	struct sdhci_pltfm_host *pltfm_host;
+	struct sdhci_msm_host *msm_host;
+
+	pltfm_host = sdhci_priv(host);
+	msm_host = pltfm_host->priv;
+
+	return is_sd_platform(msm_host->pdata);
+}
+
+/*
+ * Find out the greatest range of consecuitive selected
+ * DLL clock output phases that can be used as sampling
+ * setting for SD3.0 UHS-I card read operation (in SDR104
+ * timing mode) or for eMMC4.5 card read operation (in
+ * HS400/HS200 timing mode).
+ * Select the 3/4 of the range and configure the DLL with the
+ * selected DLL clock output phase.
+ */
+
+int mmc_is_mmc_host(struct mmc_host *mmc)
+{
+	struct sdhci_host *host = mmc_priv(mmc);
+	struct sdhci_pltfm_host *pltfm_host;
+	struct sdhci_msm_host *msm_host;
+
+	pltfm_host = sdhci_priv(host);
+	msm_host = pltfm_host->priv;
+
+	return is_mmc_platform(msm_host->pdata);
+}
+
+
+#ifdef CONFIG_HTC_PNPMGR
+bool ac_status = false;
+static void ac_cable_status_notifier_func(enum usb_connect_type online)
+{
+	if (online == CONNECT_TYPE_AC)
+		ac_status = true;
+	else
+		ac_status = false;
+}
+
+struct t_cable_status_notifier ac_cable_status_notifier = {
+	.name = "htc_battery",
+	.func = ac_cable_status_notifier_func,
+};
+#endif
+
+static int sdhci_read_speed_class(struct seq_file *m, void *v)
+{
+	struct mmc_host *host = (struct mmc_host*) m->private;
+
+	return seq_printf(m, "%d",
+		host->card ? host->card->speed_class : -1);
+}
+
+static int sdhci_proc_speed_class_open(struct inode *inode, struct file *file)
+{
+	return single_open(file, sdhci_read_speed_class, PDE_DATA(file_inode(file)));
+}
+
+static const struct file_operations sdhci_proc_speed_class_fops = {
+	.open	= sdhci_proc_speed_class_open,
+	.read		= seq_read,
+	.llseek	= seq_lseek,
+	.release	= single_release,
+};
+
+static int sdhci_read_tray_status(struct seq_file *m, void *v)
+{
+	struct mmc_host *host = (struct mmc_host*) m->private;
+
+	return seq_printf(m, "%d", mmc_gpio_get_status(host));
+}
+
+static int sdhci_proc_sd_tray_open(struct inode *inode, struct file *file)
+{
+	return single_open(file, sdhci_read_tray_status, PDE_DATA(file_inode(file)));
+}
+
+static const struct file_operations sdhci_proc_sd_tray_fops = {
+	.open	= sdhci_proc_sd_tray_open,
+	.read		= seq_read,
+	.llseek	= seq_lseek,
+	.release	= single_release,
 };
 
 /* MSM platform specific tuning */
@@ -1250,6 +1438,18 @@ free_gpios:
 	return ret;
 }
 
+static int sdhci_msm_setup_hifreq_pinctrl(struct sdhci_msm_pltfm_data *pdata)
+{
+	int ret = 0;
+
+	ret = pinctrl_select_state(pdata->pctrl_data->pctrl,
+		pdata->pctrl_data->pins_active_sdr104);
+
+	pr_info("Set SD SDR104 state return : %d\n", ret);
+
+	return ret;
+}
+
 static int sdhci_msm_setup_pinctrl(struct sdhci_msm_pltfm_data *pdata,
 		bool enable)
 {
@@ -1265,6 +1465,16 @@ static int sdhci_msm_setup_pinctrl(struct sdhci_msm_pltfm_data *pdata,
 	if (ret < 0)
 		pr_err("%s state for pinctrl failed with %d\n",
 			enable ? "Enabling" : "Disabling", ret);
+
+	return ret;
+}
+
+static int sdhci_msm_setup_hifreq_pins(struct sdhci_msm_pltfm_data *pdata)
+{
+	int ret = 0;
+
+	if (pdata->pctrl_data && pdata->pctrl_data->pins_active_sdr104)
+		ret = sdhci_msm_setup_hifreq_pinctrl(pdata);
 
 	return ret;
 }
@@ -1423,6 +1633,14 @@ static int sdhci_msm_parse_pinctrl_info(struct device *dev,
 		dev_err(dev, "Could not get active pinstates, err:%d\n", ret);
 		goto out;
 	}
+	pctrl_data->pins_active_sdr104 = pinctrl_lookup_state(
+			pctrl_data->pctrl, "active_sdr104");
+	if (IS_ERR(pctrl_data->pins_active_sdr104)) {
+		ret = PTR_ERR(pctrl_data->pins_active_sdr104);
+		dev_err(dev, "Could not get active SDR104 pinstates, err:%d\n", ret);
+		pctrl_data->pins_active_sdr104 = NULL;
+	} else
+		dev_info(dev, "Could get active SDR104 pinstates\n");
 	pctrl_data->pins_sleep = pinctrl_lookup_state(
 			pctrl_data->pctrl, "sleep");
 	if (IS_ERR(pctrl_data->pins_sleep)) {
@@ -1563,6 +1781,15 @@ struct sdhci_msm_pltfm_data *sdhci_msm_populate_pdata(struct device *dev,
 	u32 *clk_table = NULL;
 	enum of_gpio_flags flags = OF_GPIO_ACTIVE_LOW;
 	bool skip_qos_from_dt = false;
+	unsigned int mmc_pid_info = 0;
+	struct device_node *mmc_pid = NULL;
+
+	mmc_pid = of_find_node_by_path("/chosen/board_info");
+
+	if (mmc_pid)
+		of_property_read_u32(mmc_pid, "pid", &mmc_pid_info);
+	else
+		dev_err(dev,"fail to get pid\n");
 
 	pdata = devm_kzalloc(dev, sizeof(*pdata), GFP_KERNEL);
 	if (!pdata) {
@@ -1574,6 +1801,12 @@ struct sdhci_msm_pltfm_data *sdhci_msm_populate_pdata(struct device *dev,
 	if (gpio_is_valid(pdata->status_gpio) & !(flags & OF_GPIO_ACTIVE_LOW))
 		pdata->caps2 |= MMC_CAP2_CD_ACTIVE_HIGH;
 
+	if (of_property_read_u32(np, "htc,slot-type", &pdata->slot_type))
+		pdata->slot_type = MMC_TYPE_NA;
+
+	if (of_property_read_u32(np, "htc,slot-type", &pdata->slot_type))
+		pdata->slot_type = MMC_TYPE_NA;
+
 	of_property_read_u32(np, "qcom,bus-width", &bus_width);
 	if (bus_width == 8)
 		pdata->mmc_bus_width = MMC_CAP_8_BIT_DATA;
@@ -1582,6 +1815,20 @@ struct sdhci_msm_pltfm_data *sdhci_msm_populate_pdata(struct device *dev,
 	else {
 		dev_notice(dev, "invalid bus-width, default to 1-bit mode\n");
 		pdata->mmc_bus_width = 0;
+	}
+
+	if ((mmc_pid_info == 367)  && (pdata->slot_type == MMC_TYPE_MMC)) {
+		if (sdhci_msm_dt_get_array(dev, "htc,clk-rates",
+				&clk_table, &clk_table_len, 0)) {
+			dev_err(dev, "failed parsing supported clock rates\n");
+			goto out;
+		}
+	} else {
+		if (sdhci_msm_dt_get_array(dev, "qcom,clk-rates",
+				&clk_table, &clk_table_len, 0)) {
+			dev_err(dev, "failed parsing supported clock rates\n");
+			goto out;
+		}
 	}
 
 	if (of_get_property(np, "qcom,cpu-dma-latency-us",
@@ -1642,6 +1889,9 @@ struct sdhci_msm_pltfm_data *sdhci_msm_populate_pdata(struct device *dev,
 	pdata->sup_clk_table = clk_table;
 	pdata->sup_clk_cnt = clk_table_len;
 
+	for (i = 0; i < pdata->sup_clk_cnt; i++)
+		dev_info(dev, "Support clock : %u\n", *(pdata->sup_clk_table + i));
+
 	pdata->vreg_data = devm_kzalloc(dev, sizeof(struct
 						    sdhci_msm_slot_reg_data),
 					GFP_KERNEL);
@@ -1699,6 +1949,11 @@ struct sdhci_msm_pltfm_data *sdhci_msm_populate_pdata(struct device *dev,
 	if (of_get_property(np, "qcom,nonhotplug", NULL))
 		pdata->nonhotplug = true;
 
+	if (of_get_property(np, "htc,bkops_support", NULL)) {
+		pdata->caps2 |= MMC_CAP2_INIT_BKOPS;
+		pr_info("mmc: bkops support\n");
+	}
+
 	if (of_property_read_bool(np, "qcom,no-1p8v"))
 		pdata->no_1p8v = true;
 
@@ -1707,6 +1962,9 @@ struct sdhci_msm_pltfm_data *sdhci_msm_populate_pdata(struct device *dev,
 		pdata->mpm_sdiowakeup_int = mpm_int;
 	else
 		pdata->mpm_sdiowakeup_int = -1;
+
+	if (of_property_read_u32(np, "htc,extended-debounce", &pdata->extended_debounce))
+		pdata->extended_debounce = 0;
 
 	sdhci_msm_populate_affinity(dev, pdata, np);
 
@@ -2100,6 +2358,11 @@ static int sdhci_msm_setup_vreg(struct sdhci_msm_pltfm_data *pdata,
 
 	vreg_table[0] = curr_slot->vdd_data;
 	vreg_table[1] = curr_slot->vdd_io_data;
+
+	if(is_sd_platform(pdata) && enable ^ vreg_table[0]->is_enabled) {
+		pr_info("%s : %s slot power\n", mmc_type_str(pdata->slot_type),
+			enable ? "Enabling" : "Disabling");
+	}
 
 	for (i = 0; i < ARRAY_SIZE(vreg_table); i++) {
 		if (vreg_table[i]) {
@@ -2823,6 +3086,9 @@ static void sdhci_msm_set_clock(struct sdhci_host *host, unsigned int clock)
 	mb();
 
 	if (sup_clock != msm_host->clk_rate) {
+               if (is_sd_platform(msm_host->pdata) &&
+                       curr_ios.timing == MMC_TIMING_UHS_SDR104)
+                       sdhci_msm_setup_hifreq_pins(msm_host->pdata);
 		pr_debug("%s: %s: setting clk rate to %u\n",
 				mmc_hostname(host->mmc), __func__, sup_clock);
 		rc = clk_set_rate(msm_host->clk, sup_clock);
@@ -3018,6 +3284,11 @@ void sdhci_msm_dump_vendor_regs(struct sdhci_host *host)
 			CORE_TESTBUS_CONFIG);
 }
 
+static int sdhci_msm_get_cd(struct sdhci_host *host)
+{
+       return mmc_gpio_get_status(host->mmc);
+}
+
 static struct sdhci_ops sdhci_msm_ops = {
 	.set_uhs_signaling = sdhci_msm_set_uhs_signaling,
 	.check_power_status = sdhci_msm_check_power_status,
@@ -3031,6 +3302,7 @@ static struct sdhci_ops sdhci_msm_ops = {
 	.dump_vendor_regs = sdhci_msm_dump_vendor_regs,
 	.config_auto_tuning_cmd = sdhci_msm_config_auto_tuning_cmd,
 	.enable_controller_clock = sdhci_msm_enable_controller_clock,
+	.get_cd = sdhci_msm_get_cd,
 };
 
 static int sdhci_msm_cfg_mpm_pin_wakeup(struct sdhci_host *host, unsigned mode)
@@ -3178,6 +3450,8 @@ static int sdhci_msm_probe(struct platform_device *pdev)
 		if (!msm_host->pdata) {
 			dev_err(&pdev->dev, "DT parsing error\n");
 			goto pltfm_free;
+		} else {
+			host->mmc->extended_debounce = msm_host->pdata->extended_debounce;
 		}
 	} else {
 		dev_err(&pdev->dev, "No device tree node\n");
@@ -3407,9 +3681,11 @@ static int sdhci_msm_probe(struct platform_device *pdev)
 	msm_host->mmc->caps2 |= (MMC_CAP2_BOOTPART_NOACC |
 				MMC_CAP2_DETECT_ON_ERR);
 	msm_host->mmc->caps2 |= MMC_CAP2_CACHE_CTRL;
+#if 0
 	msm_host->mmc->caps2 |= MMC_CAP2_POWEROFF_NOTIFY;
 	msm_host->mmc->caps2 |= MMC_CAP2_CLK_SCALE;
 	msm_host->mmc->caps2 |= MMC_CAP2_STOP_REQUEST;
+#endif
 	msm_host->mmc->caps2 |= MMC_CAP2_ASYNC_SDIO_IRQ_4BIT_MODE;
 	msm_host->mmc->pm_caps |= MMC_PM_KEEP_POWER | MMC_PM_WAKE_SDIO_IRQ;
 	msm_host->mmc->caps2 |= MMC_CAP2_CORE_PM;
@@ -3489,6 +3765,9 @@ static int sdhci_msm_probe(struct platform_device *pdev)
 		goto free_cd_gpio;
 	}
 
+	pr_info("%s: Platform slot type: %s\n", mmc_hostname(host->mmc),
+		mmc_type_str(msm_host->pdata->slot_type));
+
 	msm_host->msm_bus_vote.max_bus_bw.show = show_sdhci_max_bus_bw;
 	msm_host->msm_bus_vote.max_bus_bw.store = store_sdhci_max_bus_bw;
 	sysfs_attr_init(&msm_host->msm_bus_vote.max_bus_bw.attr);
@@ -3539,7 +3818,27 @@ static int sdhci_msm_probe(struct platform_device *pdev)
 	}
 
 	device_enable_async_suspend(&pdev->dev);
+	if (is_sd_platform(msm_host->pdata)) {
+		msm_host->speed_class = proc_create_data("sd_speed_class", 0444, NULL,
+									&sdhci_proc_speed_class_fops, host->mmc);
+		if (!msm_host->speed_class)
+			pr_err("%s: Failed to create sd_speed_class entry\n",
+				mmc_hostname(host->mmc));
+		msm_host->sd_tray_state = proc_create_data("sd_tray_state", 0444, NULL,
+									&sdhci_proc_sd_tray_fops, host->mmc);
+		if (!msm_host->sd_tray_state)
+			pr_warning("%s: Failed to create sd_tray_state entry\n",
+				mmc_hostname(host->mmc));
+	}
+	device_create_file(&(pdev->dev), &dev_attr_redetect);
+
+
 	/* Successful initialization */
+#ifdef CONFIG_HTC_PNPMGR
+	if (is_mmc_platform(msm_host->pdata))
+		cable_detect_register_notifier(&ac_cable_status_notifier);
+#endif
+
 	goto out;
 
 remove_max_bus_bw_file:
@@ -3615,6 +3914,10 @@ static int sdhci_msm_remove(struct platform_device *pdev)
 		sdhci_msm_bus_cancel_work_and_set_vote(host, 0);
 		sdhci_msm_bus_unregister(msm_host);
 	}
+	if (msm_host->speed_class)
+		remove_proc_entry("sd_speed_class", NULL);
+	if (msm_host->sd_tray_state)
+		remove_proc_entry("sd_tray_state", NULL);
 	return 0;
 }
 
@@ -3685,7 +3988,7 @@ static int sdhci_msm_runtime_suspend(struct device *dev)
 	if (!ret)
 		goto skip_disable_host_irq;
 
-	sdhci_cfg_irq(host, false, true);
+	sdhci_cfg_irq(host, false);
 
 skip_disable_host_irq:
 	disable_irq(msm_host->pwr_irq);
@@ -3714,7 +4017,7 @@ static int sdhci_msm_runtime_resume(struct device *dev)
 	if (!ret)
 		goto skip_enable_host_irq;
 
-	sdhci_cfg_irq(host, true, true);
+	sdhci_cfg_irq(host, true);
 
 skip_enable_host_irq:
 	enable_irq(msm_host->pwr_irq);

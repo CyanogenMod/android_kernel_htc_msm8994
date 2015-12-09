@@ -80,6 +80,8 @@
 
 /* REG_LAB_IBB_EN_RDY */
 #define LAB_IBB_EN_RDY_EN		BIT(7)
+#define LAB_IBB_EN_RDY_MASK		0x7F
+#define LAB_IBB_EN_RDY_SHIFT		7
 
 /* REG_LAB_CURRENT_LIMIT */
 #define LAB_CURRENT_LIMIT_BITS		3
@@ -823,6 +825,18 @@ static int qpnp_labibb_regulator_enable(struct qpnp_labibb *labibb)
 		return rc;
 	}
 
+	val = IBB_PD_CTL_EN;
+	rc = qpnp_labibb_write(labibb, labibb->ibb_base + REG_IBB_PD_CTL,
+		&val, 1);
+
+	if (rc) {
+		pr_err("qpnp_labibb_regulator_enable write register %x failed rc = %d\n",
+			REG_IBB_PD_CTL, rc);
+		return rc;
+	}
+
+	udelay(labibb->lab_vreg.soft_start);
+
 	/* total delay time */
 	dly = labibb->lab_vreg.soft_start + labibb->ibb_vreg.soft_start
 				+ labibb->ibb_vreg.pwrup_dly;
@@ -939,6 +953,17 @@ static int qpnp_lab_regulator_enable(struct regulator_dev *rdev)
 
 	if (!(labibb->lab_vreg.vreg_enabled)) {
 
+		rc = qpnp_labibb_read(labibb, &val,
+				labibb->lab_base + REG_LAB_IBB_EN_RDY, 1);
+		if (rc < 0)
+			return rc;
+		val &= LAB_IBB_EN_RDY_MASK;
+		val |= LAB_IBB_EN_RDY_EN;
+		rc = qpnp_labibb_write(labibb,
+			labibb->lab_base + REG_LAB_IBB_EN_RDY, &val, 1);
+		if (rc)
+			return rc;
+
 		if (labibb->mode != QPNP_LABIBB_STANDALONE_MODE)
 			return qpnp_labibb_regulator_enable(labibb);
 
@@ -979,6 +1004,17 @@ static int qpnp_lab_regulator_disable(struct regulator_dev *rdev)
 	struct qpnp_labibb *labibb  = rdev_get_drvdata(rdev);
 
 	if (labibb->lab_vreg.vreg_enabled) {
+
+		rc = qpnp_labibb_read(labibb, &val,
+				labibb->lab_base + REG_LAB_IBB_EN_RDY, 1);
+		if (rc < 0)
+			return rc;
+		val &= LAB_IBB_EN_RDY_MASK;
+		val |= (0 << LAB_IBB_EN_RDY_SHIFT);
+		rc = qpnp_labibb_write(labibb,
+			labibb->lab_base + REG_LAB_IBB_EN_RDY, &val, 1);
+		if (rc)
+			return rc;
 
 		if (labibb->mode != QPNP_LABIBB_STANDALONE_MODE)
 			return qpnp_labibb_regulator_disable(labibb);

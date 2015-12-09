@@ -125,7 +125,11 @@ int msm_bus_enable_limiter(struct msm_bus_node_device_type *nodedev,
 				int throttle_en, uint64_t lim_bw);
 int msm_bus_update_clks(struct msm_bus_node_device_type *nodedev,
 	int ctx, int **dirty_nodes, int *num_dirty);
+#ifdef CONFIG_HTC_DEBUG_MSMBUS
+int msm_bus_commit_data(int *dirty_nodes, int ctx, int num_dirty, int cl);
+#else
 int msm_bus_commit_data(int *dirty_nodes, int ctx, int num_dirty);
+#endif
 int msm_bus_update_bw(struct msm_bus_node_device_type *nodedev, int ctx,
 	int64_t add_bw, int **dirty_nodes, int *num_dirty);
 void *msm_bus_realloc_devmem(struct device *dev, void *p, size_t old_size,
@@ -141,6 +145,16 @@ extern int msm_bus_of_get_static_rules(struct platform_device *pdev,
 extern int msm_rules_update_path(struct list_head *input_list,
 				struct list_head *output_list);
 extern void print_all_rules(void);
+
+#ifdef CONFIG_HTC_DEBUG_MSMBUS
+#define HTC_MAX_NOC_NOC     8
+#define HTC_MAX_NOC_CLIENT  64
+#define HTC_MAX_NOC_NAME    32
+#define HTC_MAX_NOC_LOG_BUF	8192
+#define HTC_MAX_NOC_LOG_LENGTH	128
+extern char htc_noc_client_name[HTC_MAX_NOC_CLIENT][HTC_MAX_NOC_NAME];
+#endif
+
 #ifdef CONFIG_DEBUG_BUS_VOTER
 int msm_bus_floor_init(struct device *dev);
 #else

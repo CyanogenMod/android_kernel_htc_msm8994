@@ -1719,12 +1719,12 @@ struct scatterlist *_create_sg_no_large_pages(struct kgsl_memdesc *memdesc)
 	struct page *page;
 	struct scatterlist *s, *s_temp, *sg_temp;
 	int sglen_alloc = 0;
-	uint64_t offset;
+	uint64_t offset, dist;
 	int i;
 
 	for_each_sg(memdesc->sg, s, memdesc->sglen, i) {
 		if (SZ_1M <= s->length)
-			sglen_alloc += s->length >> 16;
+			sglen_alloc += DIV_ROUND_UP(s->length, SZ_64K);
 		else
 			sglen_alloc++;
 	}
@@ -1743,7 +1743,8 @@ struct scatterlist *_create_sg_no_large_pages(struct kgsl_memdesc *memdesc)
 		page = sg_page(s);
 		if (SZ_1M <= s->length) {
 			for (offset = 0; offset < s->length; s_temp++) {
-				sg_set_page(s_temp, page, SZ_64K, offset);
+				dist = s->length - offset;
+				sg_set_page(s_temp, page, dist >= SZ_64K? SZ_64K : dist, offset);
 				offset += SZ_64K;
 			}
 		} else {

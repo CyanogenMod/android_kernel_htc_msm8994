@@ -165,6 +165,8 @@ static int npa_dump_probe(struct platform_device *pdev)
 
 	/* Offset the log's start address from the RPM phys address */
 	res = platform_get_resource(pdev, IORESOURCE_MEM, 1);
+	if(!res) return -EINVAL;
+
 	npa_base = devm_ioremap(&pdev->dev,
 				res->start + readl_relaxed(rpm_base),
 				resource_size(res));

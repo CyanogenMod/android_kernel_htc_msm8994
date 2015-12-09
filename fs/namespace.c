@@ -1283,6 +1283,10 @@ static int do_umount(struct mount *mnt, int flags)
 	}
 	br_write_unlock(&vfsmount_lock);
 	namespace_unlock();
+
+	pr_info("pid:%d(%s)(parent:%d/%s)  (%s) umounted filesystem.\n",
+			current->pid, current->comm, current->parent->pid,
+			current->parent->comm, sb->s_id);
 	return retval;
 }
 

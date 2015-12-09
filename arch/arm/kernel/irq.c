@@ -56,6 +56,47 @@ int arch_show_interrupts(struct seq_file *p, int prec)
 	return 0;
 }
 
+#ifdef CONFIG_HTC_POWER_DEBUG
+unsigned int previous_irqs[NR_IRQS+1] = {0};
+static void htc_show_interrupt(int i)
+{
+        struct irqaction *action;
+        unsigned long flags;
+        struct irq_desc *desc;
+
+        if (i < NR_IRQS) {
+                desc = irq_to_desc(i);
+                raw_spin_lock_irqsave(&desc->lock, flags);
+                action = desc->action;
+                if (!action)
+                        goto unlock;
+                if (!(kstat_irqs_cpu(i, 0)) || previous_irqs[i] == (kstat_irqs_cpu(i, 0)))
+                        goto unlock;
+                printk("%3d:", i);
+                printk("%6u\t", kstat_irqs_cpu(i, 0)-previous_irqs[i]);
+                printk("%s", action->name);
+                for (action = action->next; action; action = action->next)
+                        printk(", %s", action->name);
+                printk("\n");
+                previous_irqs[i] = kstat_irqs_cpu(i, 0);
+unlock:
+                raw_spin_unlock_irqrestore(&desc->lock, flags);
+        } else if (i == NR_IRQS) {
+                if (previous_irqs[NR_IRQS] == irq_err_count)
+                        return;
+                printk("Err: %lud\n", irq_err_count-previous_irqs[NR_IRQS]);
+                previous_irqs[NR_IRQS] = irq_err_count;
+        }
+}
+
+void htc_show_interrupts(void)
+{
+        int i = 0;
+        for (i = 0; i <= NR_IRQS; i++)
+                htc_show_interrupt(i);
+}
+#endif
+
 /*
  * handle_IRQ handles all hardware IRQ's.  Decoded IRQs should
  * not come via this function.  Instead, they should provide their

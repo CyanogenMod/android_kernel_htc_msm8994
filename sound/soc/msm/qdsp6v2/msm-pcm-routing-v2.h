@@ -219,6 +219,22 @@ struct msm_pcm_stream_app_type_cfg {
 	int acdb_dev_id;
 	int sample_rate;
 };
+struct htc_adm_effect_s {
+	u16 used;
+	u16 port_id;
+	uint32_t copp_id;
+	uint32_t param_id;
+	uint32_t payload_size;
+	void *payload;
+};
+
+enum HTC_ADM_EFFECT_ID {
+	HTC_ADM_EFFECT_AUDIOSPHERE = 0,
+	HTC_ADM_EFFECT_LIMITER,
+	HTC_ADM_EFFECT_SPEAKER_REVERSE,
+	HTC_ADM_EFFECT_AUDIOSPHERE_ST,
+	HTC_ADM_EFFECT_MAX,
+};
 
 /* dai_id: front-end ID,
  * dspst_id:  DSP audio stream ID
@@ -250,4 +266,7 @@ void msm_pcm_routing_release_lock(void);
 
 void msm_pcm_routing_reg_stream_app_type_cfg(int fedai_id, int app_type,
 					int acdb_dev_id, int sample_rate);
+int msm_pcm_routing_get_port(struct snd_pcm_substream *substream, u16 *port_id);
+int htc_adm_effect_control(enum HTC_ADM_EFFECT_ID effect_id, u16 port_id, uint32_t copp_id, uint32_t param_id,
+		uint32_t payload_size, void *payload );
 #endif /*_MSM_PCM_H*/

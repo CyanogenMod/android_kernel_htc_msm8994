@@ -888,7 +888,8 @@ remove_finished_td:
 
 	if ((xhci->quirks & XHCI_TR_DEQ_RESET_QUIRK) &&
 			list_empty(&ep->ring->td_list) &&
-			!(ep->ep_state & SET_DEQ_PENDING))
+			!(ep->ep_state & SET_DEQ_PENDING) &&
+			!ep_ring)
 		xhci_reset_ep_ring(xhci, slot_id, ep_ring, ep_index);
 
 	/*

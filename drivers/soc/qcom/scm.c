@@ -37,6 +37,12 @@ static DEFINE_MUTEX(scm_lock);
 
 #define SCM_EBUSY_WAIT_MS 30
 #define SCM_EBUSY_MAX_RETRY 20
+#define SCM_EBUSY_MAX_RETRY_RESTORE_CFG 60
+
+#define RESTORE_SEC_CFG    2
+
+#define IOMMU_SEC_ID	18
+#define IOMMU_SPARE_NUM	0
 
 #define N_EXT_SCM_ARGS 7
 #define FIRST_EXT_ARG_IDX 3
@@ -598,6 +604,13 @@ static int allocate_extra_arg_buffer(struct scm_desc *desc, gfp_t flags)
 	return 0;
 }
 
+static inline bool is_restore_cfg(u32 fn_id, struct scm_desc *desc)
+{
+	return fn_id == SCM_SIP_FNID(SCM_SVC_MP, RESTORE_SEC_CFG) &&
+		desc->args[0] == IOMMU_SEC_ID &&
+		desc->args[1] == IOMMU_SPARE_NUM;
+}
+
 /**
  * scm_call2() - Invoke a syscall in the secure world
  * @fn_id: The function ID for this syscall
@@ -623,6 +636,8 @@ int scm_call2(u32 fn_id, struct scm_desc *desc)
 {
 	int arglen = desc->arginfo & 0xf;
 	int ret, retry_count = 0;
+	int retry_count_max = is_restore_cfg(fn_id, desc)?
+		SCM_EBUSY_MAX_RETRY_RESTORE_CFG:SCM_EBUSY_MAX_RETRY;
 	u64 x0;
 
 	ret = allocate_extra_arg_buffer(desc, GFP_KERNEL);
@@ -656,7 +671,7 @@ int scm_call2(u32 fn_id, struct scm_desc *desc)
 
 		if (ret == SCM_V2_EBUSY)
 			msleep(SCM_EBUSY_WAIT_MS);
-	}  while (ret == SCM_V2_EBUSY && (retry_count++ < SCM_EBUSY_MAX_RETRY));
+	}  while (ret == SCM_V2_EBUSY && (retry_count++ < retry_count_max));
 
 	if (ret < 0)
 		pr_err("scm_call failed: func id %#llx, arginfo: %#x, args: %#llx, %#llx, %#llx, %#llx, ret: %d, syscall returns: %#llx, %#llx, %#llx\n",
@@ -1129,7 +1144,6 @@ int scm_get_feat_version(u32 feat)
 }
 EXPORT_SYMBOL(scm_get_feat_version);
 
-#define RESTORE_SEC_CFG    2
 int scm_restore_sec_cfg(u32 device_id, u32 spare, int *scm_ret)
 {
 	struct scm_desc desc = {0};

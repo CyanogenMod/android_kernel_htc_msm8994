@@ -63,6 +63,8 @@ extern __read_mostly int scheduler_running;
 #define NICE_0_LOAD		SCHED_LOAD_SCALE
 #define NICE_0_SHIFT		SCHED_LOAD_SHIFT
 
+#define SCHED_LOAD_WINDOW_SIZE 10
+
 /*
  * These are the 'tuning knobs' of the scheduler:
  */
@@ -534,6 +536,12 @@ struct rq {
 	u64 curr_runnable_sum;
 	u64 prev_runnable_sum;
 #endif
+
+	u64 load_history[SCHED_LOAD_WINDOW_SIZE];
+	int load_avg;
+	int budget;
+	int load_history_index;
+	u64 load_last_update_timestamp;
 
 #ifdef CONFIG_IRQ_TIME_ACCOUNTING
 	u64 prev_irq_time;

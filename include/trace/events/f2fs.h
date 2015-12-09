@@ -115,6 +115,20 @@ DECLARE_EVENT_CLASS(f2fs__inode_exit,
 		__entry->ret)
 );
 
+DEFINE_EVENT(f2fs__inode, f2fs_write_begin,
+
+	TP_PROTO(struct inode *inode),
+
+	TP_ARGS(inode)
+);
+
+DEFINE_EVENT(f2fs__inode, f2fs_write_end,
+
+	TP_PROTO(struct inode *inode),
+
+	TP_ARGS(inode)
+);
+
 DEFINE_EVENT(f2fs__inode, f2fs_sync_file_enter,
 
 	TP_PROTO(struct inode *inode),

@@ -161,15 +161,20 @@
 
 #define CPR_REGULATOR_DRIVER_NAME	"qcom,cpr-regulator"
 
+#ifdef CONFIG_HTC_POWER_DEBUG_RAILWAYS
+#include <htc_power_debug/htc_railways.h>
+htc_railways_info apc_railways_info[HTC_RAILWAYS_MAX];
+#endif
+
 /**
  * enum vdd_mx_vmin_method - Method to determine vmin for vdd-mx
- * %VDD_MX_VMIN_APC:			Equal to APC voltage
- * %VDD_MX_VMIN_APC_CORNER_CEILING:	Equal to PVS corner ceiling voltage
+ * %VDD_MX_VMIN_APC:                   Equal to APC voltage
+ * %VDD_MX_VMIN_APC_CORNER_CEILING:    Equal to PVS corner ceiling voltage
  * %VDD_MX_VMIN_APC_SLOW_CORNER_CEILING:
- *					Equal to slow speed corner ceiling
- * %VDD_MX_VMIN_MX_VMAX:		Equal to specified vdd-mx-vmax voltage
- * %VDD_MX_VMIN_APC_CORNER_MAP:		Equal to the APC corner mapped MX
- *					voltage
+ *                                     Equal to slow speed corner ceiling
+ * %VDD_MX_VMIN_MX_VMAX:               Equal to specified vdd-mx-vmax voltage
+ * %VDD_MX_VMIN_APC_CORNER_MAP:                Equal to the APC corner mapped MX
+ *                                     voltage
  */
 enum vdd_mx_vmin_method {
 	VDD_MX_VMIN_APC,
@@ -628,6 +633,19 @@ static void cpr_corner_switch(struct cpr_regulator *cpr_vreg, int corner)
 	cpr_corner_restore(cpr_vreg, corner);
 }
 
+#ifdef CONFIG_HTC_POWER_DEBUG_RAILWAYS
+int htc_get_apc_index(const char* apc_name)
+{
+	int rc = -1;
+	if(!strncmp(apc_name, "apc0", 4)) {
+		rc = HTC_RAILWAYS_APC0;
+	} else if (!strncmp(apc_name, "apc1", 4)) {
+		rc = HTC_RAILWAYS_APC1;
+	}
+	return rc;
+}
+#endif
+
 static int cpr_apc_set(struct cpr_regulator *cpr_vreg, u32 new_volt)
 {
 	int max_volt, rc;
@@ -637,6 +655,28 @@ static int cpr_apc_set(struct cpr_regulator *cpr_vreg, u32 new_volt)
 	if (rc)
 		cpr_err(cpr_vreg, "set: vdd_apc = %d uV: rc=%d\n",
 			new_volt, rc);
+#ifdef CONFIG_HTC_POWER_DEBUG_RAILWAYS
+	else {
+		int idx = -1;
+		if(cpr_vreg->corner == cpr_vreg->num_corners) {
+			idx = htc_get_apc_index(cpr_vreg->rdesc.name);
+
+			if(idx == HTC_RAILWAYS_APC0 || idx == HTC_RAILWAYS_APC1) {
+				if(new_volt > apc_railways_info[idx].volt_max) {
+					if(new_volt > max_volt) {
+						apc_railways_info[idx].volt_max = max_volt;
+					} else {
+						apc_railways_info[idx].volt_max = new_volt;
+					}
+				}
+				if (new_volt < railways_info[idx].volt_min) {
+					apc_railways_info[idx].volt_min = new_volt;
+				}
+			}
+		}
+	}
+#endif
+
 	return rc;
 }
 
@@ -1034,8 +1074,6 @@ static int cpr_regulator_set_voltage(struct regulator_dev *rdev,
 	enum voltage_change_dir change_dir = NO_CHANGE;
 	int fuse_corner = cpr_vreg->corner_map[corner];
 
-	mutex_lock(&cpr_vreg->cpr_mutex);
-
 	if (cpr_is_allowed(cpr_vreg)) {
 		cpr_ctl_disable(cpr_vreg);
 		new_volt = cpr_vreg->last_volt[corner];
@@ -1053,7 +1091,7 @@ static int cpr_regulator_set_voltage(struct regulator_dev *rdev,
 
 	rc = cpr_scale_voltage(cpr_vreg, corner, new_volt, change_dir);
 	if (rc)
-		goto _exit;
+		return rc;
 
 	if (cpr_is_allowed(cpr_vreg) && cpr_vreg->vreg_enabled) {
 		cpr_irq_clr(cpr_vreg);
@@ -1066,16 +1104,20 @@ static int cpr_regulator_set_voltage(struct regulator_dev *rdev,
 
 	cpr_vreg->corner = corner;
 
-_exit:
-	mutex_unlock(&cpr_vreg->cpr_mutex);
-
 	return rc;
 }
 
 static int cpr_regulator_set_voltage_op(struct regulator_dev *rdev,
 		int corner, int corner_max, unsigned *selector)
 {
-	return cpr_regulator_set_voltage(rdev, corner, false);
+	struct cpr_regulator *cpr_vreg = rdev_get_drvdata(rdev);
+	int rc;
+
+	mutex_lock(&cpr_vreg->cpr_mutex);
+	rc = cpr_regulator_set_voltage(rdev, corner, false);
+	mutex_unlock(&cpr_vreg->cpr_mutex);
+
+	return rc;
 }
 
 static int cpr_regulator_get_voltage(struct regulator_dev *rdev)
@@ -3149,7 +3191,6 @@ static int cpr_init_cpr_efuse(struct platform_device *pdev,
 				< cpr_vreg->cpr_fuse_target_quot[i - 1]) {
 			cpr_vreg->cpr_fuse_disable = true;
 			cpr_err(cpr_vreg, "invalid quotient values; permanently disabling CPR\n");
-			goto error;
 		}
 	}
 
@@ -3235,6 +3276,18 @@ static int cpr_init_cpr_voltages(struct cpr_regulator *cpr_vreg,
 
 	for (i = CPR_CORNER_MIN; i <= cpr_vreg->num_corners; i++)
 		cpr_vreg->last_volt[i] = cpr_vreg->open_loop_volt[i];
+
+#ifdef CONFIG_HTC_POWER_DEBUG_RAILWAYS
+	{
+		int idx = htc_get_apc_index(cpr_vreg->rdesc.name);
+		if(idx == HTC_RAILWAYS_APC0 || idx == HTC_RAILWAYS_APC1) {
+			apc_railways_info[idx].volt_init = cpr_vreg->last_volt[cpr_vreg->num_corners];
+			apc_railways_info[idx].volt_max = apc_railways_info[idx].volt_min = apc_railways_info[idx].volt_init;
+		} else {
+			pr_err("%s: invalid railways_info index: %d\n", __func__, idx);
+		}
+	}
+#endif
 
 	return 0;
 }
@@ -3546,9 +3599,8 @@ static int cpr_regulator_cpu_callback(struct notifier_block *nb,
 {
 	struct cpr_regulator *cpr_vreg = container_of(nb, struct cpr_regulator,
 					cpu_notifier);
-	int prev_online_cpus = cpr_vreg->online_cpus;
 	int cpu = (long)data;
-	int rc, i;
+	int prev_online_cpus, rc, i;
 
 	action &= ~CPU_TASKS_FROZEN;
 
@@ -3556,18 +3608,15 @@ static int cpr_regulator_cpu_callback(struct notifier_block *nb,
 	    && action != CPU_DEAD)
 		return NOTIFY_OK;
 
-	if (cpr_vreg->skip_voltage_change_during_suspend) {
-		mutex_lock(&cpr_vreg->cpr_mutex);
+	mutex_lock(&cpr_vreg->cpr_mutex);
 
-		if (cpr_vreg->is_cpr_suspended) {
-			/* Do nothing during system suspend/resume */
-			mutex_unlock(&cpr_vreg->cpr_mutex);
-			return NOTIFY_OK;
-		}
-
-		mutex_unlock(&cpr_vreg->cpr_mutex);
+	if (cpr_vreg->skip_voltage_change_during_suspend
+	    && cpr_vreg->is_cpr_suspended) {
+		
+		goto done;
 	}
 
+	prev_online_cpus = cpr_vreg->online_cpus;
 	cpr_regulator_set_online_cpus(cpr_vreg);
 
 	if (action == CPU_UP_PREPARE)
@@ -3578,10 +3627,10 @@ static int cpr_regulator_cpu_callback(struct notifier_block *nb,
 			}
 
 	if (cpr_vreg->online_cpus == prev_online_cpus)
-		return NOTIFY_OK;
+		goto done;
 
-	cpr_debug(cpr_vreg, "adjusting quotient for %d cpus\n",
-			cpr_vreg->online_cpus);
+	cpr_debug(cpr_vreg, "adjusting corner %d quotient for %d cpus\n",
+		cpr_vreg->corner, cpr_vreg->online_cpus);
 
 	cpr_regulator_switch_adj_cpus(cpr_vreg);
 
@@ -3593,6 +3642,8 @@ static int cpr_regulator_cpu_callback(struct notifier_block *nb,
 				rc);
 	}
 
+done:
+	mutex_unlock(&cpr_vreg->cpr_mutex);
 	return NOTIFY_OK;
 }
 

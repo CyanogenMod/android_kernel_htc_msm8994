@@ -40,6 +40,7 @@
 #include <linux/usb/gadget.h>
 #include <linux/log2.h>
 #include <linux/configfs.h>
+#include <linux/switch.h>
 
 /*
  * USB function drivers should return USB_GADGET_DELAYED_STATUS if they
@@ -397,8 +398,11 @@ struct usb_composite_dev {
 	struct list_head		configs;
 	struct list_head		gstrings;
 	struct usb_composite_driver	*driver;
+	struct switch_dev		sw_function_switch_on;
+	struct switch_dev		sw_function_switch_off;
 	u8				next_string_id;
 	char				*def_manufacturer;
+	bool				do_serial_number_change;
 
 	/* the gadget driver won't enable the data pullup
 	 * while the deactivation count is nonzero.
@@ -412,6 +416,12 @@ struct usb_composite_dev {
 
 	/* protects deactivations and delayed_status counts*/
 	spinlock_t			lock;
+	struct switch_dev		sw_connect2pc;
+	struct work_struct cdusbcmdwork;
+	struct delayed_work request_reset;
+	struct delayed_work cdusbcmd_vzw_unmount_work;
+	struct switch_dev compositesdev;
+	int unmount_cdrom_mask;
 };
 
 extern int usb_string_id(struct usb_composite_dev *c);

@@ -21,7 +21,11 @@
 #ifndef __ASSEMBLY__
 
 #define sev()		asm volatile("sev" : : : "memory")
+#ifndef CONFIG_HTC_WFE_DISABLE
 #define wfe()		asm volatile("wfe" : : : "memory")
+#else
+#define wfe()		asm volatile("nop");
+#endif
 #define wfi()		asm volatile("wfi" : : : "memory")
 
 #define isb()		asm volatile("isb" : : : "memory")

@@ -1521,7 +1521,27 @@ static int tomtom_tx_hpf_bypass_put(struct snd_kcontrol *kcontrol,
 	return 0;
 }
 
+static int htc_micbias_capless(struct snd_kcontrol *kcontrol,
+                struct snd_ctl_elem_value *ucontrol)
+{
+    struct soc_mixer_control *mc =
+        (struct soc_mixer_control *)kcontrol->private_value;
+
+    struct snd_soc_codec *codec = snd_kcontrol_chip(kcontrol);
+
+    if (ucontrol->value.integer.value[0]) {
+        snd_soc_update_bits(codec, mc->reg, 0x1E, 0x6);
+    } else {
+        snd_soc_update_bits(codec, mc->reg, 0x1E, 0x16);
+    }
+
+    return 1;
+}
+
 static const struct snd_kcontrol_new tomtom_snd_controls[] = {
+	SOC_SINGLE_EXT("MIC_BIAS1_Bypass Cap", TOMTOM_A_MICB_1_CTL, 0, 0, 0, NULL, htc_micbias_capless),
+	SOC_SINGLE_EXT("MIC_BIAS3_Bypass Cap", TOMTOM_A_MICB_3_CTL, 0, 0, 0, NULL, htc_micbias_capless),
+	SOC_SINGLE_EXT("MIC_BIAS4_Bypass Cap", TOMTOM_A_MICB_4_CTL, 0, 0, 0, NULL, htc_micbias_capless),
 
 	SOC_SINGLE_SX_TLV("RX1 Digital Volume", TOMTOM_A_CDC_RX1_VOL_CTL_B2_CTL,
 		0, -84, 40, digital_gain),
@@ -1779,6 +1799,7 @@ static const struct snd_kcontrol_new tomtom_1_x_analog_gain_controls[] = {
 static int tomtom_hph_impedance_get(struct snd_kcontrol *kcontrol,
 				   struct snd_ctl_elem_value *ucontrol)
 {
+#ifdef USE_CODEC_MBHC
 	uint32_t zl, zr;
 	bool hphr;
 	struct soc_multi_mixer_control *mc;
@@ -1793,6 +1814,11 @@ static int tomtom_hph_impedance_get(struct snd_kcontrol *kcontrol,
 	ucontrol->value.integer.value[0] = hphr ? zr : zl;
 
 	return 0;
+#else
+	ucontrol->value.integer.value[0] = 0;
+
+	return 0;
+#endif
 }
 
 static const struct snd_kcontrol_new impedance_detect_controls[] = {
@@ -3525,7 +3551,7 @@ static int tomtom_codec_enable_micbias(struct snd_soc_dapm_widget *w,
 							 &tomtom->resmgr,
 							 WCD9XXX_COND_HPH_MIC,
 							 micb_ctl_reg, w->shift,
-							 false);
+							 true); 
 				else
 					snd_soc_update_bits(codec, micb_ctl_reg,
 							    1 << w->shift,
@@ -3585,6 +3611,7 @@ static int tomtom_codec_enable_micbias(struct snd_soc_dapm_widget *w,
 	return 0;
 }
 
+#ifdef USE_CODEC_MBHC  
 /* called under codec_resource_lock acquisition */
 static int tomtom_enable_mbhc_micbias(struct snd_soc_codec *codec, bool enable,
 				enum wcd9xxx_micbias_num micb_num)
@@ -3608,6 +3635,7 @@ static int tomtom_enable_mbhc_micbias(struct snd_soc_codec *codec, bool enable,
 	pr_debug("%s: leave ret %d\n", __func__, rc);
 	return rc;
 }
+#endif  
 
 static void txfe_clkdiv_update(struct snd_soc_codec *codec)
 {
@@ -7353,18 +7381,9 @@ static int tomtom_handle_pdata(struct tomtom_priv *tomtom)
 	}
 
 	/* Set micbias capless mode with tail current */
-	value = (pdata->micbias.bias1_cap_mode == MICBIAS_EXT_BYP_CAP ?
-		 0x00 : 0x16);
-	snd_soc_update_bits(codec, TOMTOM_A_MICB_1_CTL, 0x1E, value);
 	value = (pdata->micbias.bias2_cap_mode == MICBIAS_EXT_BYP_CAP ?
 		 0x00 : 0x16);
 	snd_soc_update_bits(codec, TOMTOM_A_MICB_2_CTL, 0x1E, value);
-	value = (pdata->micbias.bias3_cap_mode == MICBIAS_EXT_BYP_CAP ?
-		 0x00 : 0x16);
-	snd_soc_update_bits(codec, TOMTOM_A_MICB_3_CTL, 0x1E, value);
-	value = (pdata->micbias.bias4_cap_mode == MICBIAS_EXT_BYP_CAP ?
-		 0x00 : 0x16);
-	snd_soc_update_bits(codec, TOMTOM_A_MICB_4_CTL, 0x1E, value);
 
 	/* Set the DMIC sample rate */
 	switch (pdata->mclk_rate) {
@@ -8405,7 +8424,9 @@ static int tomtom_post_reset_cb(struct wcd9xxx *wcd9xxx)
 	int ret = 0;
 	struct snd_soc_codec *codec;
 	struct tomtom_priv *tomtom;
+#ifdef USE_CODEC_MBHC
 	int rco_clk_rate;
+#endif
 	int count;
 
 	codec = (struct snd_soc_codec *)(wcd9xxx->ssr_priv);
@@ -8435,7 +8456,7 @@ static int tomtom_post_reset_cb(struct wcd9xxx *wcd9xxx)
 	tomtom_slim_interface_init_reg(codec);
 	wcd_cpe_ssr_event(tomtom->cpe_core, WCD_CPE_BUS_UP_EVENT);
 	wcd9xxx_resmgr_post_ssr(&tomtom->resmgr);
-
+#ifdef USE_CODEC_MBHC
 	if (tomtom->mbhc_started) {
 		wcd9xxx_mbhc_deinit(&tomtom->mbhc);
 		tomtom->mbhc_started = false;
@@ -8451,7 +8472,7 @@ static int tomtom_post_reset_cb(struct wcd9xxx *wcd9xxx)
 		else
 			tomtom_hs_detect(codec, tomtom->mbhc.mbhc_cfg);
 	}
-
+#endif
 	if (tomtom->machine_codec_event_cb)
 		tomtom->machine_codec_event_cb(codec,
 				       WCD9XXX_CODEC_EVENT_CODEC_UP);
@@ -8666,7 +8687,10 @@ static int tomtom_codec_probe(struct snd_soc_codec *codec)
 	struct wcd9xxx *wcd9xxx;
 	struct snd_soc_dapm_context *dapm = &codec->dapm;
 	int ret = 0;
-	int i, rco_clk_rate;
+	int i;
+#ifdef USE_CODEC_MBHC
+	int rco_clk_rate;
+#endif
 	void *ptr = NULL;
 	struct wcd9xxx_core_resource *core_res;
 
@@ -8710,7 +8734,7 @@ static int tomtom_codec_probe(struct snd_soc_codec *codec)
 	/* TomTom does not support dynamic switching of vdd_cp */
 	tomtom->clsh_d.is_dynamic_vdd_cp = false;
 	wcd9xxx_clsh_init(&tomtom->clsh_d, &tomtom->resmgr);
-
+#ifdef USE_CODEC_MBHC
 	rco_clk_rate = TOMTOM_MCLK_CLK_9P6MHZ;
 
 	tomtom->fw_data = kzalloc(sizeof(*(tomtom->fw_data)), GFP_KERNEL);
@@ -8737,7 +8761,18 @@ static int tomtom_codec_probe(struct snd_soc_codec *codec)
 		pr_err("%s: mbhc init failed %d\n", __func__, ret);
 		goto err_hwdep;
 	}
-
+#else
+	
+	
+	
+	
+	
+	snd_soc_write(codec, TOMTOM_A_MBHC_INSERT_DETECT,0x68);
+	snd_soc_update_bits(codec, TOMTOM_A_MBHC_INSERT_DETECT2, 0xC0,
+			    0x00);
+	snd_soc_update_bits(codec, TOMTOM_A_MICB_CFILT_2_CTL, 0x01,
+			    0x00);
+#endif
 	tomtom->codec = codec;
 	for (i = 0; i < COMPANDER_MAX; i++) {
 		tomtom->comp_enabled[i] = 0;

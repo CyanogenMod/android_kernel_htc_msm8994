@@ -1453,6 +1453,7 @@ struct cfg80211_auth_request {
 enum cfg80211_assoc_req_flags {
 	ASSOC_REQ_DISABLE_HT		= BIT(0),
 	ASSOC_REQ_DISABLE_VHT		= BIT(1),
+	ASSOC_REQ_OFFLOAD_KEY_MGMT	= BIT(2),
 };
 
 /**
@@ -1627,6 +1628,7 @@ struct cfg80211_connect_params {
 	struct ieee80211_ht_cap ht_capa_mask;
 	struct ieee80211_vht_cap vht_capa;
 	struct ieee80211_vht_cap vht_capa_mask;
+	const u8 *psk;
 };
 
 /**
@@ -1845,6 +1847,13 @@ struct cfg80211_qos_map {
 	u8 num_des;
 	struct cfg80211_dscp_exception dscp_exception[IEEE80211_QOS_MAP_MAX_EX];
 	struct cfg80211_dscp_range up[8];
+};
+
+struct cfg80211_auth_params {
+	enum nl80211_authorization_status status;
+	const u8 *key_replay_ctr;
+	const u8 *ptk_kck;
+	const u8 *ptk_kek;
 };
 
 /**
@@ -2325,6 +2334,9 @@ struct cfg80211_ops {
 
 	int	(*set_ap_chanwidth)(struct wiphy *wiphy, struct net_device *dev,
 				    struct cfg80211_chan_def *chandef);
+
+	int	(*key_mgmt_set_pmk)(struct wiphy *wiphy, struct net_device *dev,
+				    const u8 *pmk, size_t pmk_len);
 };
 
 /*
@@ -2419,7 +2431,8 @@ enum wiphy_flags {
 	WIPHY_FLAG_AP_PROBE_RESP_OFFLOAD	= BIT(19),
 	WIPHY_FLAG_OFFCHAN_TX			= BIT(20),
 	WIPHY_FLAG_HAS_REMAIN_ON_CHANNEL	= BIT(21),
-	WIPHY_FLAG_DFS_OFFLOAD                  = BIT(22)
+	WIPHY_FLAG_DFS_OFFLOAD                  = BIT(22),
+	WIPHY_FLAG_HAS_KEY_MGMT_OFFLOAD		= BIT(23),
 };
 
 /**
@@ -2818,6 +2831,9 @@ struct wiphy {
 
 	u16 max_ap_assoc_sta;
 
+	u32 key_mgmt_offload_support;
+	u32 key_derive_offload_support;
+
 	char priv[0] __aligned(NETDEV_ALIGN);
 };
 
@@ -3032,6 +3048,10 @@ struct wireless_dev {
 
 	bool cac_started;
 	unsigned long cac_start_time;
+
+    
+    u32 owner_nlportid;
+    
 
 #ifdef CONFIG_CFG80211_WEXT
 	/* wext data */
@@ -4471,6 +4491,15 @@ void cfg80211_ap_stopped(struct net_device *netdev, gfp_t gfp);
  * a proxy service.
  */
 bool cfg80211_is_gratuitous_arp_unsolicited_na(struct sk_buff *skb);
+
+void cfg80211_authorization_event(struct net_device *dev,
+				  enum nl80211_authorization_status auth_status,
+				  const u8 *key_replay_ctr,
+				  gfp_t gfp);
+
+void cfg80211_key_mgmt_auth(struct net_device *dev,
+			    struct cfg80211_auth_params *auth_params,
+			    gfp_t gfp);
 
 void cfg80211_get_drvinfo(struct net_device *dev, struct ethtool_drvinfo *info);
 

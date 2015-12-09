@@ -869,8 +869,10 @@ static int arm64_edac_pmu_cpu_notify(struct notifier_block *self,
 #ifndef CONFIG_EDAC_CORTEX_ARM64_DBE_IRQ_ONLY
 void arm64_check_cache_ecc(void *info)
 {
+#ifndef CONFIG_EDAC_CORTEX_ARM64_DBE_IRQ_ONLY
 	if (panic_handler_drvdata)
 		check_sbe_event(panic_handler_drvdata);
+#endif
 }
 #else
 static inline void arm64_check_cache_ecc(void *info) {}

@@ -51,6 +51,7 @@ struct cpufreq_interactive_cpuinfo {
 	unsigned int target_freq;
 	unsigned int floor_freq;
 	unsigned int max_freq;
+	unsigned int min_freq;
 	u64 floor_validate_time;
 	u64 hispeed_validate_time; /* cluster hispeed_validate_time */
 	u64 local_hvtime; /* per-cpu hispeed_validate_time */
@@ -83,6 +84,7 @@ static unsigned int default_target_loads[] = {DEFAULT_TARGET_LOAD};
 static unsigned int default_above_hispeed_delay[] = {
 	DEFAULT_ABOVE_HISPEED_DELAY };
 
+atomic_t notifier_usage_count;
 struct cpufreq_interactive_tunables {
 	int usage_count;
 	/* Hi speed to bump to from lo speed when load burst (default max) */
@@ -527,7 +529,7 @@ static void cpufreq_interactive_timer(unsigned long data)
 	if (new_freq == pcpu->policy->max)
 		pcpu->max_freq_hyst_start_time = now;
 
-	if (pcpu->target_freq == new_freq) {
+	if (pcpu->policy->cur == pcpu->target_freq && pcpu->target_freq == new_freq) {
 		trace_cpufreq_interactive_already(
 			data, cpu_load, pcpu->target_freq,
 			pcpu->policy->cur, new_freq);
@@ -735,6 +737,9 @@ static int cpufreq_interactive_notifier(
 	struct cpufreq_interactive_cpuinfo *pcpu;
 	int cpu;
 	unsigned long flags;
+
+	if(unlikely(atomic_read(&notifier_usage_count) == 0))
+		return 0;
 
 	if (val == CPUFREQ_POSTCHANGE) {
 		pcpu = &per_cpu(cpuinfo, freq->cpu);
@@ -1414,6 +1419,9 @@ static int cpufreq_interactive_idle_notifier(struct notifier_block *nb,
 					     unsigned long val,
 					     void *data)
 {
+	if(unlikely(atomic_read(&notifier_usage_count) == 0))
+		return 0;
+
 	if (val == IDLE_END)
 		cpufreq_interactive_idle_end();
 
@@ -1487,6 +1495,7 @@ static int cpufreq_governor_interactive(struct cpufreq_policy *policy,
 {
 	int rc;
 	unsigned int j;
+	static int init_done=0;
 	struct cpufreq_interactive_cpuinfo *pcpu;
 	struct cpufreq_frequency_table *freq_table;
 	struct cpufreq_interactive_tunables *tunables;
@@ -1506,6 +1515,7 @@ static int cpufreq_governor_interactive(struct cpufreq_policy *policy,
 			WARN_ON(tunables);
 		} else if (tunables) {
 			tunables->usage_count++;
+			atomic_inc_return(&notifier_usage_count);
 			policy->governor_data = tunables;
 			return 0;
 		}
@@ -1541,31 +1551,29 @@ static int cpufreq_governor_interactive(struct cpufreq_policy *policy,
 		}
 
 		if (!policy->governor->initialized) {
-			idle_notifier_register(&cpufreq_interactive_idle_nb);
-			cpufreq_register_notifier(&cpufreq_notifier_block,
-					CPUFREQ_TRANSITION_NOTIFIER);
+			if(!init_done){
+				idle_notifier_register(&cpufreq_interactive_idle_nb);
+				cpufreq_register_notifier(&cpufreq_notifier_block,
+						CPUFREQ_TRANSITION_NOTIFIER);
+				init_done = 1;
+			}
 		}
 
 		if (tunables->use_sched_load)
 			cpufreq_interactive_enable_sched_input(tunables);
 
+		atomic_inc_return(&notifier_usage_count);
 		break;
 
 	case CPUFREQ_GOV_POLICY_EXIT:
+		atomic_dec_return(&notifier_usage_count);
 		if (!--tunables->usage_count) {
-			if (policy->governor->initialized == 1) {
-				cpufreq_unregister_notifier(&cpufreq_notifier_block,
-						CPUFREQ_TRANSITION_NOTIFIER);
-				idle_notifier_unregister(&cpufreq_interactive_idle_nb);
-			}
-
 			sysfs_remove_group(get_governor_parent_kobj(policy),
 					get_sysfs_attr());
 			if (!have_governor_per_policy())
 				cpufreq_put_global_kobject();
 			common_tunables = NULL;
 		}
-
 		policy->governor_data = NULL;
 
 		if (tunables->use_sched_load)
@@ -1655,7 +1663,7 @@ static int cpufreq_governor_interactive(struct cpufreq_policy *policy,
 			 * stopped unexpectedly.
 			 */
 
-			if (policy->max > pcpu->max_freq) {
+			if (policy->max > pcpu->max_freq || policy->min < pcpu->min_freq) {
 				pcpu->reject_notification = true;
 				down_write(&pcpu->enable_sem);
 				del_timer_sync(&pcpu->cpu_timer);
@@ -1666,6 +1674,7 @@ static int cpufreq_governor_interactive(struct cpufreq_policy *policy,
 			}
 
 			pcpu->max_freq = policy->max;
+			pcpu->min_freq = policy->min;
 		}
 		break;
 	}
@@ -1724,7 +1733,7 @@ static int __init cpufreq_interactive_init(void)
 }
 
 #ifdef CONFIG_CPU_FREQ_DEFAULT_GOV_INTERACTIVE
-fs_initcall(cpufreq_interactive_init);
+arch_initcall(cpufreq_interactive_init);
 #else
 module_init(cpufreq_interactive_init);
 #endif

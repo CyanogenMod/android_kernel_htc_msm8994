@@ -30,13 +30,24 @@
 #include <linux/wakelock.h>
 #include <linux/pm.h>
 #include <linux/jiffies.h>
+#include <linux/statfs.h>
+#include <linux/debugfs.h>
+#include <linux/f2fs_fs.h>
+
+#include "../../../fs/f2fs/f2fs.h"
+#include "../../../fs/f2fs/segment.h"
+
 
 #include <trace/events/mmc.h>
+#define CREATE_TRACE_POINTS
+#include <trace/events/mmcio.h>
+#include <trace/events/f2fs.h>
 
 #include <linux/mmc/card.h>
 #include <linux/mmc/host.h>
 #include <linux/mmc/mmc.h>
 #include <linux/mmc/sd.h>
+#include <linux/list_sort.h>
 
 #include "core.h"
 #include "bus.h"
@@ -51,6 +62,8 @@
 #define MMC_CORE_TIMEOUT_MS	(10 * 60 * 1000) /* 10 minute timeout */
 
 static void mmc_clk_scaling(struct mmc_host *host, bool from_wq);
+extern unsigned int get_tamper_sf(void);
+extern unsigned int disable_auto_sd;
 
 /*
  * Background operations can take a long time, depending on the housekeeping
@@ -61,8 +74,24 @@ static void mmc_clk_scaling(struct mmc_host *host, bool from_wq);
 /* Flushing a large amount of cached data may take a long time. */
 #define MMC_FLUSH_REQ_TIMEOUT_MS 180000 /* msec */
 
+#define MMC_WORKLOAD_DURATION (60 * 60 * 1000) 
+
 static struct workqueue_struct *workqueue;
+struct workqueue_struct *stats_workqueue = NULL;
+extern struct workqueue_struct *enable_detection_workqueue;
 static const unsigned freqs[] = { 400000, 300000, 200000, 100000 };
+
+#ifdef CONFIG_HTC_PNPMGR
+extern int powersave_enabled;
+extern bool ac_status;
+
+enum {
+    PP_NORMAL = 0,
+    PP_POWERSAVE = 1,
+    PP_EXTREMELY_POWERSAVE = 2,
+    PP_PERFORMANCE = 4,
+};
+#endif
 
 /*
  * Enabling software CRCs on the data blocks can be a significant (30%)
@@ -112,6 +141,354 @@ MODULE_PARM_DESC(
 			stats.bkops_level[level-1]++;			\
 		spin_unlock(&stats.lock);				\
 	} while (0);
+
+#define IOTOP_INTERVAL	9500
+#define IOREAD_DUMP_THRESHOLD	10485760 
+#define IOWRITE_DUMP_THRESHOLD	1048576 
+#define IOREAD_DUMP_TOTAL_THRESHOLD		10485760 
+#define IOWRITE_DUMP_TOTAL_THRESHOLD	10485760 
+struct io_account {
+	char task_name[TASK_COMM_LEN];
+	char gtask_name[TASK_COMM_LEN]; 
+	char ptask_name[TASK_COMM_LEN]; 
+	unsigned int pid;
+	unsigned int tgid;
+	unsigned int ppid;
+	u64 io_amount;
+	struct list_head list;
+};
+static LIST_HEAD(ioread_list);
+static LIST_HEAD(iowrite_list);
+static spinlock_t iolist_lock;
+static unsigned long jiffies_next_iotop = 0;
+static int iotop_cmp(void *priv, struct list_head *a, struct list_head *b)
+{
+	struct io_account *ioa = container_of(a, struct io_account, list);
+	struct io_account *iob = container_of(b, struct io_account, list);
+
+	return !(ioa->io_amount > iob->io_amount);
+}
+
+void collect_io_stats(size_t rw_bytes, int type)
+{
+	struct task_struct *process = current;
+	struct io_account *io_act, *tmp;
+	int found;
+	struct list_head *io_list;
+	unsigned long flags;
+
+	if (get_tamper_sf() == 1)
+		return;
+
+	if (!rw_bytes)
+		return;
+
+	if (type == READ)
+		io_list = &ioread_list;
+	else if (type == WRITE)
+		io_list = &iowrite_list;
+	else
+		return;
+
+	found = 0;
+	spin_lock_irqsave(&iolist_lock, flags);
+	list_for_each_entry_safe(io_act, tmp, io_list, list) {
+		if ((process->pid == io_act->pid) && !strcmp(process->comm, io_act->task_name)) {
+			io_act->io_amount += rw_bytes;
+			found = 1;
+			break;
+		}
+	}
+	spin_unlock_irqrestore(&iolist_lock, flags);
+
+	if (!found) {
+		io_act = kmalloc(sizeof(struct io_account), GFP_ATOMIC);
+		if (io_act) {
+			snprintf(io_act->task_name, sizeof(io_act->task_name), "%s", process->comm);
+			io_act->pid = process->pid;
+			io_act->tgid = process->tgid;
+			if (process->group_leader)
+				snprintf(io_act->gtask_name, sizeof(io_act->gtask_name), "%s",
+					process->group_leader->comm);
+			if (process->parent) {
+				snprintf(io_act->ptask_name, sizeof(io_act->ptask_name), "%s",
+					process->parent->comm);
+				io_act->ppid = process->parent->pid;
+			}
+			io_act->io_amount = rw_bytes;
+			spin_lock_irqsave(&iolist_lock, flags);
+			list_add(&io_act->list, io_list);
+			spin_unlock_irqrestore(&iolist_lock, flags);
+		}
+	}
+}
+
+static void show_iotop(void)
+{
+	struct io_account *io_act, *tmp;
+	int i = 0;
+	unsigned int task_cnt = 0;
+	unsigned long long total_bytes;
+	unsigned long flags;
+
+	if (get_tamper_sf() == 1)
+		return;
+
+	spin_lock_irqsave(&iolist_lock, flags);
+	list_sort(NULL, &ioread_list, iotop_cmp);
+	total_bytes = 0;
+	list_for_each_entry_safe(io_act, tmp, &ioread_list, list) {
+		list_del_init(&io_act->list);
+		if (i++ < 5 && io_act->io_amount > IOREAD_DUMP_THRESHOLD)
+			pr_info("[READ IOTOP%d] %s(pid %u, tgid %u(%s), ppid %u(%s)): %llu KB\n",
+				i, io_act->task_name, io_act->pid, io_act->tgid, io_act->gtask_name,
+				io_act->ppid, io_act->ptask_name, io_act->io_amount / 1024);
+		task_cnt++;
+		total_bytes += io_act->io_amount;
+		kfree(io_act);
+	}
+	if (total_bytes > IOREAD_DUMP_TOTAL_THRESHOLD)
+		pr_info("[IOTOP] READ total %u tasks, %llu KB\n", task_cnt, total_bytes / 1024);
+
+	list_sort(NULL, &iowrite_list, iotop_cmp);
+	i = 0;
+	total_bytes = 0;
+	task_cnt = 0;
+	list_for_each_entry_safe(io_act, tmp, &iowrite_list, list) {
+		list_del_init(&io_act->list);
+		if (i++ < 5 && io_act->io_amount >= IOWRITE_DUMP_THRESHOLD)
+			pr_info("[WRITE IOTOP%d] %s(pid %u, tgid %u(%s), ppid %u(%s)): %llu KB\n",
+				i, io_act->task_name, io_act->pid, io_act->tgid, io_act->gtask_name,
+				io_act->ppid, io_act->ptask_name, io_act->io_amount / 1024);
+		task_cnt++;
+		total_bytes += io_act->io_amount;
+		kfree(io_act);
+	}
+	spin_unlock_irqrestore(&iolist_lock, flags);
+	if (total_bytes > IOWRITE_DUMP_TOTAL_THRESHOLD)
+		pr_info("[IOTOP] WRITE total %u tasks, %llu KB\n", task_cnt, total_bytes / 1024);
+}
+
+static int stats_interval = MMC_STATS_INTERVAL;
+#define K(x) ((x) << (PAGE_SHIFT - 10))
+void mmc_stats(struct work_struct *work)
+{
+	struct mmc_host *host =
+		container_of(work, struct mmc_host, stats_work.work);
+	unsigned long rtime, wtime;
+	unsigned long rbytes, wbytes, rcnt, wcnt;
+	unsigned long wperf = 0, rperf = 0;
+	unsigned long flags;
+	u64 val;
+	struct kstatfs stat;
+	unsigned long free = 0;
+	int reset_low_perf_data = 1;
+	
+	unsigned long rtime_rand = 0, wtime_rand = 0;
+	unsigned long rbytes_rand = 0, wbytes_rand = 0, rcnt_rand = 0, wcnt_rand = 0;
+	unsigned long wperf_rand = 0, rperf_rand = 0;
+	
+	unsigned long erase_time; 
+	unsigned long erase_blks;
+	unsigned long erase_rq;
+	
+	ktime_t workload_diff;
+	unsigned long workload_time; 
+
+	if (!host || !host->perf_enable || !stats_workqueue)
+		return;
+
+	spin_lock_irqsave(&host->lock, flags);
+
+	rbytes = host->perf.rbytes_drv;
+	wbytes = host->perf.wbytes_drv;
+	rcnt = host->perf.rcount;
+	wcnt = host->perf.wcount;
+	rtime = (unsigned long)ktime_to_us(host->perf.rtime_drv);
+	wtime = (unsigned long)ktime_to_us(host->perf.wtime_drv);
+
+	host->perf.rbytes_drv = host->perf.wbytes_drv = 0;
+	host->perf.rcount = host->perf.wcount = 0;
+	host->perf.rtime_drv = ktime_set(0, 0);
+	host->perf.wtime_drv = ktime_set(0, 0);
+
+	
+	erase_time = (unsigned long)ktime_to_ms(host->perf.erase_time);
+	erase_blks = host->perf.erase_blks;
+	erase_rq = host->perf.erase_rq;
+	host->perf.erase_blks = 0;
+	host->perf.erase_rq = 0;
+	host->perf.erase_time = ktime_set(0, 0);
+
+	
+	if (host->debug_mask & MMC_DEBUG_RANDOM_RW) {
+		rbytes_rand = host->perf.rbytes_drv_rand;
+		wbytes_rand = host->perf.wbytes_drv_rand;
+		rcnt_rand = host->perf.rcount_rand;
+		wcnt_rand = host->perf.wcount_rand;
+		rtime_rand = (unsigned long)ktime_to_us(host->perf.rtime_drv_rand);
+		wtime_rand = (unsigned long)ktime_to_us(host->perf.wtime_drv_rand);
+
+		host->perf.rbytes_drv_rand = host->perf.wbytes_drv_rand = 0;
+		host->perf.rcount_rand = host->perf.wcount_rand = 0;
+		host->perf.rtime_drv_rand = ktime_set(0, 0);
+		host->perf.wtime_drv_rand = ktime_set(0, 0);
+	}
+	
+
+	spin_unlock_irqrestore(&host->lock, flags);
+
+	if (wtime) {
+		val = ((u64)wbytes / 1024) * 1000000;
+		do_div(val, wtime);
+		wperf = (unsigned long)val;
+	}
+	if (rtime) {
+		val = ((u64)rbytes / 1024) * 1000000;
+		do_div(val, rtime);
+		rperf = (unsigned long)val;
+	}
+
+	if (host->debug_mask & MMC_DEBUG_FREE_SPACE) {
+		struct file *file;
+		file = filp_open("/data", O_RDONLY, 0);
+		if (!IS_ERR(file)) {
+			vfs_statfs(&file->f_path, &stat);
+			filp_close(file, NULL);
+			free = (unsigned long)stat.f_bfree;
+			free /= 256; 
+		}
+	}
+
+	
+	wtime /= 1000;
+	rtime /= 1000;
+
+	
+	if (!wtime)
+		reset_low_perf_data = 0;
+	else if (wperf < 100) {
+		host->perf.lp_duration += stats_interval; 
+		host->perf.wbytes_low_perf += wbytes;
+		host->perf.wtime_low_perf += wtime; 
+		if (host->perf.lp_duration >= 600000) {
+			unsigned long perf;
+			val = ((u64)host->perf.wbytes_low_perf / 1024) * 1000;
+			do_div(val, host->perf.wtime_low_perf);
+			perf = (unsigned long)val;
+			pr_err("%s Statistics: write %lu KB in %lu ms, perf %lu KB/s, duration %lu sec\n",
+					mmc_hostname(host), host->perf.wbytes_low_perf / 1024,
+					host->perf.wtime_low_perf,
+					perf, host->perf.lp_duration / 1000);
+		} else
+			reset_low_perf_data = 0;
+	}
+	if (host->perf.lp_duration && reset_low_perf_data) {
+		host->perf.lp_duration = 0;
+		host->perf.wbytes_low_perf = 0;
+		host->perf.wtime_low_perf = 0;
+	}
+
+	
+	if ((wtime > 500) || (wtime && (stats_interval == MMC_STATS_LOG_INTERVAL))) {
+		#if 0
+		pr_info("%s Statistics: dirty %luKB, writeback %luKB\n", mmc_hostname(host),
+				K(global_page_state(NR_FILE_DIRTY)), K(global_page_state(NR_WRITEBACK)));
+		#endif
+		if (host->debug_mask & MMC_DEBUG_FREE_SPACE)
+			pr_info("%s Statistics: write %lu KB in %lu ms, perf %lu KB/s, rq %lu, /data free %lu MB\n",
+					mmc_hostname(host), wbytes / 1024, wtime, wperf, wcnt, free);
+		else
+			pr_info("%s Statistics: write %lu KB in %lu ms, perf %lu KB/s, rq %lu\n",
+					mmc_hostname(host), wbytes / 1024, wtime, wperf, wcnt);
+
+		if (rtime) {
+			if (host->debug_mask & MMC_DEBUG_FREE_SPACE)
+				pr_info("%s Statistics: read %lu KB in %lu ms, perf %lu KB/s, rq %lu, /data free %lu MB\n",
+						mmc_hostname(host), rbytes / 1024, rtime, rperf, rcnt, free);
+			else
+				pr_info("%s Statistics: read %lu KB in %lu ms, perf %lu KB/s, rq %lu\n",
+						mmc_hostname(host), rbytes / 1024, rtime, rperf, rcnt);
+		}
+	}
+	else if ((rtime > 500) || (rtime && (stats_interval == MMC_STATS_LOG_INTERVAL))) {
+		if (host->debug_mask & MMC_DEBUG_FREE_SPACE)
+			pr_info("%s Statistics: read %lu KB in %lu ms, perf %lu KB/s, rq %lu, /data free %lu MB\n",
+					mmc_hostname(host), rbytes / 1024, rtime, rperf, rcnt, free);
+		else
+			pr_info("%s Statistics: read %lu KB in %lu ms, perf %lu KB/s, rq %lu\n",
+					mmc_hostname(host), rbytes / 1024, rtime, rperf, rcnt);
+	}
+
+	
+	workload_diff = ktime_sub(ktime_get(), host->perf.workload_time);
+	workload_time = (unsigned long)ktime_to_ms(workload_diff);
+	if (workload_time >= MMC_WORKLOAD_DURATION) {
+		pr_info("%s Statistics: workload write %lu KB (%lu MB)\n",
+				mmc_hostname(host),
+				host->perf.wkbytes_drv, host->perf.wkbytes_drv / 1024);
+		host->perf.wkbytes_drv = 0;
+		host->perf.workload_time = ktime_get();
+	}
+
+	
+	if (erase_time > 500)
+		pr_info("%s Statistics: erase %lu blocks in %lu ms, rq %lu\n",
+			mmc_hostname(host), erase_blks, erase_time, erase_rq);
+
+	if (!jiffies_next_iotop || time_after(jiffies, jiffies_next_iotop)) {
+		jiffies_next_iotop = jiffies + msecs_to_jiffies(IOTOP_INTERVAL);
+		show_iotop();
+	}
+	
+	if (host->debug_mask & MMC_DEBUG_RANDOM_RW) {
+		if (wtime_rand) {
+			val = ((u64)wbytes_rand / 1024) * 1000000;
+			do_div(val, wtime_rand);
+			wperf_rand = (unsigned long)val;
+		}
+		if (rtime_rand) {
+			val = ((u64)rbytes_rand / 1024) * 1000000;
+			do_div(val, rtime_rand);
+			rperf_rand = (unsigned long)val;
+		}
+		wtime_rand /= 1000;
+		rtime_rand /= 1000;
+		if (wperf_rand && wtime_rand) {
+			if (host->debug_mask & MMC_DEBUG_FREE_SPACE)
+				pr_info("%s Statistics: random write %lu KB in %lu ms, perf %lu KB/s, rq %lu, /data free %lu MB\n",
+						mmc_hostname(host), wbytes_rand / 1024, wtime_rand, wperf_rand, wcnt_rand, free);
+			else
+				pr_info("%s Statistics: random write %lu KB in %lu ms, perf %lu KB/s, rq %lu\n",
+						mmc_hostname(host), wbytes_rand / 1024, wtime_rand, wperf_rand, wcnt_rand);
+		}
+		if (rperf_rand && rtime_rand) {
+			if (host->debug_mask & MMC_DEBUG_FREE_SPACE)
+				pr_info("%s Statistics: random read %lu KB in %lu ms, perf %lu KB/s, rq %lu, /data free %lu MB\n",
+						mmc_hostname(host), rbytes_rand / 1024, rtime_rand, rperf_rand, rcnt_rand, free);
+			else
+				pr_info("%s Statistics: random read %lu KB in %lu ms, perf %lu KB/s, rq %lu\n",
+						mmc_hostname(host), rbytes_rand / 1024, rtime_rand, rperf_rand, rcnt_rand);
+		}
+	}
+	
+
+	if (host->debug_mask & MMC_DEBUG_MEMORY) {
+		struct sysinfo mi;
+		long cached;
+		si_meminfo(&mi);
+		cached = global_page_state(NR_FILE_PAGES) -
+			total_swapcache_pages();
+		pr_info("meminfo: total %lu KB, free %lu KB, buffers %lu KB, cached %lu KB \n",
+				K(mi.totalram),
+				K(mi.freeram),
+				K(mi.bufferram),
+				K(cached));
+	}
+
+	queue_delayed_work(stats_workqueue, &host->stats_work, msecs_to_jiffies(stats_interval));
+	return;
+}
 
 /*
  * Internal function. Schedule delayed work in the MMC work queue.
@@ -215,9 +592,8 @@ void mmc_request_done(struct mmc_host *host, struct mmc_request *mrq)
 {
 	struct mmc_command *cmd = mrq->cmd;
 	int err = cmd->error;
-#ifdef CONFIG_MMC_PERF_PROFILING
 	ktime_t diff;
-#endif
+
 	if (host->card)
 		mmc_update_clk_scaling(host);
 
@@ -244,24 +620,53 @@ void mmc_request_done(struct mmc_host *host, struct mmc_request *mrq)
 			cmd->resp[2], cmd->resp[3]);
 
 		if (mrq->data) {
-#ifdef CONFIG_MMC_PERF_PROFILING
-			if (host->perf_enable) {
+			if (host->perf_enable && cmd->opcode != MMC_SEND_EXT_CSD) {
+				unsigned long flags;
 				diff = ktime_sub(ktime_get(), host->perf.start);
+				if (host->card && mmc_card_mmc(host->card))
+					trace_mmc_request_done(&host->class_dev,
+							cmd->opcode, mrq->cmd->arg,
+							mrq->data->blocks, ktime_to_ms(diff));
+				spin_lock_irqsave(&host->lock, flags);
 				if (mrq->data->flags == MMC_DATA_READ) {
 					host->perf.rbytes_drv +=
 							mrq->data->bytes_xfered;
 					host->perf.rtime_drv =
 						ktime_add(host->perf.rtime_drv,
 							diff);
+					host->perf.rcount++;
+					if (host->debug_mask & MMC_DEBUG_RANDOM_RW) {
+						if (mrq->data->bytes_xfered <= 32*1024) {
+							host->perf.rbytes_drv_rand +=
+								mrq->data->bytes_xfered;
+							host->perf.rtime_drv_rand =
+								ktime_add(host->perf.rtime_drv_rand,
+										diff);
+							host->perf.rcount_rand++;
+						}
+					}
 				} else {
 					host->perf.wbytes_drv +=
 						mrq->data->bytes_xfered;
+					host->perf.wkbytes_drv +=
+						(mrq->data->bytes_xfered / 1024);
 					host->perf.wtime_drv =
 						ktime_add(host->perf.wtime_drv,
 							diff);
+					host->perf.wcount++;
+					if (host->debug_mask & MMC_DEBUG_RANDOM_RW) {
+						if (mrq->data->bytes_xfered <= 32*1024) {
+							host->perf.wbytes_drv_rand +=
+								mrq->data->bytes_xfered;
+							host->perf.wtime_drv_rand =
+								ktime_add(host->perf.wtime_drv_rand,
+										diff);
+							host->perf.wcount_rand++;
+						}
+					}
 				}
+				spin_unlock_irqrestore(&host->lock, flags);
 			}
-#endif
 			pr_debug("%s:     %d bytes transferred: %d\n",
 				mmc_hostname(host),
 				mrq->data->bytes_xfered, mrq->data->error);
@@ -310,6 +715,9 @@ mmc_start_request(struct mmc_host *host, struct mmc_request *mrq)
 			mrq->data->blocks, mrq->data->flags,
 			mrq->data->timeout_ns / 1000000,
 			mrq->data->timeout_clks);
+		if (host->card && mmc_card_mmc(host->card))
+			trace_mmc_req_start(&host->class_dev, mrq->cmd->opcode,
+				mrq->cmd->arg, mrq->data->blocks);
 	}
 
 	if (mrq->stop) {
@@ -343,12 +751,11 @@ mmc_start_request(struct mmc_host *host, struct mmc_request *mrq)
 			mrq->stop->error = 0;
 			mrq->stop->mrq = mrq;
 		}
-#ifdef CONFIG_MMC_PERF_PROFILING
 		if (host->perf_enable)
 			host->perf.start = ktime_get();
-#endif
 	}
 	mmc_host_clk_hold(host);
+
 	led_trigger_event(host->led, LED_FULL);
 
 	if (host->card && host->clk_scaling.enable) {
@@ -448,6 +855,14 @@ void mmc_start_bkops(struct mmc_card *card, bool from_exception)
 		card->bkops_info.cancel_delayed_work = false;
 		return;
 	}
+
+#ifdef CONFIG_HTC_PNPMGR
+	
+	if ((powersave_enabled == PP_EXTREMELY_POWERSAVE) && !ac_status)  {
+		pr_debug("%s: skip bkops due to extreme powersave mode\n", __func__);
+		return;
+	}
+#endif
 
 	mmc_rpm_hold(card->host, &card->dev);
 	/* In case of delayed bkops we might be in race with suspend. */
@@ -831,16 +1246,31 @@ static int mmc_wait_for_data_req_done(struct mmc_host *host,
 	return err;
 }
 
+#define MMC_REQUEST_TIMEOUT	10000 
 static void mmc_wait_for_req_done(struct mmc_host *host,
 				  struct mmc_request *mrq)
 {
 	struct mmc_command *cmd;
+	unsigned long timeout;
+	int ret;
 
 	while (1) {
-		wait_for_completion_io(&mrq->completion);
-
 		cmd = mrq->cmd;
+		
+		if (cmd->cmd_timeout_ms > MMC_REQUEST_TIMEOUT)
+			timeout = (cmd->cmd_timeout_ms * 2) + 3000;
+		else
+			timeout = MMC_REQUEST_TIMEOUT + 3000;
+		ret = wait_for_completion_io_timeout(&mrq->completion,
+			msecs_to_jiffies(timeout));
 
+		if (ret == 0) {
+			pr_err("%s: CMD%u %s timeout (%lums)\n",
+					mmc_hostname(host), cmd->opcode,
+					__func__, timeout);
+			cmd->error = -ETIMEDOUT;
+			break;
+		}
 		/*
 		 * If host has timed out waiting for the commands which can be
 		 * HPIed then let the caller handle the timeout error as it may
@@ -1346,7 +1776,7 @@ void mmc_set_data_timeout(struct mmc_data *data, const struct mmc_card *card)
 			 */
 			limit_us = 3000000;
 		else
-			limit_us = 100000;
+			limit_us = 250000;
 
 		/*
 		 * SDHC cards always use these fixed values.
@@ -2111,14 +2541,23 @@ void mmc_power_up(struct mmc_host *host)
 
 void mmc_power_off(struct mmc_host *host)
 {
+	int err;
+
 	if (host->ios.power_mode == MMC_POWER_OFF)
 		return;
+
+	if (mmc_is_sd_host(host) && host->card && mmc_card_present(host->card)) {
+		mmc_claim_host(host);
+		err = mmc_go_idle(host);
+		if (err)
+			pr_err("%s: cmd0 err %d\n", mmc_hostname(host), err);
+		mmc_release_host(host);
+	}
 
 	mmc_host_clk_hold(host);
 
 	host->ios.clock = 0;
 	host->ios.vdd = 0;
-
 
 	/*
 	 * Reset ocr mask to be the highest possible voltage supported for
@@ -2149,7 +2588,7 @@ void mmc_power_cycle(struct mmc_host *host)
 {
 	mmc_power_off(host);
 	/* Wait at least 1 ms according to SD spec */
-	mmc_delay(1);
+	mmc_delay(50);
 	mmc_power_up(host);
 }
 
@@ -2285,7 +2724,32 @@ void mmc_detect_change(struct mmc_host *host, unsigned long delay)
 #endif
 	host->detect_change = 1;
 
+	WARN_ON(mmc_is_mmc_host(host));
+	wake_lock_timeout(&host->detect_wake_lock, HZ * MMC_WAKELOCK_TIMEOUT);
 	mmc_schedule_delayed_work(&host->detect, delay);
+}
+
+int mmc_reinit_card(struct mmc_host *host)
+{
+	int err = 0;
+	printk(KERN_INFO "%s: %s\n", mmc_hostname(host),
+			__func__);
+
+	mmc_bus_get(host);
+	if (host->bus_ops && !host->bus_dead &&
+			host->bus_ops->reinit) {
+		if (host->card && mmc_card_sd(host->card)) {
+			mmc_power_off(host);
+			msleep(100);
+		}
+		mmc_power_up(host);
+		err = host->bus_ops->reinit(host);
+	}
+
+	mmc_bus_put(host);
+	printk(KERN_INFO "%s: %s return %d\n", mmc_hostname(host),
+			__func__, err);
+	return err;
 }
 
 EXPORT_SYMBOL(mmc_detect_change);
@@ -2385,12 +2849,14 @@ static unsigned int mmc_mmc_erase_timeout(struct mmc_card *card,
 	}
 
 	/* Multiplier for secure operations */
+#if 0  
 	if (arg & MMC_SECURE_ARGS) {
 		if (arg == MMC_SECURE_ERASE_ARG)
 			erase_timeout *= card->ext_csd.sec_erase_mult;
 		else
 			erase_timeout *= card->ext_csd.sec_trim_mult;
 	}
+#endif
 
 	erase_timeout *= qty;
 
@@ -2447,6 +2913,7 @@ static int mmc_do_erase(struct mmc_card *card, unsigned int from,
 	unsigned long timeout;
 	unsigned int fr, nr;
 	int err;
+	ktime_t start, diff;
 
 	fr = from;
 	nr = to - from + 1;
@@ -2511,6 +2978,10 @@ static int mmc_do_erase(struct mmc_card *card, unsigned int from,
 		goto out;
 	}
 
+	if (mmc_card_mmc(card))
+		trace_mmc_req_start(&(card->host->class_dev), MMC_ERASE,
+			from, to - from + 1);
+	start = ktime_get();
 	memset(&cmd, 0, sizeof(struct mmc_command));
 	cmd.opcode = MMC_ERASE;
 	cmd.arg = arg;
@@ -2554,6 +3025,20 @@ static int mmc_do_erase(struct mmc_card *card, unsigned int from,
 
 	} while (!(cmd.resp[0] & R1_READY_FOR_DATA) ||
 		 (R1_CURRENT_STATE(cmd.resp[0]) == R1_STATE_PRG));
+
+	diff = ktime_sub(ktime_get(), start);
+	if (ktime_to_ms(diff) >= 3000)
+		pr_info("%s: erase(sector %u to %u) takes %lld ms\n",
+			mmc_hostname(card->host), from, to, ktime_to_ms(diff));
+
+	card->host->perf.erase_blks += (to - from + 1);
+	card->host->perf.erase_time =
+		ktime_add(card->host->perf.erase_time, diff);
+	card->host->perf.erase_rq++;
+
+	if (mmc_card_mmc(card))
+		trace_mmc_request_done(&(card->host->class_dev), MMC_ERASE,
+			from, to - from + 1, ktime_to_ms(diff));
 out:
 
 	trace_mmc_blk_erase_end(arg, fr, nr);
@@ -2592,10 +3077,12 @@ int mmc_erase(struct mmc_card *card, unsigned int from, unsigned int nr,
 	    !(card->ext_csd.sec_feature_support & EXT_CSD_SEC_GB_CL_EN))
 		return -EOPNOTSUPP;
 
+#if 0  
 	if (arg == MMC_SECURE_ERASE_ARG) {
 		if (from % card->erase_size || nr % card->erase_size)
 			return -EINVAL;
 	}
+#endif
 
 	if (arg == MMC_ERASE_ARG) {
 		rem = from % card->erase_size;
@@ -2658,10 +3145,12 @@ EXPORT_SYMBOL(mmc_can_discard);
 
 int mmc_can_sanitize(struct mmc_card *card)
 {
+#if 0 
 	if (!mmc_can_trim(card) && !mmc_can_erase(card))
 		return 0;
 	if (card->ext_csd.sec_feature_support & EXT_CSD_SEC_SANITIZE)
 		return 1;
+#endif
 	return 0;
 }
 EXPORT_SYMBOL(mmc_can_sanitize);
@@ -3196,6 +3685,9 @@ out:
  */
 void mmc_disable_clk_scaling(struct mmc_host *host)
 {
+	if (!host->card || !(host->caps2 & MMC_CAP2_CLK_SCALE))
+		return;
+
 	cancel_delayed_work_sync(&host->clk_scaling.work);
 	if (host->ops->notify_load)
 		host->ops->notify_load(host, MMC_LOAD_LOW);
@@ -3247,6 +3739,9 @@ EXPORT_SYMBOL_GPL(mmc_init_clk_scaling);
  */
 void mmc_exit_clk_scaling(struct mmc_host *host)
 {
+	if (!host->card || !(host->caps2 & MMC_CAP2_CLK_SCALE))
+		return;
+
 	cancel_delayed_work_sync(&host->clk_scaling.work);
 	if (host->ops->notify_load)
 		host->ops->notify_load(host, MMC_LOAD_LOW);
@@ -3281,13 +3776,21 @@ static int mmc_rescan_try_freq(struct mmc_host *host, unsigned freq)
 	mmc_send_if_cond(host, host->ocr_avail);
 
 	/* Order's important: probe SDIO, then SD, then MMC */
-	if (!mmc_attach_sdio(host))
+	if (!mmc_attach_sdio(host)) {
+		pr_info("%s: Find a SDIO card\n", __func__);
 		return 0;
-	if (!mmc_attach_sd(host))
+	}
+	if (mmc_is_sd_host(host) && !mmc_attach_sd(host)) {
+		pr_info("%s: Find a SD card\n", __func__);
 		return 0;
-	if (!mmc_attach_mmc(host))
+	}
+	if (mmc_is_mmc_host(host) && !mmc_attach_mmc(host)) {
+		pr_info("%s: Find a MMC/eMMC card\n", __func__);
 		return 0;
+	}
 
+	pr_info("%s: %s Can not find a card type. A dummy card ?\n",
+		mmc_hostname(host), __func__);
 	mmc_power_off(host);
 	return -EIO;
 }
@@ -3313,16 +3816,34 @@ int _mmc_detect_card_removed(struct mmc_host *host)
 	 */
 	if (!ret && host->ops->get_cd && !host->ops->get_cd(host)) {
 		mmc_detect_change(host, msecs_to_jiffies(200));
-		pr_debug("%s: card removed too slowly\n", mmc_hostname(host));
+		pr_info("%s: card removed too slowly\n", mmc_hostname(host));
 	}
 
 	if (ret) {
 		mmc_card_set_removed(host->card);
-		pr_debug("%s: card remove detected\n", mmc_hostname(host));
+		pr_info("%s: card remove detected\n", mmc_hostname(host));
 	}
 
 	return ret;
 }
+
+int mmc_remove_sd_card(struct mmc_host *host)
+{
+	struct mmc_card *card = host->card;
+
+	WARN_ON(!host->claimed);
+
+	if (!card)
+		return 1;
+
+	pr_info("%s: card set removed\n", mmc_hostname(host));
+	mmc_card_set_removed(host->card);
+	cancel_delayed_work(&host->detect);
+	mmc_detect_change(host, msecs_to_jiffies(1000));
+
+	return 0;
+}
+EXPORT_SYMBOL(mmc_remove_sd_card);
 
 int mmc_detect_card_removed(struct mmc_host *host)
 {
@@ -3364,10 +3885,11 @@ void mmc_rescan(struct work_struct *work)
 {
 	struct mmc_host *host =
 		container_of(work, struct mmc_host, detect.work);
-	bool extend_wakelock = false;
 
-	if (host->rescan_disable)
+	if (host->rescan_disable) {
+		pr_info("%s disable rescan\n", mmc_hostname(host));
 		return;
+	}
 
 	/* If there is a non-removable card registered, only scan once */
 	if ((host->caps & MMC_CAP_NONREMOVABLE) && host->rescan_entered)
@@ -3386,11 +3908,6 @@ void mmc_rescan(struct work_struct *work)
 		host->bus_ops->detect(host);
 
 	host->detect_change = 0;
-	/* If the card was removed the bus will be marked
-	 * as dead - extend the wakelock so userspace
-	 * can respond */
-	if (host->bus_dead)
-		extend_wakelock = 1;
 
 	/*
 	 * Let mmc_bus_put() free the bus/bus_ops if we've found that
@@ -3414,26 +3931,34 @@ void mmc_rescan(struct work_struct *work)
 	 */
 	mmc_bus_put(host);
 
-	if (host->ops->get_cd && host->ops->get_cd(host) == 0) {
+	if (host->ops->get_cd &&
+		(host->ops->get_cd(host) == 0 || host->removed_cnt > MMC_DETECT_RETRIES)) {
 		mmc_claim_host(host);
 		mmc_power_off(host);
 		mmc_release_host(host);
+		pr_info("%s : SD status was (%d), or rescan up to limit (%d)\n",
+			mmc_hostname(host), host->ops->get_cd(host),
+			host->removed_cnt);
+		goto out;
+	}
+
+	if (host->rescan_only_remove) {
+		pr_info("%s rescan only do remove card\n", mmc_hostname(host));
 		goto out;
 	}
 
 	mmc_rpm_hold(host, &host->class_dev);
 	mmc_claim_host(host);
-	if (!mmc_rescan_try_freq(host, host->f_min))
-		extend_wakelock = true;
+	mmc_rescan_try_freq(host, host->f_min);
 	mmc_release_host(host);
 	mmc_rpm_release(host, &host->class_dev);
  out:
-	/* only extend the wakelock, if suspend has not started yet */
-	if (extend_wakelock && !host->rescan_disable)
-		wake_lock_timeout(&host->detect_wake_lock, HZ / 2);
-
-	if (host->caps & MMC_CAP_NEEDS_POLL)
+	if (host->caps & MMC_CAP_NEEDS_POLL) {
+		wake_lock_timeout(&host->detect_wake_lock, HZ * MMC_WAKELOCK_TIMEOUT);
 		mmc_schedule_delayed_work(&host->detect, HZ);
+	} else
+		wake_unlock(&host->detect_wake_lock);
+	host->rescan_only_remove = 0;
 }
 
 void mmc_start_host(struct mmc_host *host)
@@ -3444,7 +3969,17 @@ void mmc_start_host(struct mmc_host *host)
 		mmc_power_off(host);
 	else
 		mmc_power_up(host);
-	mmc_detect_change(host, 0);
+
+	host->rescan_only_remove = 0;
+
+	if (!disable_auto_sd) {	
+		mmc_detect_change(host, 0);
+		if (mmc_is_sd_host(host))
+			mmc_detect_change(host, msecs_to_jiffies(3000));
+	} else { 
+		if (mmc_is_mmc_host(host))
+			mmc_detect_change(host, 0);
+	}
 }
 
 void mmc_stop_host(struct mmc_host *host)
@@ -3457,7 +3992,8 @@ void mmc_stop_host(struct mmc_host *host)
 #endif
 
 	host->rescan_disable = 1;
-	cancel_delayed_work_sync(&host->detect);
+	if (cancel_delayed_work_sync(&host->detect))
+		wake_unlock(&host->detect_wake_lock);
 
 	mmc_flush_scheduled_work();
 
@@ -3586,7 +4122,7 @@ EXPORT_SYMBOL(mmc_card_can_sleep);
 int mmc_flush_cache(struct mmc_card *card)
 {
 	struct mmc_host *host = card->host;
-	int err = 0, rc;
+	int err = 0;
 
 	if (!(host->caps2 & MMC_CAP2_CACHE_CTRL) ||
 	     (card->quirks & MMC_QUIRK_CACHE_DISABLE))
@@ -3595,19 +4131,35 @@ int mmc_flush_cache(struct mmc_card *card)
 	if (mmc_card_mmc(card) &&
 			(card->ext_csd.cache_size > 0) &&
 			(card->ext_csd.cache_ctrl & 1)) {
-		err = mmc_switch_ignore_timeout(card, EXT_CSD_CMD_SET_NORMAL,
-						EXT_CSD_FLUSH_CACHE, 1,
-						MMC_FLUSH_REQ_TIMEOUT_MS);
-		if (err == -ETIMEDOUT) {
-			pr_err("%s: cache flush timeout\n",
-					mmc_hostname(card->host));
-			rc = mmc_interrupt_hpi(card);
-			if (rc) {
-				pr_err("%s: mmc_interrupt_hpi() failed (%d)\n",
-						mmc_hostname(host), rc);
-				err = -ENODEV;
+		int retries = 0;
+		while (retries++ < 3) {
+			u32 status;
+			err = mmc_switch(card, EXT_CSD_CMD_SET_NORMAL,
+					EXT_CSD_FLUSH_CACHE, 1, 0);
+			if (err) {
+				err = mmc_send_status(card, &status);
+				if (err)
+					break;
+
+				switch (R1_CURRENT_STATE(status)) {
+				case R1_STATE_IDLE:
+				case R1_STATE_READY:
+				case R1_STATE_STBY:
+				case R1_STATE_TRAN:
+					err = 0;
+					break;
+				case R1_STATE_PRG:
+				default:
+					err = -1;
+					break;
+				}
 			}
-		} else if (err) {
+
+			if (!err)
+				break;
+		}
+
+		if (err) {
 			pr_err("%s: cache flush error %d\n",
 					mmc_hostname(card->host), err);
 		}
@@ -3813,7 +4365,6 @@ int mmc_pm_notify(struct notifier_block *notify_block,
 {
 	struct mmc_host *host = container_of(
 		notify_block, struct mmc_host, pm_notify);
-	unsigned long flags;
 	int err = 0;
 
 	switch (mode) {
@@ -3830,33 +4381,29 @@ int mmc_pm_notify(struct notifier_block *notify_block,
 			}
 		}
 
+#if 0
 		spin_lock_irqsave(&host->lock, flags);
 		if (mmc_bus_needs_resume(host)) {
 			spin_unlock_irqrestore(&host->lock, flags);
 			break;
 		}
-
+		spin_unlock_irqrestore(&host->lock, flags);
+#endif
+#if 1
 		/* since its suspending anyway, disable rescan */
 		host->rescan_disable = 1;
-		spin_unlock_irqrestore(&host->lock, flags);
 
 		/* Wait for pending detect work to be completed */
 		if (!(host->caps & MMC_CAP_NEEDS_POLL))
 			flush_work(&host->detect.work);
-
+#endif
 		/*
 		 * In some cases, the detect work might be scheduled
 		 * just before rescan_disable is set to true.
 		 * Cancel such the scheduled works.
 		 */
-		cancel_delayed_work_sync(&host->detect);
-
-		/*
-		 * It is possible that the wake-lock has been acquired, since
-		 * its being suspended, release the wakelock
-		 */
-		if (wake_lock_active(&host->detect_wake_lock))
-			wake_unlock(&host->detect_wake_lock);
+		if (cancel_delayed_work_sync(&host->detect))
+			cancel_delayed_work_sync(&host->detect);
 
 		if (!host->bus_ops || host->bus_ops->suspend)
 			break;
@@ -3876,14 +4423,18 @@ int mmc_pm_notify(struct notifier_block *notify_block,
 	case PM_POST_HIBERNATION:
 	case PM_POST_RESTORE:
 
+#if 0
 		spin_lock_irqsave(&host->lock, flags);
 		if (mmc_bus_manual_resume(host)) {
 			spin_unlock_irqrestore(&host->lock, flags);
 			break;
 		}
-		host->rescan_disable = 0;
 		spin_unlock_irqrestore(&host->lock, flags);
-		mmc_detect_change(host, 0);
+#endif
+		host->rescan_disable = 0;
+
+		if (mmc_is_sd_host(host) && !disable_auto_sd)
+			mmc_detect_change(host, 0);
 		break;
 
 	default:
@@ -3994,6 +4545,17 @@ static int __init mmc_init(void)
 	if (!workqueue)
 		return -ENOMEM;
 
+	stats_workqueue = create_singlethread_workqueue("mmc_stats");
+	if (!stats_workqueue)
+		return -ENOMEM;
+
+	enable_detection_workqueue = create_singlethread_workqueue("enable_sd_detect");
+	if (!enable_detection_workqueue)
+		return -ENOMEM;
+
+	if (get_tamper_sf() == 1)
+		stats_interval = MMC_STATS_LOG_INTERVAL;
+
 	ret = mmc_register_bus();
 	if (ret)
 		goto destroy_workqueue;
@@ -4006,6 +4568,7 @@ static int __init mmc_init(void)
 	if (ret)
 		goto unregister_host_class;
 
+	spin_lock_init(&iolist_lock);
 	return 0;
 
 unregister_host_class:
@@ -4014,7 +4577,10 @@ unregister_bus:
 	mmc_unregister_bus();
 destroy_workqueue:
 	destroy_workqueue(workqueue);
-
+	if (stats_workqueue)
+		destroy_workqueue(stats_workqueue);
+	if (enable_detection_workqueue)
+		destroy_workqueue(enable_detection_workqueue);
 	return ret;
 }
 
@@ -4024,6 +4590,13 @@ static void __exit mmc_exit(void)
 	mmc_unregister_host_class();
 	mmc_unregister_bus();
 	destroy_workqueue(workqueue);
+	if (stats_workqueue)
+		destroy_workqueue(stats_workqueue);
+	if (enable_detection_workqueue) {
+		flush_workqueue(enable_detection_workqueue);
+		destroy_workqueue(enable_detection_workqueue);
+		enable_detection_workqueue = NULL;
+	}
 }
 
 subsys_initcall(mmc_init);

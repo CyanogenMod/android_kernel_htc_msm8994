@@ -14,9 +14,7 @@
  * (at your option) any later version.
  */
 
-
-/* #define DEBUG */
-/* #define VERBOSE_DEBUG */
+/* Endpoint and interface numbers reverse mapping ***************************/
 
 #include <linux/blkdev.h>
 #include <linux/pagemap.h>
@@ -458,10 +456,13 @@ static ssize_t ffs_ep0_write(struct file *file, const char __user *buf,
 		} else {
 			pr_info("read strings\n");
 			ret = __ffs_data_got_strings(ffs, data, len);
+			printk("[USB]%s:line#%d, ret of __ffs_data_got_strings=%zd\n", __func__, __LINE__, ret);
 			if (unlikely(ret < 0))
 				break;
 
 			ret = ffs_epfiles_create(ffs);
+			printk("[USB]%s:line#%d, ret of ffs_epfiles_create=%zd\n", __func__, __LINE__, ret);
+
 			if (unlikely(ret)) {
 				ffs->state = FFS_CLOSING;
 				break;
@@ -471,6 +472,7 @@ static ssize_t ffs_ep0_write(struct file *file, const char __user *buf,
 			mutex_unlock(&ffs->mutex);
 
 			ret = functionfs_ready_callback(ffs);
+			printk("[USB]%s:line#%d, ret of functionfs_ready_callback=%zd\n", __func__, __LINE__, ret);
 			if (unlikely(ret < 0)) {
 				ffs->state = FFS_CLOSING;
 				return ret;
@@ -920,9 +922,9 @@ first_try:
 					pr_err("less data(%zd) recieved than intended length(%zu)\n",
 								ret, len);
 				if (ret > len) {
-					ret = -EOVERFLOW;
 					pr_err("More data(%zd) recieved than intended length(%zu)\n",
 								ret, len);
+					ret = -EOVERFLOW;
 				} else if (unlikely(copy_to_user(
 							buf, data, ret))) {
 					pr_err("Fail to copy to user len:%zd\n",
@@ -1414,8 +1416,12 @@ static void ffs_data_clear(struct ffs_data *ffs)
 {
 	ENTER();
 
-	pr_debug("%s: ffs->gadget= %p, ffs->flags= %lu\n", __func__,
-						ffs->gadget, ffs->flags);
+	
+	
+	pr_err("%s: ffs->gadget= %p, ffs->flags= %lu\n", __func__,
+							ffs->gadget, ffs->flags);
+
+	
 	if (test_and_clear_bit(FFS_FL_CALL_CLOSED_CALLBACK, &ffs->flags))
 		functionfs_closed_callback(ffs);
 
@@ -1470,6 +1476,8 @@ static int functionfs_bind(struct ffs_data *ffs, struct usb_composite_dev *cdev)
 
 	ENTER();
 
+	printk("[USB]%s:line#%d\n", __func__, __LINE__);
+
 	if (WARN_ON(ffs->state != FFS_ACTIVE
 		 || test_and_set_bit(FFS_FL_BOUND, &ffs->flags)))
 		return -EBADFD;
@@ -1499,6 +1507,8 @@ static int functionfs_bind(struct ffs_data *ffs, struct usb_composite_dev *cdev)
 	}
 
 	ffs->gadget = cdev->gadget;
+	printk("[USB]%s:line#%d,set ffs->gadget\n", __func__, __LINE__);
+
 	ffs_data_get(ffs);
 	return 0;
 }
@@ -1513,6 +1523,11 @@ static void functionfs_unbind(struct ffs_data *ffs)
 		ffs->gadget = NULL;
 		ffs_data_put(ffs);
 		clear_bit(FFS_FL_BOUND, &ffs->flags);
+		printk("[USB]%s:ffs->gadget cleared\n", __func__);
+	}
+	else
+	{
+		printk("[USB]%s:ffs->gagdet not set to NULL!!!!!!\n", __func__);
 	}
 }
 

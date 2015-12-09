@@ -2212,6 +2212,7 @@ inline unsigned int adreno_irq_pending(struct adreno_device *adreno_dev)
  */
 bool adreno_hw_isidle(struct adreno_device *adreno_dev)
 {
+	struct adreno_gpudev *gpudev = ADRENO_GPU_DEVICE(adreno_dev);
 	unsigned int reg_rbbm_status;
 
 	adreno_readreg(adreno_dev, ADRENO_REG_RBBM_STATUS,
@@ -2219,6 +2220,10 @@ bool adreno_hw_isidle(struct adreno_device *adreno_dev)
 
 	if (reg_rbbm_status & ADRENO_RBBM_STATUS_BUSY_MASK)
 		return false;
+
+	if (gpudev->is_sptp_idle)
+		if (!gpudev->is_sptp_idle(adreno_dev))
+			return false;
 
 	/* Don't consider ourselves idle if there is an IRQ pending */
 	if (adreno_irq_pending(adreno_dev))
@@ -2451,16 +2456,37 @@ static void adreno_read(struct kgsl_device *device, void *base,
 {
 
 	unsigned int *reg;
+	int false_intr = 0;
 	BUG_ON(offsetwords*sizeof(uint32_t) >= mem_len);
 	reg = (unsigned int *)(base + (offsetwords << 2));
 
-	if (!in_interrupt())
+	if (!in_interrupt()) {
 		kgsl_pre_hwaccess(device);
+	} else {
+		
+		if (device->state == KGSL_STATE_NAP) {
+			struct kgsl_pwrctrl *pwr = &device->pwrctrl;
+			int i;
+			for (i = KGSL_MAX_CLKS - 1; i > 0; i--)
+				if (pwr->grp_clks[i])
+					clk_enable(pwr->grp_clks[i]);
+			false_intr = 1;
+		}
+	}
 
 	/*ensure this read finishes before the next one.
 	 * i.e. act like normal readl() */
 	*value = __raw_readl(reg);
 	rmb();
+	if (false_intr) {
+		unsigned int val;
+		pr_err("adreno_read: Received interrupt when in nap: %x\n", *value);
+		reg = (unsigned int *)(base + (A4XX_RBBM_STATUS << 2));
+		val = __raw_readl(reg);
+		pr_err("adreno_read: Received interrupt when in nap, rbbm_s: %x\n", val);
+		msleep(2000);
+		BUG();
+	}
 }
 
 /**
@@ -2784,15 +2810,6 @@ static void adreno_regulator_enable(struct kgsl_device *device)
 	}
 }
 
-static bool adreno_is_hw_collapsible(struct kgsl_device *device)
-{
-	struct adreno_device *adreno_dev = ADRENO_DEVICE(device);
-	struct adreno_gpudev *gpudev  = ADRENO_GPU_DEVICE(adreno_dev);
-
-	return adreno_isidle(device) && (gpudev->is_sptp_idle ?
-				gpudev->is_sptp_idle(adreno_dev) : true);
-}
-
 static void adreno_regulator_disable(struct kgsl_device *device)
 {
 	struct adreno_device *adreno_dev = ADRENO_DEVICE(device);
@@ -2848,7 +2865,6 @@ static const struct kgsl_functable adreno_functable = {
 	.drawctxt_sched = adreno_drawctxt_sched,
 	.resume = adreno_dispatcher_start,
 	.regulator_enable = adreno_regulator_enable,
-	.is_hw_collapsible = adreno_is_hw_collapsible,
 	.regulator_disable = adreno_regulator_disable,
 	.pwrlevel_change_settings = adreno_pwrlevel_change_settings,
 };

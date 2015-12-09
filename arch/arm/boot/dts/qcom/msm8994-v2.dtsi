@@ -30,15 +30,12 @@
 			     <0 329 0>,
 			     <0 330 0>,
 			     <0 331 0>,
-			     <0 22 0>,
-			     <1 7 0>;
+			     <0 22 0>;
 		interrupt-names = "pri-dbe-irq",
 				  "sec-dbe-irq",
 				  "pri-ext-irq",
 				  "sec-ext-irq",
-				  "cci-irq",
-				  "sbe-irq";
-		poll-delay-ms = <5000>;
+				  "cci-irq";
 	};
 
 	cpu-pmu {
@@ -49,6 +46,13 @@
 
 	qcom,cpu-bwmon {
 		compatible = "qcom,bimc-bwmon2";
+	};
+
+	htc_pnpmgr{
+		compatible = "htc,perf_table_v2";
+		htc,cluster-map = <0xF0>, <0x0F>;
+		htc,perf_table = <960000>, <960000>, <960000>, <960000>, <960000>,
+				<960000>, <960000>, <960000>, <960000>, <960000>;
 	};
 
 	qcom,lmh {
@@ -280,7 +284,7 @@
 
 /* GPU overrides */
 &msm_gpu {
-	qcom,initial-pwrlevel = <4>;
+	qcom,initial-pwrlevel = <5>;
 	qcom,msm-bus,num-cases = <10>;
 	qcom,msm-bus,vectors-KBps =
 		<26 512 0 0>,

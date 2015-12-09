@@ -194,6 +194,15 @@ static void usb_read_done_work_fn(struct work_struct *work)
 	req = ch->read_ptr;
 	ch->read_cnt++;
 
+#if DIAG_XPST && !defined(CONFIG_DIAGFWD_BRIDGE_CODE)
+       if (driver->nohdlc) {
+               req->buf = ch->read_buf;
+               req->length = USB_MAX_OUT_BUF;
+               usb_diag_read(ch->hdl, req);
+               return;
+       }
+#endif
+
 	if (ch->ops && ch->ops->read_done && req->status >= 0)
 		ch->ops->read_done(req->buf, req->actual, ch->ctxt);
 }
@@ -208,6 +217,10 @@ static void diag_usb_write_done(struct diag_usb_info *ch,
 
 	ch->write_cnt++;
 	ctxt = (int)(uintptr_t)req->context;
+	if (!ctxt){
+		pr_info("[DIAG] %s: ctxt is fail!!\n",__func__);
+		return;
+	}
 	if (ch->ops && ch->ops->write_done)
 		ch->ops->write_done(req->buf, req->actual, ctxt, ch->ctxt);
 	diagmem_free(driver, req, ch->mempool);

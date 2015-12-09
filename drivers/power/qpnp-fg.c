@@ -4372,6 +4372,12 @@ static int fg_probe(struct spmi_device *spmi)
 	/* release memory access if necessary */
 	fg_release_access_if_necessary(chip);
 
+	rc = fg_hw_init(chip);
+	if (rc) {
+		pr_err("failed to hw init rc = %d\n", rc);
+		goto cancel_jeita_work;
+	}
+
 	if (!chip->use_otp_profile)
 		schedule_work(&chip->batt_profile_init);
 

@@ -2229,6 +2229,22 @@ void smd_disable_read_intr(smd_channel_t *ch)
 }
 EXPORT_SYMBOL(smd_disable_read_intr);
 
+int smd_interrupt_id(smd_channel_t *ch)
+{
+	struct interrupt_config_item *int_cfg;
+
+	if (!ch)
+		return -1;
+
+	if (ch->type >= ARRAY_SIZE(edge_to_pids))
+		return -1;
+
+	int_cfg = &private_intr_config[edge_to_pids[ch->type].remote_pid].smd;
+
+	return int_cfg->irq_id;
+}
+EXPORT_SYMBOL(smd_interrupt_id);
+
 /**
  * Enable/disable receive interrupts for the remote processor used by a
  * particular channel.

@@ -609,7 +609,7 @@ static void qdss_disable(struct usb_function *f)
 static int qdss_dpl_ipa_connect(int port_num)
 {
 	int ret;
-	u8 dst_connection_idx;
+	int dst_connection_idx;
 	struct f_qdss *qdss;
 	struct gqdss *g_qdss;
 	struct gadget_ipa_port *gp;
@@ -639,7 +639,7 @@ static int qdss_dpl_ipa_connect(int port_num)
 		return ret;
 	}
 
-	ret = ipa_data_connect(gp, port_num, 0, dst_connection_idx);
+	ret = ipa_data_connect(gp, port_num, 0, (u8)dst_connection_idx);
 	if (ret) {
 		pr_err("ipa_data_connect failed: err:%d\n", ret);
 		return ret;

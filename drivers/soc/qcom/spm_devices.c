@@ -47,6 +47,7 @@ struct msm_spm_device {
 	bool allow_rpm_hs;
 	bool use_spm_clk_gating;
 	bool use_qchannel_for_wfi;
+	unsigned int current_mode;
 };
 
 struct msm_spm_vdd_info {
@@ -352,6 +353,7 @@ bool msm_spm_is_mode_avail(unsigned int mode)
 int msm_spm_set_low_power_mode(unsigned int mode, bool notify_rpm)
 {
 	struct msm_spm_device *dev = &__get_cpu_var(msm_cpu_spm_device);
+	dev->current_mode = mode;
 	return msm_spm_dev_set_low_power_mode(dev, mode, notify_rpm);
 }
 EXPORT_SYMBOL(msm_spm_set_low_power_mode);

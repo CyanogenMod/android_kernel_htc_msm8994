@@ -27,6 +27,9 @@
 #include <linux/log2.h>
 #include <linux/qpnp/power-on.h>
 
+#ifdef CONFIG_KPDPWR_S2_DVDD_RESET
+#include <linux/htc_flags.h>
+#endif 
 #define CREATE_MASK(NUM_BITS, POS) \
 	((unsigned char) (((1 << (NUM_BITS)) - 1) << (POS)))
 #define PON_MASK(MSB_BIT, LSB_BIT) \
@@ -126,13 +129,6 @@
 #define QPNP_PON_BUFFER_SIZE			9
 
 #define QPNP_POFF_REASON_UVLO			13
-
-enum pon_type {
-	PON_KPDPWR,
-	PON_RESIN,
-	PON_CBLPWR,
-	PON_KPDPWR_RESIN,
-};
 
 struct qpnp_pon_config {
 	u32 pon_type;
@@ -242,6 +238,32 @@ qpnp_pon_masked_write(struct qpnp_pon *pon, u16 addr, u8 mask, u8 val)
 	return rc;
 }
 
+#define SID_PMI8994 2
+static int
+qpnp_pon_masked_write_for_pmi(struct qpnp_pon *pon, u16 addr, u8 mask, u8 val)
+{
+	int rc;
+	u8 reg;
+
+	rc = spmi_ext_register_readl(pon->spmi->ctrl, SID_PMI8994,
+							addr, &reg, 1);
+	if (rc) {
+		dev_err(&pon->spmi->dev,
+			"Unable to read from addr=%hx, rc(%d)\n",
+			addr, rc);
+		return rc;
+	}
+
+	reg &= ~mask;
+	reg |= val & mask;
+	rc = spmi_ext_register_writel(pon->spmi->ctrl, SID_PMI8994,
+							addr, &reg, 1);
+	if (rc)
+		dev_err(&pon->spmi->dev,
+			"Unable to write to addr=%hx, rc(%d)\n", addr, rc);
+	return rc;
+}
+
 /**
  * qpnp_pon_set_restart_reason - Store device restart reason in PMIC register.
  *
@@ -297,12 +319,10 @@ static int qpnp_pon_set_dbc(struct qpnp_pon *pon, u32 delay)
 	int rc = 0;
 	u32 delay_reg;
 
-	if (!pon->pon_input)
-		return -EINVAL;
-
-	mutex_lock(&pon->pon_input->mutex);
 	if (delay == pon->dbc)
-		goto unlock;
+		goto out;
+	if (pon->pon_input)
+		mutex_lock(&pon->pon_input->mutex);
 
 	if (delay < QPNP_PON_MIN_DBC_US)
 		delay = QPNP_PON_MIN_DBC_US;
@@ -321,7 +341,9 @@ static int qpnp_pon_set_dbc(struct qpnp_pon *pon, u32 delay)
 	pon->dbc = delay;
 
 unlock:
-	mutex_unlock(&pon->pon_input->mutex);
+	if (pon->pon_input)
+		mutex_unlock(&pon->pon_input->mutex);
+out:
 	return rc;
 }
 
@@ -423,6 +445,7 @@ int qpnp_pon_system_pwr_off(enum pon_power_off_type type)
 	int rc = 0;
 	struct qpnp_pon *pon = sys_reset_dev;
 	struct qpnp_pon *tmp;
+	u8 reg, sid;
 
 	if (!pon)
 		return -ENODEV;
@@ -433,6 +456,31 @@ int qpnp_pon_system_pwr_off(enum pon_power_off_type type)
 			rc);
 		return rc;
 	}
+
+	sid = 2; 
+	spmi_ext_register_readl(pon->spmi->ctrl, sid,
+			0x13F4, &reg, 1);
+	dev_info(&pon->spmi->dev, "SID: %d, before write, "
+			"0x13F4 value is 0x%02hhx\n", sid, reg);
+
+	
+	rc = qpnp_pon_masked_write_for_pmi(pon, 0x13D0, 0xFF, 0xA5);
+	if (rc) {
+		dev_err(&pon->spmi->dev, "Error configuring 0x13D0 rc: %d\n",
+			rc);
+		return rc;
+	}
+	rc = qpnp_pon_masked_write_for_pmi(pon, 0x13F4, 0x30, 0);
+	if (rc) {
+		dev_err(&pon->spmi->dev, "Error configuring 0x13F4 rc: %d\n",
+			rc);
+		return rc;
+	}
+	sid = 2; 
+	spmi_ext_register_readl(pon->spmi->ctrl, sid,
+			0x13F4, &reg, 1);
+	dev_info(&pon->spmi->dev, "SID: %d, after write, "
+			"0x13F4 value is 0x%02hhx\n", sid, reg);
 
 	/*
 	 * Check if a secondary PON device needs to be configured. If it
@@ -640,6 +688,7 @@ qpnp_pon_input_dispatch(struct qpnp_pon *pon, u32 pon_type)
 					cfg->key_code, pon_rt_sts);
 	key_status = pon_rt_sts & pon_rt_bit;
 
+#ifdef CONFIG_QPNP_KEY_INPUT
 	/* simulate press event in case release event occured
 	 * without a press event
 	 */
@@ -650,6 +699,7 @@ qpnp_pon_input_dispatch(struct qpnp_pon *pon, u32 pon_type)
 
 	input_report_key(pon->pon_input, cfg->key_code, key_status);
 	input_sync(pon->pon_input);
+#endif
 
 	cfg->old_state = !!key_status;
 
@@ -781,9 +831,11 @@ static void bark_work_func(struct work_struct *work)
 	}
 
 	if (!(pon_rt_sts & QPNP_PON_RESIN_BARK_N_SET)) {
+#ifdef CONFIG_QPNP_KEY_INPUT
 		/* report the key event and enable the bark IRQ */
 		input_report_key(pon->pon_input, cfg->key_code, 0);
 		input_sync(pon->pon_input);
+#endif
 		enable_irq(cfg->bark_irq);
 	} else {
 		/* disable reset */
@@ -825,14 +877,94 @@ static irqreturn_t qpnp_resin_bark_irq(int irq, void *_pon)
 		goto err_exit;
 	}
 
+#ifdef CONFIG_QPNP_KEY_INPUT
 	/* report the key event */
 	input_report_key(pon->pon_input, cfg->key_code, 1);
 	input_sync(pon->pon_input);
+#endif
 	/* schedule work to check the bark status for key-release */
 	schedule_delayed_work(&pon->bark_work, QPNP_KEY_STATUS_DELAY);
 err_exit:
 	return IRQ_HANDLED;
 }
+
+#ifdef CONFIG_KPDPWR_S2_DVDD_RESET
+int qpnp_get_reset_en(int pon_type)
+{
+	u16 rst_en_reg;
+	struct qpnp_pon *pon = sys_reset_dev;
+	int rc;
+	u8 val = 0;
+
+	if (pon == NULL)
+		return -ENOMEM;
+
+	switch (pon_type) {
+	case PON_KPDPWR:
+		rst_en_reg = QPNP_PON_KPDPWR_S2_CNTL2(pon->base);
+		break;
+	case PON_RESIN:
+		rst_en_reg = QPNP_PON_RESIN_S2_CNTL2(pon->base);
+		break;
+	case PON_KPDPWR_RESIN:
+		rst_en_reg = QPNP_PON_KPDPWR_RESIN_S2_CNTL2(pon->base);
+		break;
+	default:
+		return -EINVAL;
+	}
+
+	rc = spmi_ext_register_readl(pon->spmi->ctrl, pon->spmi->sid,
+			rst_en_reg, &val, 1);
+	if (rc) {
+		dev_err(&pon->spmi->dev,
+			"%s: Unable to read addr = %x, rc(%d)\n", __func__, rst_en_reg, rc);
+		return -EINVAL;
+	}
+
+	if (val & QPNP_PON_S2_RESET_ENABLE)
+		return 1;
+	else
+		return 0;
+}
+
+int qpnp_config_reset_enable(int pon_type, int en)
+{
+	u16 rst_en_reg;
+	struct qpnp_pon *pon = sys_reset_dev;
+	int rc;
+
+	if (pon == NULL)
+		return -ENOMEM;
+
+	switch (pon_type) {
+	case PON_KPDPWR:
+		rst_en_reg = QPNP_PON_KPDPWR_S2_CNTL2(pon->base);
+		break;
+	case PON_RESIN:
+		rst_en_reg = QPNP_PON_RESIN_S2_CNTL2(pon->base);
+		break;
+	case PON_KPDPWR_RESIN:
+		rst_en_reg = QPNP_PON_KPDPWR_RESIN_S2_CNTL2(pon->base);
+		break;
+	default:
+		return -EINVAL;
+	}
+
+	if (en)
+		rc = qpnp_pon_masked_write(pon, rst_en_reg, QPNP_PON_RESET_EN,
+							QPNP_PON_S2_RESET_ENABLE);
+	else
+		rc = qpnp_pon_masked_write(pon, rst_en_reg, QPNP_PON_RESET_EN, 0);
+
+	if (rc) {
+		dev_err(&pon->spmi->dev,
+			"%s: Unable to write to addr = %x, rc(%d)\n", __func__, rst_en_reg, rc);
+		return -EINVAL;
+	}
+
+	return 0;
+}
+#endif 
 
 static int
 qpnp_config_pull(struct qpnp_pon *pon, struct qpnp_pon_config *cfg)
@@ -1525,6 +1657,56 @@ static void qpnp_pon_debugfs_remove(struct spmi_device *spmi)
 {}
 #endif
 
+int qpnp_pon_set_s3_timer(u32 s3_debounce)
+{
+	int rc = 0;
+	struct qpnp_pon *pon = sys_reset_dev;
+
+	
+	rc = qpnp_pon_masked_write(pon, QPNP_PON_SEC_ACCESS(pon->base),
+			0xFF, QPNP_PON_SEC_UNLOCK);
+	if (rc) {
+		dev_err(&pon->spmi->dev, "PM8994:Unable to do SEC_ACCESS rc:%d\n",
+			rc);
+		return rc;
+	}
+
+	
+	rc = qpnp_pon_masked_write(pon, QPNP_PON_S3_DBC_CTL(pon->base),
+			QPNP_PON_S3_DBC_DELAY_MASK, s3_debounce);
+	if (rc) {
+		dev_err(&pon->spmi->dev, "PM8994:Unable to set S3 debounce rc:%d\n",
+			rc);
+		return rc;
+	}
+
+	
+	udelay(200);
+
+	
+	rc = qpnp_pon_masked_write_for_pmi(pon, QPNP_PON_SEC_ACCESS(pon->base),
+			0xFF, QPNP_PON_SEC_UNLOCK);
+	if (rc) {
+		dev_err(&pon->spmi->dev, "PMI8994:Unable to do SEC_ACCESS rc:%d\n",
+			rc);
+		return rc;
+	}
+
+	
+	rc = qpnp_pon_masked_write_for_pmi(pon, QPNP_PON_S3_DBC_CTL(pon->base),
+			QPNP_PON_S3_DBC_DELAY_MASK, s3_debounce);
+	if (rc) {
+		dev_err(&pon->spmi->dev, "PMI8994:Unable to set S3 debounce rc:%d\n",
+			rc);
+		return rc;
+	}
+
+	
+	udelay(200);
+
+	return rc;
+}
+
 static int qpnp_pon_probe(struct spmi_device *spmi)
 {
 	struct qpnp_pon *pon;
@@ -1705,6 +1887,13 @@ static int qpnp_pon_probe(struct spmi_device *spmi)
 		dev_err(&spmi->dev, "Unable to program s3 source rc: %d\n", rc);
 		return rc;
 	}
+
+#ifdef CONFIG_KPDPWR_S2_DVDD_RESET
+	
+	if (!(get_radio_flag() & BIT(3))) {
+		qpnp_config_reset_enable(PON_KPDPWR, 1);
+	}
+#endif 
 
 	dev_set_drvdata(&spmi->dev, pon);
 

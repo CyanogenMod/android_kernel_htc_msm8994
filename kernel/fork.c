@@ -1316,7 +1316,10 @@ static struct task_struct *copy_process(unsigned long clone_flags,
 #endif
 
 #ifdef CONFIG_DEBUG_MUTEXES
+	
 	p->blocked_on = NULL; /* not blocked yet */
+	p->blocked_by = NULL;
+	p->blocked_since = 0;
 #endif
 #ifdef CONFIG_MEMCG
 	p->memcg_batch.do_batch = 0;

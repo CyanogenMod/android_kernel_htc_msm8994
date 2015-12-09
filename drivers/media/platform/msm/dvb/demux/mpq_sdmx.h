@@ -19,7 +19,7 @@
 #define SDMX_MAX_SESSIONS  (4)
 #define SDMX_LOOPBACK_PID  (0x2000)
 
-#define SDMX_MAX_PHYSICAL_CHUNKS (10)
+#define SDMX_MAX_PHYSICAL_CHUNKS (256)
 
 /* Filter-level error indicators */
 #define SDMX_FILTER_SUCCESS                       (0)

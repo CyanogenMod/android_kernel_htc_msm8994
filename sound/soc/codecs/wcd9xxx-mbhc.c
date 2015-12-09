@@ -977,6 +977,9 @@ static void wcd9xxx_report_plug(struct wcd9xxx_mbhc *mbhc, int insertion,
 static void wcd9xxx_schedule_hs_detect_plug(struct wcd9xxx_mbhc *mbhc,
 					    struct work_struct *work)
 {
+#ifndef USE_CODEC_MBHC 
+	return;
+#endif
 	pr_debug("%s: scheduling wcd9xxx_correct_swch_plug\n", __func__);
 	WCD9XXX_BCL_ASSERT_LOCKED(mbhc->resmgr);
 	mbhc->hs_detect_work_stop = false;
@@ -988,6 +991,9 @@ static void wcd9xxx_schedule_hs_detect_plug(struct wcd9xxx_mbhc *mbhc,
 static void wcd9xxx_cancel_hs_detect_plug(struct wcd9xxx_mbhc *mbhc,
 					 struct work_struct *work)
 {
+#ifndef USE_CODEC_MBHC 
+	return;
+#endif
 	pr_debug("%s: Canceling correct_plug_swch\n", __func__);
 	WCD9XXX_BCL_ASSERT_LOCKED(mbhc->resmgr);
 	mbhc->hs_detect_work_stop = true;
@@ -2801,6 +2807,10 @@ static irqreturn_t wcd9xxx_hs_remove_irq(int irq, void *data)
 {
 	struct wcd9xxx_mbhc *mbhc = data;
 
+#ifndef USE_CODEC_MBHC 
+	return IRQ_HANDLED;
+#endif
+
 	pr_debug("%s: enter, removal interrupt\n", __func__);
 	WCD9XXX_BCL_LOCK(mbhc->resmgr);
 	/*
@@ -2842,6 +2852,10 @@ static irqreturn_t wcd9xxx_hs_insert_irq(int irq, void *data)
 	bool is_mb_trigger, is_removal;
 	struct wcd9xxx_mbhc *mbhc = data;
 	struct snd_soc_codec *codec = mbhc->codec;
+
+#ifndef USE_CODEC_MBHC 
+	return IRQ_HANDLED;
+#endif
 
 	pr_debug("%s: enter\n", __func__);
 	WCD9XXX_BCL_LOCK(mbhc->resmgr);
@@ -3426,6 +3440,10 @@ static irqreturn_t wcd9xxx_mech_plug_detect_irq(int irq, void *data)
 	int r = IRQ_HANDLED;
 	struct wcd9xxx_mbhc *mbhc = data;
 
+#ifndef USE_CODEC_MBHC 
+	return IRQ_HANDLED;
+#endif
+
 	pr_debug("%s: enter\n", __func__);
 	if (unlikely(wcd9xxx_lock_sleep(mbhc->resmgr->core_res) == false)) {
 		pr_warn("%s: failed to hold suspend\n", __func__);
@@ -3905,6 +3923,10 @@ static irqreturn_t wcd9xxx_hphl_ocp_irq(int irq, void *data)
 	struct wcd9xxx_mbhc *mbhc = data;
 	struct snd_soc_codec *codec;
 
+#ifndef USE_CODEC_MBHC 
+	return IRQ_HANDLED;
+#endif
+
 	pr_info("%s: received HPHL OCP irq\n", __func__);
 
 	if (mbhc) {
@@ -3937,6 +3959,9 @@ static irqreturn_t wcd9xxx_hphr_ocp_irq(int irq, void *data)
 	struct wcd9xxx_mbhc *mbhc = data;
 	struct snd_soc_codec *codec;
 
+#ifndef USE_CODEC_MBHC 
+	return IRQ_HANDLED;
+#endif
 	pr_info("%s: received HPHR OCP irq\n", __func__);
 	codec = mbhc->codec;
 	if ((mbhc->hphrocp_cnt < OCP_ATTEMPT) &&
@@ -5377,6 +5402,9 @@ int wcd9xxx_mbhc_init(struct wcd9xxx_mbhc *mbhc, struct wcd9xxx_resmgr *resmgr,
 	int ret;
 	void *core_res;
 
+#ifndef USE_CODEC_MBHC 
+	return 0;
+#endif
 	pr_debug("%s: enter\n", __func__);
 	memset(&mbhc->mbhc_bias_regs, 0, sizeof(struct mbhc_micbias_regs));
 	memset(&mbhc->mbhc_data, 0, sizeof(struct mbhc_internal_cal_data));

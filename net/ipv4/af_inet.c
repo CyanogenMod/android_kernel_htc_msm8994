@@ -605,6 +605,8 @@ static long inet_wait_for_connect(struct sock *sk, long timeo, int writebias)
 	return timeo;
 }
 
+int add_or_remove_port(struct sock *sk, int add_or_remove);	
+
 /*
  *	Connect to a remote host. There is regrettably still a little
  *	TCP 'magic' in here.
@@ -646,6 +648,10 @@ int __inet_stream_connect(struct socket *sock, struct sockaddr *uaddr,
 			goto out;
 
 		sock->state = SS_CONNECTING;
+		
+		if (sk != NULL)
+			add_or_remove_port(sk, 1);
+		
 
 		/* Just entered SS_CONNECTING state; the only
 		 * difference is that return value in non-blocking

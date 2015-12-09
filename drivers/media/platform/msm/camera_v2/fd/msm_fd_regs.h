@@ -1,4 +1,4 @@
-/* Copyright (c) 2014-2015, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2014, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -13,7 +13,8 @@
 #ifndef __MSM_FD_REGS_H__
 #define __MSM_FD_REGS_H__
 
-/* FD core registers */
+#define MSM_FD_VERSION (0x38)
+
 #define MSM_FD_CONTROL (0x00)
 #define MSM_FD_CONTROL_SRST   (1 << 0)
 #define MSM_FD_CONTROL_RUN    (1 << 1)
@@ -81,10 +82,7 @@
 #define MSM_FD_RESULT_POSE_LEFT_DIAGONAL   (0x4)
 #define MSM_FD_RESULT_POSE_LEFT            (0x5)
 
-/* FD misc registers */
 #define MSM_FD_MISC_HW_VERSION (0x00)
-#define MSM_FD_MISC_CGC_DISABLE (0x04)
-#define MSM_FD_HW_STOP          (0x08)
 
 #define MSM_FD_MISC_SW_RESET (0x10)
 #define MSM_FD_MISC_SW_RESET_SET (1 << 0)
@@ -118,18 +116,6 @@
 #define MSM_FD_MISC_VBIF_DONE_STATUS_WRITE (1 << 0)
 #define MSM_FD_MISC_VBIF_DONE_STATUS_READ  (1 << 1)
 
-#define MSM_FD_MISC_IRQ_MASK (0x50)
-#define MSM_FD_MISC_IRQ_MASK_HALT_REQ (1 << 0)
-#define MSM_FD_MISC_IRQ_MASK_CORE_IRQ (1 << 1)
-
-#define MSM_FD_MISC_IRQ_STATUS (0x54)
-#define MSM_FD_MISC_IRQ_STATUS_HALT_REQ (1 << 0)
-#define MSM_FD_MISC_IRQ_STATUS_CORE_IRQ (1 << 1)
-
-#define MSM_FD_MISC_IRQ_CLEAR (0x58)
-#define MSM_FD_MISC_IRQ_CLEAR_HALT (1 << 0)
-#define MSM_FD_MISC_IRQ_CLEAR_CORE (1 << 1)
-
 #define MSM_FD_MISC_TEST_BUS_SEL (0x40)
 #define MSM_FD_MISC_TEST_BUS_SEL_TEST_MODE_MASK  (0xF)
 #define MSM_FD_MISC_TEST_BUS_SEL_TEST_MODE_SHIFT (0)
@@ -150,7 +136,6 @@
 
 #define MSM_FD_MISC_TEST_BUS (0x4C)
 
-/* FD vbif registers */
 #define MSM_FD_VBIF_CLKON                   (0x04)
 #define MSM_FD_VBIF_QOS_OVERRIDE_EN         (0x10)
 #define MSM_FD_VBIF_QOS_OVERRIDE_REQPRI     (0x18)
@@ -166,4 +151,4 @@
 #define MSM_FD_VBIF_OUT_AXI_AOOO            (0x17c)
 #define MSM_FD_VBIF_ROUND_ROBIN_QOS_ARB     (0x124)
 
-#endif /* __MSM_FD_REGS_H__ */
+#endif 

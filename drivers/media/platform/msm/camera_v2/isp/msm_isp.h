@@ -1,4 +1,4 @@
-/* Copyright (c) 2013-2015, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2013-2014, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -50,10 +50,10 @@
 
 #define VFE_MAX_CFG_TIMEOUT 3000
 #define VFE_CLK_INFO_MAX 16
-#define STATS_COMP_BIT_MASK 0x1FF
+#define STATS_COMP_BIT_MASK 0xFF0000
 
-#define MSM_ISP_MIN_AB 100000000
-#define MSM_ISP_MIN_IB 120000000
+#define MSM_ISP_MIN_AB 300000000
+#define MSM_ISP_MIN_IB 450000000
 
 struct vfe_device;
 struct msm_vfe_axi_stream;
@@ -71,7 +71,6 @@ enum msm_isp_pack_fmt {
 	DPCM8,
 	PLAIN8,
 	PLAIN16,
-	DPCM10,
 	MAX_ISP_PACK_FMT,
 };
 
@@ -83,11 +82,11 @@ enum msm_isp_camif_update_state {
 };
 
 struct msm_isp_timestamp {
-	/*Monotonic clock for v4l2 buffer*/
+	
 	struct timeval buf_time;
-	/*Monotonic clock for VT */
+	
 	struct timeval vt_time;
-	/*Wall clock for userspace event*/
+	
 	struct timeval event_time;
 };
 
@@ -150,8 +149,6 @@ struct msm_vfe_axi_ops {
 		struct msm_vfe_axi_stream *stream_info, uint8_t plane_idx);
 
 	void (*cfg_ub) (struct vfe_device *vfe_dev);
-
-	void (*read_wm_ping_pong_addr)(struct vfe_device *vfe_dev);
 
 	void (*update_ping_pong_addr) (struct vfe_device *vfe_dev,
 		uint8_t wm_idx, uint32_t pingpong_status, dma_addr_t paddr);
@@ -243,7 +240,7 @@ struct msm_vfe_ops {
 
 struct msm_vfe_hardware_info {
 	int num_iommu_ctx;
-	/* secure iommu ctx nums */
+	
 	int num_iommu_secure_ctx;
 	int vfe_clk_idx;
 	struct msm_vfe_ops vfe_ops;
@@ -310,7 +307,7 @@ struct msm_vfe_axi_stream {
 	enum msm_vfe_axi_stream_src stream_src;
 	uint8_t num_planes;
 	uint8_t wm[MAX_PLANES_PER_STREAM];
-	uint32_t output_format;/*Planar/RAW/Misc*/
+	uint32_t output_format;
 	struct msm_vfe_axi_plane_cfg plane_cfg[MAX_PLANES_PER_STREAM];
 	uint8_t comp_mask_index;
 	struct msm_isp_buffer *buf[2];
@@ -331,28 +328,26 @@ struct msm_vfe_axi_stream {
 	enum msm_vfe_frame_skip_pattern frame_skip_pattern;
 	uint32_t framedrop_period;
 	uint32_t framedrop_pattern;
-	uint32_t framedrop_altern_cnt;
-	uint32_t num_burst_capture;/*number of frame to capture*/
+	uint32_t num_burst_capture;
 	uint32_t init_frame_drop;
-	uint32_t burst_frame_count;/*number of sof before burst stop*/
+	uint32_t burst_frame_count;
 	uint8_t framedrop_update;
 	spinlock_t lock;
 
-	/*Bandwidth calculation info*/
+	
 	uint32_t max_width;
-	/*Based on format plane size in Q2. e.g NV12 = 1.5*/
+	
 	uint32_t format_factor;
 	uint32_t bandwidth;
 
-	/*Run time update variables*/
+	
 	uint32_t runtime_init_frame_drop;
-	uint32_t runtime_burst_frame_count;/*number of sof before burst stop*/
+	uint32_t runtime_burst_frame_count;
 	uint32_t runtime_num_burst_capture;
 	uint8_t  runtime_framedrop_update;
 	uint8_t  runtime_framedrop_update_burst;
 	uint32_t runtime_output_format;
 	enum msm_stream_memory_input_t  memory_input;
-	struct msm_isp_sw_framskip sw_skip;
 };
 
 struct msm_vfe_axi_composite_info {
@@ -368,9 +363,8 @@ struct msm_vfe_src_info {
 	enum msm_vfe_inputmux input_mux;
 	uint32_t width;
 	long pixel_clock;
-	uint32_t input_format;/*V4L2 pix format with bayer pattern*/
+	uint32_t input_format;
 	uint32_t last_updt_frm_id;
-	uint32_t sof_counter_step;
 };
 
 struct msm_vfe_fetch_engine_info {
@@ -438,7 +432,6 @@ struct msm_vfe_stats_stream {
 	uint32_t framedrop_period;
 	uint32_t irq_subsample_pattern;
 	uint32_t init_stats_frame_drop;
-	struct msm_isp_sw_framskip sw_skip;
 
 	uint32_t buffer_offset;
 	struct msm_isp_buffer *buf[2];
@@ -570,7 +563,7 @@ struct vfe_device {
 	void __iomem *vfe_vbif_base;
 
 	struct device *iommu_ctx[MAX_IOMMU_CTX];
-	/*Add secure context banks*/
+	
 	struct device *iommu_secure_ctx[MAX_IOMMU_CTX];
 
 	struct regulator *fs_vfe;

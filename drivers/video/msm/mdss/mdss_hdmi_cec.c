@@ -577,7 +577,8 @@ static ssize_t hdmi_rda_cec_enable_compliance(struct device *dev,
 		cec_ctrl->compliance_response_enabled);
 
 	cec_ctrl->cec_logical_addr = 0x4;
-	hdmi_cec_write_logical_addr(cec_ctrl, cec_ctrl->cec_logical_addr);
+	if (cec_ctrl->cec_engine_configed)
+		hdmi_cec_write_logical_addr(cec_ctrl, cec_ctrl->cec_logical_addr);
 
 	spin_unlock_irqrestore(&cec_ctrl->lock, flags);
 

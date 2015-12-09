@@ -305,8 +305,49 @@ static void cfg80211_event_work(struct work_struct *work)
 	rtnl_unlock();
 }
 
-/* exported functions */
+void cfg80211_destroy_ifaces(struct cfg80211_registered_device *rdev)
+{
+   struct cfg80211_iface_destroy *item;
 
+   ASSERT_RTNL();
+
+   spin_lock_irq(&rdev->destroy_list_lock);
+   while ((item = list_first_entry_or_null(&rdev->destroy_list,
+                       struct cfg80211_iface_destroy,
+                       list))) {
+       struct wireless_dev *wdev, *tmp;
+       u32 nlportid = item->nlportid;
+
+       list_del(&item->list);
+       kfree(item);
+       spin_unlock_irq(&rdev->destroy_list_lock);
+
+       list_for_each_entry_safe(wdev, tmp, &rdev->wdev_list, list) {
+           if (nlportid == wdev->owner_nlportid) {
+               printk("del wdev %p in cfg80211_destroy_ifaces \n", wdev);
+               rdev_del_virtual_intf(rdev, wdev);
+           }
+       }
+
+       spin_lock_irq(&rdev->destroy_list_lock);
+   }
+   spin_unlock_irq(&rdev->destroy_list_lock);
+}
+
+static void cfg80211_destroy_iface_wk(struct work_struct *work)
+{
+   struct cfg80211_registered_device *rdev;
+
+   rdev = container_of(work, struct cfg80211_registered_device,
+               destroy_work);
+
+   rtnl_lock();
+   cfg80211_destroy_ifaces(rdev);
+   rtnl_unlock();
+}
+
+
+/* exported functions */
 struct wiphy *wiphy_new(const struct cfg80211_ops *ops, int sizeof_priv)
 {
 	static int wiphy_counter;
@@ -367,6 +408,12 @@ struct wiphy *wiphy_new(const struct cfg80211_ops *ops, int sizeof_priv)
 	device_initialize(&rdev->wiphy.dev);
 	rdev->wiphy.dev.class = &ieee80211_class;
 	rdev->wiphy.dev.platform_data = rdev;
+
+    
+    INIT_LIST_HEAD(&rdev->destroy_list);
+    spin_lock_init(&rdev->destroy_list_lock);
+    INIT_WORK(&rdev->destroy_work, cfg80211_destroy_iface_wk);
+    
 
 #ifdef CONFIG_CFG80211_DEFAULT_PS
 	rdev->wiphy.flags |= WIPHY_FLAG_PS_ON_BY_DEFAULT;
@@ -608,7 +655,7 @@ int wiphy_register(struct wiphy *wiphy)
 
 	/* set up regulatory info */
 	wiphy_regulatory_register(wiphy);
-
+        printk("add rdev in wiphy_register\n");
 	list_add_rcu(&rdev->list, &cfg80211_rdev_list);
 	cfg80211_rdev_list_generation++;
 
@@ -643,6 +690,7 @@ int wiphy_register(struct wiphy *wiphy)
 
 		mutex_lock(&cfg80211_mutex);
 		debugfs_remove_recursive(rdev->wiphy.debugfsdir);
+                printk("del rdev in wiphy_register \n");
 		list_del_rcu(&rdev->list);
 		wiphy_regulatory_deregister(wiphy);
 		mutex_unlock(&cfg80211_mutex);
@@ -704,6 +752,7 @@ void wiphy_unregister(struct wiphy *wiphy)
 	 * it impossible to find from userspace.
 	 */
 	debugfs_remove_recursive(rdev->wiphy.debugfsdir);
+	printk("del rdev in wiphy_unregister \n");
 	list_del_rcu(&rdev->list);
 	synchronize_rcu();
 
@@ -737,6 +786,10 @@ void wiphy_unregister(struct wiphy *wiphy)
 	flush_work(&rdev->event_work);
 	cancel_delayed_work_sync(&rdev->dfs_update_channels_wk);
 
+    
+    flush_work(&rdev->destroy_work);
+    
+
 	if (rdev->wowlan && rdev->ops->set_wakeup)
 		rdev_set_wakeup(rdev, false);
 	cfg80211_rdev_free_wowlan(rdev);
@@ -757,6 +810,7 @@ void cfg80211_dev_free(struct cfg80211_registered_device *rdev)
 	}
 	list_for_each_entry_safe(scan, tmp, &rdev->bss_list, list)
 		cfg80211_put_bss(&rdev->wiphy, &scan->pub);
+	printk("free rdev in cfg80211_dev_free\n");
 	kfree(rdev);
 }
 
@@ -808,11 +862,15 @@ static void wdev_cleanup_work(struct work_struct *work)
 void cfg80211_unregister_wdev(struct wireless_dev *wdev)
 {
 	struct cfg80211_registered_device *rdev = wiphy_to_dev(wdev->wiphy);
+	struct cfg80211_registered_device *rdev_debug;
+	struct wireless_dev *wdev_debug;
 
 	ASSERT_RTNL();
 
 	if (WARN_ON(wdev->netdev))
 		return;
+
+	printk("del wdev %p in cfg80211_unregister_wdev\n", wdev);
 
 	mutex_lock(&rdev->devlist_mtx);
 	mutex_lock(&rdev->sched_scan_mtx);
@@ -829,6 +887,14 @@ void cfg80211_unregister_wdev(struct wireless_dev *wdev)
 	}
 	mutex_unlock(&rdev->sched_scan_mtx);
 	mutex_unlock(&rdev->devlist_mtx);
+
+rcu_read_lock();
+	list_for_each_entry_rcu(rdev_debug, &cfg80211_rdev_list, list) {
+		list_for_each_entry_rcu(wdev_debug, &rdev_debug->wdev_list, list) {
+			printk("check wdev list after del wdev in cfg80211_unregister_wdev: %p\n", wdev_debug);
+		}
+	}
+rcu_read_unlock();
 }
 EXPORT_SYMBOL(cfg80211_unregister_wdev);
 
@@ -854,6 +920,8 @@ static int cfg80211_netdev_notifier_call(struct notifier_block *nb,
 	struct wireless_dev *wdev = dev->ieee80211_ptr;
 	struct cfg80211_registered_device *rdev;
 	int ret;
+	struct cfg80211_registered_device *rdev_debug;
+	struct wireless_dev *wdev_debug;
 
 	if (!wdev)
 		return NOTIFY_DONE;
@@ -879,6 +947,7 @@ static int cfg80211_netdev_notifier_call(struct notifier_block *nb,
 		INIT_LIST_HEAD(&wdev->mgmt_registrations);
 		spin_lock_init(&wdev->mgmt_registrations_lock);
 
+		printk("check NETDEV_REGISTER wdev %p in cfg80211_netdev_notifier_call\n",wdev);
 		mutex_lock(&rdev->devlist_mtx);
 		wdev->identifier = ++rdev->wdev_id;
 		list_add_rcu(&wdev->list, &rdev->wdev_list);
@@ -893,6 +962,13 @@ static int cfg80211_netdev_notifier_call(struct notifier_block *nb,
 		wdev->netdev = dev;
 		wdev->sme_state = CFG80211_SME_IDLE;
 		mutex_unlock(&rdev->devlist_mtx);
+		rcu_read_lock();
+		list_for_each_entry_rcu(rdev_debug, &cfg80211_rdev_list, list) {
+			list_for_each_entry_rcu(wdev_debug, &rdev_debug->wdev_list, list) {
+				printk("check wdev list after NETDEV_REGISTER in cfg80211_netdev_notifier_call: %p\n", wdev_debug);
+			}
+		}
+		rcu_read_unlock();
 #ifdef CONFIG_CFG80211_WEXT
 		wdev->wext.default_key = -1;
 		wdev->wext.default_mgmt_key = -1;
@@ -1044,6 +1120,13 @@ static int cfg80211_netdev_notifier_call(struct notifier_block *nb,
 #endif
 		}
 		mutex_unlock(&rdev->devlist_mtx);
+		rcu_read_lock();
+		list_for_each_entry_rcu(rdev_debug, &cfg80211_rdev_list, list) {
+			list_for_each_entry_rcu(wdev_debug, &rdev_debug->wdev_list, list) {
+				printk("check wdev list after NETDEV_UNREGISTER in cfg80211_netdev_notifier_call: %p\n", wdev_debug);
+			}
+		}
+		rcu_read_unlock();
 		/*
 		 * synchronise (so that we won't find this netdev
 		 * from other code any more) and then clear the list

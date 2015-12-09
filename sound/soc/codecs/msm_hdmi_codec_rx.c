@@ -17,9 +17,12 @@
 #include <sound/core.h>
 #include <sound/pcm.h>
 #include <sound/soc.h>
+#include <linux/wakelock.h>
 #include <linux/msm_hdmi.h>
 
 #define MSM_HDMI_PCM_RATES	SNDRV_PCM_RATE_48000
+
+static struct wake_lock hdmi_active_wakelock;
 
 static int msm_hdmi_audio_codec_return_value;
 
@@ -90,6 +93,10 @@ static int msm_hdmi_audio_codec_rx_dai_startup(
 	struct msm_hdmi_audio_codec_rx_data *codec_data =
 			dev_get_drvdata(dai->codec->dev);
 
+	
+	wake_lock(&hdmi_active_wakelock);
+	
+
 	msm_hdmi_audio_codec_return_value =
 		codec_data->hdmi_ops.hdmi_cable_status(
 		codec_data->hdmi_core_pdev, 1);
@@ -98,11 +105,17 @@ static int msm_hdmi_audio_codec_rx_dai_startup(
 			"%s() HDMI core is not ready (ret val = %d)\n",
 			__func__, msm_hdmi_audio_codec_return_value);
 		ret = msm_hdmi_audio_codec_return_value;
+		
+		wake_unlock(&hdmi_active_wakelock);
+		
 	} else if (!msm_hdmi_audio_codec_return_value) {
 		dev_err(dai->dev,
 			"%s() HDMI cable is not connected (ret val = %d)\n",
 			__func__, msm_hdmi_audio_codec_return_value);
 		ret = -ENODEV;
+		
+		wake_unlock(&hdmi_active_wakelock);
+		
 	}
 
 	return ret;
@@ -197,6 +210,9 @@ static void msm_hdmi_audio_codec_rx_dai_shutdown(
 			__func__);
 	}
 
+	
+	wake_unlock(&hdmi_active_wakelock);
+	
 	return;
 }
 
@@ -289,6 +305,10 @@ static int msm_hdmi_audio_codec_rx_plat_probe(
 {
 	dev_dbg(&pdev->dev, "%s(): dev name %s\n", __func__,
 		dev_name(&pdev->dev));
+
+	
+	wake_lock_init(&hdmi_active_wakelock, WAKE_LOCK_SUSPEND, "hdmi_active");
+	
 
 	return snd_soc_register_codec(&pdev->dev,
 		&msm_hdmi_audio_codec_rx_soc_driver,

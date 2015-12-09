@@ -21,6 +21,7 @@
 #include "vidc_hfi_api.h"
 #include "msm_vidc_debug.h"
 #include "msm_vidc_dcvs.h"
+#include "venus_hfi.h"
 
 #define IS_ALREADY_IN_STATE(__p, __d) ({\
 	int __rc = (__p >= __d);\
@@ -2062,9 +2063,16 @@ fail_vote_bus:
 static int msm_comm_init_core(struct msm_vidc_inst *inst)
 {
 	int rc = 0;
+        struct hfi_device *hdev;
+        struct venus_hfi_device *vhdev;
 
 	if (!inst || !inst->core)
 		return -EINVAL;
+
+        hdev = inst->core->device;
+        vhdev = hdev->hfi_device_data;
+        vhdev->inst = inst;
+        
 
 	rc = msm_comm_load_fw(inst->core);
 	if (rc) {
@@ -2631,6 +2639,7 @@ static bool reuse_internal_buffers(struct msm_vidc_inst *inst,
 	struct internal_buf *buf;
 	int rc = 0;
 	bool reused = false;
+	struct smem_client *mem_client  = inst->mem_client;
 
 	if (!inst || !buf_list) {
 		dprintk(VIDC_ERR, "%s: invalid params\n", __func__);
@@ -2657,9 +2666,10 @@ static bool reuse_internal_buffers(struct msm_vidc_inst *inst,
 
 		if (buffer_type != HAL_BUFFER_INTERNAL_PERSIST
 			&& buffer_type != HAL_BUFFER_INTERNAL_PERSIST_1) {
-
+			mem_client->clnt = mem_client->clnt_alloc;
 			rc = set_internal_buf_on_fw(inst, buffer_type,
 					buf->handle, true);
+			mem_client->clnt = mem_client->clnt_import;
 			if (rc) {
 				dprintk(VIDC_ERR,
 					"%s: session_set_buffers failed\n",
@@ -2683,6 +2693,7 @@ static int allocate_and_set_internal_bufs(struct msm_vidc_inst *inst,
 	u32 smem_flags = 0;
 	int rc = 0;
 	int i = 0;
+        struct smem_client *mem_client  = inst->mem_client;
 
 	if (!inst || !internal_bufreq || !buf_list)
 		return -EINVAL;
@@ -2694,6 +2705,7 @@ static int allocate_and_set_internal_bufs(struct msm_vidc_inst *inst,
 		smem_flags |= SMEM_SECURE;
 
 	for (i = 0; i < internal_bufreq->buffer_count_actual; i++) {
+                mem_client->clnt = mem_client->clnt_alloc;
 		handle = msm_comm_smem_alloc(inst, internal_bufreq->buffer_size,
 				1, smem_flags, internal_bufreq->buffer_type, 0);
 		if (!handle) {
@@ -2718,6 +2730,7 @@ static int allocate_and_set_internal_bufs(struct msm_vidc_inst *inst,
 		if (rc)
 			goto fail_set_buffers;
 
+                mem_client->clnt = mem_client->clnt_import;
 		mutex_lock(&buf_list->lock);
 		list_add_tail(&binfo->list, &buf_list->list);
 		mutex_unlock(&buf_list->lock);

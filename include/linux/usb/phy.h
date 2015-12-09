@@ -86,6 +86,8 @@ struct usb_phy {
 	struct usb_phy_io_ops	*io_ops;
 	void __iomem		*io_priv;
 
+	bool is_in_host;
+
 	/* for notification of usb_phy_events */
 	struct atomic_notifier_head	notifier;
 

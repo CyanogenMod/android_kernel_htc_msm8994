@@ -35,5 +35,18 @@ static inline void __msm_gpio_set_subsys_id(unsigned id)
 	return;
 }
 #endif
+
+#if defined(CONFIG_HTC_POWER_DEBUG) && defined(CONFIG_PINCTRL_MSM_TLMM_V3)
+struct  msm_gpio_dump_info {
+        unsigned int dir;
+        unsigned int pull;
+        unsigned int drv;
+        unsigned int value;
+        unsigned int func_sel;
+        unsigned int int_en;
+        unsigned int int_owner;
+};
+void __msm_gpio_get_dump_info(unsigned gpio, struct  msm_gpio_dump_info *data);
+#endif
 #endif
 

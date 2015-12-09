@@ -65,6 +65,8 @@ static const struct mmc_fixup mmc_fixups[] = {
 	MMC_FIXUP_EXT_CSD_REV("MMC16G", CID_MANFID_KINGSTON, CID_OEMID_ANY,
 			add_quirk, MMC_QUIRK_BROKEN_HPI, 5),
 
+	MMC_FIXUP("H8G2d", CID_MANFID_HYNIX, CID_OEMID_ANY, add_quirk_mmc,
+		  MMC_QUIRK_CACHE_DISABLE),
 	MMC_FIXUP(CID_NAME_ANY, CID_MANFID_NUMONYX_MICRON, CID_OEMID_ANY,
 		add_quirk_mmc, MMC_QUIRK_CACHE_DISABLE),
 	MMC_FIXUP("MMC16G", CID_MANFID_KINGSTON, CID_OEMID_ANY, add_quirk_mmc,
@@ -117,6 +119,13 @@ static int mmc_decode_cid(struct mmc_card *card)
 		card->cid.serial	= UNSTUFF_BITS(resp, 16, 32);
 		card->cid.month		= UNSTUFF_BITS(resp, 12, 4);
 		card->cid.year		= UNSTUFF_BITS(resp, 8, 4) + 1997;
+
+		
+		if (card->cid.manfid == CID_MANFID_TOSHIBA ||
+		    card->cid.manfid ==  CID_MANFID_MICRON ||
+		    card->cid.manfid == CID_MANFID_SAMSUNG ||
+		    card->cid.manfid == CID_MANFID_HYNIX)
+			card->cid.fwrev = UNSTUFF_BITS(resp, 48, 8);
 		break;
 
 	default:
@@ -594,6 +603,44 @@ static int mmc_read_ext_csd(struct mmc_card *card, u8 *ext_csd)
 		card->ext_csd.data_sector_size = 512;
 	}
 
+	if (mmc_card_mmc(card)) {
+		char *buf;
+		int i, j;
+		ssize_t n = 0;
+		pr_info("%s: cid %08x%08x%08x%08x\n",
+				mmc_hostname(card->host),
+				card->raw_cid[0], card->raw_cid[1],
+				card->raw_cid[2], card->raw_cid[3]);
+		pr_info("%s: csd %08x%08x%08x%08x\n",
+				mmc_hostname(card->host),
+				card->raw_csd[0], card->raw_csd[1],
+				card->raw_csd[2], card->raw_csd[3]);
+
+		buf = kmalloc(512, GFP_KERNEL);
+		if (buf) {
+			for (i = 0; i < 32; i++) {
+				for (j = 511 - (16 * i); j >= 496 - (16 * i); j--)
+					n += sprintf(buf + n, "%02x", ext_csd[j]);
+				n += sprintf(buf + n, "\n");
+				pr_info("%s: ext_csd_%03d %s", mmc_hostname(card->host), 511 - (16 * i), buf);
+				n = 0;
+			}
+		}
+		if (buf)
+			kfree(buf);
+
+		
+		if (card->cid.manfid == CID_MANFID_SANDISK ||
+				card->cid.manfid == CID_MANFID_SANDISK_2) {
+			if (card->ext_csd.rev == 6)
+				card->cid.fwrev =
+				ext_csd[EXT_CSD_VENDOR_SPECIFIC_FIELDS_73] & 0x3F;
+			else if (card->ext_csd.rev > 6)
+				card->cid.fwrev =
+				ext_csd[EXT_CSD_VENDOR_SPECIFIC_FIELDS_258] - 0x30 ;
+		}
+	}
+
 out:
 	return err;
 }
@@ -682,6 +729,36 @@ MMC_DEV_ATTR(enhanced_area_size, "%u\n", card->ext_csd.enhanced_area_size);
 MMC_DEV_ATTR(raw_rpmb_size_mult, "%#x\n", card->ext_csd.raw_rpmb_size_mult);
 MMC_DEV_ATTR(rel_sectors, "%#x\n", card->ext_csd.rel_sectors);
 
+static ssize_t mmc_manf_name_show (struct device *dev, struct device_attribute *attr, char *buf)
+{
+	struct mmc_card *card = mmc_dev_to_card(dev);
+	int count = 0;
+
+	switch (card->cid.manfid) {
+	case CID_MANFID_SANDISK:
+	case CID_MANFID_SANDISK_2:
+		count = sprintf(buf, "Sandisk\n");
+		break;
+	case CID_MANFID_TOSHIBA:
+		count = sprintf(buf, "Toshiba\n");
+		break;
+	case CID_MANFID_MICRON:
+		count = sprintf(buf, "Micron\n");
+		break;
+	case CID_MANFID_SAMSUNG:
+		count = sprintf(buf, "Samsung\n");
+		break;
+	case CID_MANFID_HYNIX:
+		count = sprintf(buf, "Hynix\n");
+		break;
+	default:
+		count = sprintf(buf, "Unknown\n");
+	}
+
+	return count;
+}
+DEVICE_ATTR(manf_name, S_IRUGO, mmc_manf_name_show, NULL);
+
 static struct attribute *mmc_std_attrs[] = {
 	&dev_attr_cid.attr,
 	&dev_attr_csd.attr,
@@ -699,6 +776,7 @@ static struct attribute *mmc_std_attrs[] = {
 	&dev_attr_enhanced_area_size.attr,
 	&dev_attr_raw_rpmb_size_mult.attr,
 	&dev_attr_rel_sectors.attr,
+	&dev_attr_manf_name.attr,
 	NULL,
 };
 
@@ -808,6 +886,8 @@ static int mmc_select_powerclass(struct mmc_card *card,
 static int mmc_select_bus_width(struct mmc_card *card, int ddr, u8 *ext_csd)
 {
 	struct mmc_host *host;
+	int retry = 3;
+
 	static unsigned ext_csd_bits[][2] = {
 		{ EXT_CSD_BUS_WIDTH_8, EXT_CSD_DDR_BUS_WIDTH_8 },
 		{ EXT_CSD_BUS_WIDTH_4, EXT_CSD_DDR_BUS_WIDTH_4 },
@@ -843,7 +923,7 @@ static int mmc_select_bus_width(struct mmc_card *card, int ddr, u8 *ext_csd)
 				   "bus width %d failed\n",
 				   mmc_hostname(host),
 				   1 << bus_width);
-
+do_retry:
 		err = mmc_switch(card, EXT_CSD_CMD_SET_NORMAL,
 				 EXT_CSD_BUS_WIDTH,
 				 ext_csd_bits[idx][0],
@@ -856,9 +936,15 @@ static int mmc_select_bus_width(struct mmc_card *card, int ddr, u8 *ext_csd)
 			 * compare ext_csd previously read in 1 bit mode
 			 * against ext_csd at new bus width
 			 */
-			if (!(host->caps & MMC_CAP_BUS_WIDTH_TEST))
+			if (!(host->caps & MMC_CAP_BUS_WIDTH_TEST)) {
 				err = mmc_compare_ext_csds(card, bus_width);
-			else
+				if (err) {
+					pr_err("%s: compare_ext_csd return %d, bus width %d, retry %d\n",
+						mmc_hostname(card->host), err, 1 << bus_width, retry);
+					if (retry-- > 0)
+						goto do_retry;
+				}
+			} else
 				err = mmc_bus_test(card, bus_width);
 			if (!err)
 				break;
@@ -1849,6 +1935,20 @@ out:
 	return err;
 }
 
+static int mmc_reinit(struct mmc_host *host)
+{
+	int err;
+
+	BUG_ON(!host);
+	BUG_ON(!host->card);
+
+	mmc_claim_host(host);
+	err = mmc_init_card(host, host->ocr, host->card);
+	mmc_release_host(host);
+
+	return err;
+}
+
 /*
  * Resume callback from host.
  *
@@ -1983,6 +2083,7 @@ static const struct mmc_bus_ops mmc_ops_unsafe = {
 	.detect = mmc_detect,
 	.suspend = mmc_suspend,
 	.resume = mmc_resume,
+	.reinit = mmc_reinit,
 	.power_restore = mmc_power_restore,
 	.alive = mmc_alive,
 	.change_bus_speed = mmc_change_bus_speed,

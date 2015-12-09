@@ -44,6 +44,8 @@
 #define QPNP_WLED_SC_PRO_REG(b)		(b + 0x5E)
 #define QPNP_WLED_TEST_REG(b)		(b + 0xE2)
 
+#define QPNP_WLED_SOFT_START(b)		(b + 0xE5)
+
 #define QPNP_WLED_EN_MASK		0x7F
 #define QPNP_WLED_EN_SHIFT		7
 #define QPNP_WLED_FDBK_OP_MASK		0xF8
@@ -1273,6 +1275,16 @@ static int qpnp_wled_config(struct qpnp_wled *wled)
 				return rc;
 		}
 	}
+
+	
+	reg = 0x32;
+	rc = qpnp_wled_sec_access(wled, wled->ctrl_base);
+	if (rc)
+		return rc;
+	rc = qpnp_wled_write_reg(wled, &reg,
+			QPNP_WLED_SOFT_START(wled->ctrl_base));
+	if (rc)
+		return rc;
 
 	return 0;
 }

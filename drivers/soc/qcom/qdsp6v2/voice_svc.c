@@ -493,6 +493,11 @@ static ssize_t voice_svc_read(struct file *file, char __user *arg,
 
 	spin_lock_irqsave(&prtd->response_lock, spin_flags);
 
+	
+	if (list_empty(&prtd->response_queue)) {
+		pr_err("%s: response queue is empty before del!!!", __func__);
+	}
+	
 	list_del(&resp->list);
 	prtd->response_count--;
 	kfree(resp);
@@ -581,7 +586,7 @@ static int voice_svc_release(struct inode *inode, struct file *file)
 	char *svc_name = NULL;
 	void **handle = NULL;
 
-	pr_debug("%s\n", __func__);
+	pr_info("%s ++\n", __func__); 
 
 	prtd = (struct voice_svc_prvt *)file->private_data;
 	if (prtd == NULL) {
@@ -610,7 +615,7 @@ static int voice_svc_release(struct inode *inode, struct file *file)
 	spin_lock_irqsave(&prtd->response_lock, spin_flags);
 
 	while (!list_empty(&prtd->response_queue)) {
-		pr_debug("%s: Remove item from response queue\n", __func__);
+		pr_info("%s: Remove item from response queue\n", __func__); 
 
 		resp = list_first_entry(&prtd->response_queue,
 					struct apr_response_list, list);
@@ -624,6 +629,7 @@ static int voice_svc_release(struct inode *inode, struct file *file)
 	kfree(file->private_data);
 	file->private_data = NULL;
 
+	pr_info("%s --\n", __func__); 
 done:
 	return ret;
 }

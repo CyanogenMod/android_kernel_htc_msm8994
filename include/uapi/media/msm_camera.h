@@ -1730,10 +1730,7 @@ struct msm_actuator_reg_params_t {
 	uint32_t hw_mask;
 	uint16_t reg_addr;
 	uint16_t hw_shift;
-	uint16_t data_type;
-	uint16_t addr_type;
-	uint16_t reg_data;
-	uint16_t delay;
+	uint16_t data_shift;
 };
 
 struct reg_settings_t {

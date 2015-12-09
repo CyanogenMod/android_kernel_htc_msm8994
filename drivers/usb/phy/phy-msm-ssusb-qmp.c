@@ -239,7 +239,7 @@ static void msm_ssusb_qmp_enable_autonomous(struct msm_ssphy_qmp *phy)
 {
 	u8 val;
 
-	dev_dbg(phy->phy.dev, "enabling QMP autonomous mode with cable %s\n",
+	dev_info(phy->phy.dev, "enabling QMP autonomous mode with cable %s\n",
 			get_cable_status_str(phy));
 	val = readb_relaxed(phy->base + PCIE_USB3_PHY_AUTONOMOUS_MODE_CTRL);
 
@@ -270,7 +270,7 @@ static int msm_ssusb_qmp_config_vdd(struct msm_ssphy_qmp *phy, int high)
 		return ret;
 	}
 
-	dev_dbg(phy->phy.dev, "min_vol:%d max_vol:%d\n",
+	dev_info(phy->phy.dev, "min_vol:%d max_vol:%d\n",
 		phy->vdd_levels[min], phy->vdd_levels[2]);
 	return ret;
 }
@@ -279,7 +279,7 @@ static int msm_ssusb_qmp_ldo_enable(struct msm_ssphy_qmp *phy, int on)
 {
 	int rc = 0;
 
-	dev_dbg(phy->phy.dev, "reg (%s)\n", on ? "HPM" : "LPM");
+	dev_info(phy->phy.dev, "reg (%s)\n", on ? "HPM" : "LPM");
 
 	if (!on)
 		goto disable_regulators;
@@ -365,7 +365,7 @@ static int msm_ssphy_qmp_init_clocks(struct msm_ssphy_qmp *phy)
 	phy->phy_com_reset = devm_clk_get(phy->phy.dev, "phy_com_reset");
 	if (IS_ERR(phy->phy_com_reset)) {
 		phy->phy_com_reset = NULL;
-		dev_dbg(phy->phy.dev, "failed to get phy_com_reset\n");
+		dev_info(phy->phy.dev, "failed to get phy_com_reset\n");
 	}
 
 	phy->phy_reset = devm_clk_get(phy->phy.dev, "phy_reset");
@@ -378,7 +378,7 @@ static int msm_ssphy_qmp_init_clocks(struct msm_ssphy_qmp *phy)
 	phy->phy_phy_reset = devm_clk_get(phy->phy.dev, "phy_phy_reset");
 	if (IS_ERR(phy->phy_phy_reset)) {
 		phy->phy_phy_reset = NULL;
-		dev_dbg(phy->phy.dev, "phy_phy_reset unavailable\n");
+		dev_info(phy->phy.dev, "phy_phy_reset unavailable\n");
 	}
 
 	phy->clk_enabled = true;
@@ -422,7 +422,7 @@ static int msm_ssphy_qmp_init(struct usb_phy *uphy)
 	u32 revid;
 	const struct qmp_reg_val *reg = NULL, *misc = NULL;
 
-	dev_dbg(uphy->dev, "Initializing QMP phy\n");
+	dev_info(uphy->dev, "Initializing QMP phy\n");
 
 	if (phy->emulation)
 		return 0;
@@ -443,6 +443,8 @@ static int msm_ssphy_qmp_init(struct usb_phy *uphy)
 	revid |= (readl_relaxed(phy->base +
 			PCIE_USB3_PHY_REVISION_ID1) & 0xFF) << 8;
 	revid |= readl_relaxed(phy->base + PCIE_USB3_PHY_REVISION_ID0) & 0xFF;
+
+	dev_info(uphy->dev, "QMP phy revid = %x\n", revid);
 
 	switch (revid) {
 	case 0x10000000:
@@ -466,7 +468,8 @@ static int msm_ssphy_qmp_init(struct usb_phy *uphy)
 	writel_relaxed(0x01, phy->base + PCIE_USB3_PHY_POWER_DOWN_CONTROL);
 
 	/* Main configuration */
-	if (configure_phy_regs(uphy, reg)) {
+	ret = configure_phy_regs(uphy, reg);
+	if (ret < 0) {
 		dev_err(uphy->dev, "Failed the main PHY configuration\n");
 		return ret;
 	}
@@ -526,7 +529,7 @@ static int msm_ssphy_qmp_reset(struct usb_phy *uphy)
 					phy);
 	int ret;
 
-	dev_dbg(uphy->dev, "Resetting QMP phy\n");
+	dev_info(uphy->dev, "Resetting QMP phy\n");
 
 	if (!phy->clk_enabled) {
 		ret = msm_ssphy_qmp_init_clocks(phy);
@@ -614,7 +617,7 @@ deassert_phy_com_reset:
 
 static int msm_ssphy_qmp_set_params(struct usb_phy *uphy)
 {
-	dev_dbg(uphy->dev, "Setting phy parameters\n");
+	dev_info(uphy->dev, "Setting phy parameters\n");
 	return 0;
 }
 
@@ -669,7 +672,7 @@ static int msm_ssphy_qmp_set_suspend(struct usb_phy *uphy, int suspend)
 	struct msm_ssphy_qmp *phy = container_of(uphy, struct msm_ssphy_qmp,
 					phy);
 
-	dev_dbg(uphy->dev, "QMP PHY set_suspend for %s called with cable %s\n",
+	dev_info(uphy->dev, "QMP PHY set_suspend for %s called with cable %s\n",
 			(suspend ? "suspend" : "resume"),
 			get_cable_status_str(phy));
 	/*
@@ -678,12 +681,12 @@ static int msm_ssphy_qmp_set_suspend(struct usb_phy *uphy, int suspend)
 	 * init function being called first.
 	 */
 	if (!phy->clk_enabled) {
-		dev_dbg(uphy->dev, "clocks not enabled yet\n");
+		dev_info(uphy->dev, "clocks not enabled yet\n");
 		return -EAGAIN;
 	}
 
 	if (phy->cable_connected && phy->in_suspend && suspend) {
-		dev_dbg(uphy->dev, "%s: USB PHY is already suspended\n",
+		dev_info(uphy->dev, "%s: USB PHY is already suspended\n",
 			__func__);
 		return 0;
 	}
@@ -699,7 +702,7 @@ static int msm_ssphy_qmp_set_suspend(struct usb_phy *uphy, int suspend)
 		clk_disable_unprepare(phy->aux_clk);
 		phy->in_suspend = true;
 		msm_ssphy_power_enable(phy, 0);
-		dev_dbg(uphy->dev, "QMP PHY is suspend\n");
+		dev_info(uphy->dev, "QMP PHY is suspend\n");
 	} else {
 		msm_ssphy_power_enable(phy, 1);
 		clk_prepare_enable(phy->aux_clk);
@@ -711,7 +714,7 @@ static int msm_ssphy_qmp_set_suspend(struct usb_phy *uphy, int suspend)
 		}
 		msm_ssusb_qmp_enable_autonomous(phy);
 		phy->in_suspend = false;
-		dev_dbg(uphy->dev, "QMP PHY is resumed\n");
+		dev_info(uphy->dev, "QMP PHY is resumed\n");
 	}
 
 	return 0;
@@ -723,9 +726,9 @@ static int msm_ssphy_qmp_notify_connect(struct usb_phy *uphy,
 	struct msm_ssphy_qmp *phy = container_of(uphy, struct msm_ssphy_qmp,
 					phy);
 
-	dev_dbg(uphy->dev, "QMP phy connect notification\n");
+	dev_info(uphy->dev, "QMP phy connect notification\n");
 	phy->cable_connected = true;
-	dev_dbg(uphy->dev, "cable_connected=%d\n", phy->cable_connected);
+	dev_info(uphy->dev, "cable_connected=%d\n", phy->cable_connected);
 	return 0;
 }
 
@@ -735,8 +738,8 @@ static int msm_ssphy_qmp_notify_disconnect(struct usb_phy *uphy,
 	struct msm_ssphy_qmp *phy = container_of(uphy, struct msm_ssphy_qmp,
 					phy);
 
-	dev_dbg(uphy->dev, "QMP phy disconnect notification\n");
-	dev_dbg(uphy->dev, " cable_connected=%d\n", phy->cable_connected);
+	dev_info(uphy->dev, "QMP phy disconnect notification\n");
+	dev_info(uphy->dev, " cable_connected=%d\n", phy->cable_connected);
 	msm_ssusb_qmp_enable_autonomous(phy);
 	phy->cable_connected = false;
 	phy->in_suspend = false;
@@ -821,12 +824,12 @@ static int msm_ssphy_qmp_probe(struct platform_device *pdev)
 	phy->override_pll_cal = of_property_read_bool(dev->of_node,
 					"qcom,override-pll-calibration");
 	if (phy->override_pll_cal)
-		dev_dbg(dev, "Override PHY PLL calibration is enabled.\n");
+		dev_info(dev, "Override PHY PLL calibration is enabled.\n");
 
 	phy->misc_config = of_property_read_bool(dev->of_node,
 					"qcom,qmp-misc-config");
 	if (phy->misc_config)
-		dev_dbg(dev, "Miscellaneous configurations are enabled.\n");
+		dev_info(dev, "Miscellaneous configurations are enabled.\n");
 
 	phy->switch_pipe_clk_src = !of_property_read_bool(dev->of_node,
 					"qcom,no-pipe-clk-switch");

@@ -34,7 +34,7 @@
 #define WWAN_METADATA_SHFT 24
 #define WWAN_METADATA_MASK 0xFF000000
 #define WWAN_DATA_LEN 2000
-#define IPA_RM_INACTIVITY_TIMER 1000 /* IPA_RM */
+#define IPA_RM_INACTIVITY_TIMER 100 /* IPA_RM */
 #define HEADROOM_FOR_QMAP   8 /* for mux header */
 #define TAILROOM            0 /* for padding by mux layer */
 #define MAX_NUM_OF_MUX_CHANNEL  10 /* max mux channels */
@@ -1697,6 +1697,7 @@ static int ipa_wwan_probe(struct platform_device *pdev)
 	struct wwan_private *wwan_ptr;
 	struct ipa_rm_create_params ipa_rm_params;	/* IPA_RM */
 	struct ipa_rm_perf_profile profile;			/* IPA_RM */
+	int uc_loading_condition;
 
 	pr_info("rmnet_ipa started initialization\n");
 
@@ -1731,8 +1732,10 @@ static int ipa_wwan_probe(struct platform_device *pdev)
 
 	/* start A7 QMI service/client */
 	if (ipa_rmnet_res.ipa_loaduC) {
+		uc_loading_condition = atomic_read(&is_ssr) &
+			atomic_read(&ipa_ctx->uc_ctx.uc_loaded);
 		/* Android platform loads uC */
-		ipa_qmi_service_init(atomic_read(&is_ssr) ? false : true,
+		ipa_qmi_service_init(uc_loading_condition ? false : true,
 			QMI_IPA_PLATFORM_TYPE_MSM_ANDROID_V01);
 	} else {
 		/* LE platform not loads uC */
@@ -2013,6 +2016,7 @@ static int ssr_notifier_cb(struct notifier_block *this,
 		if (SUBSYS_BEFORE_SHUTDOWN == code) {
 			pr_info("IPA received MPSS BEFORE_SHUTDOWN\n");
 			ipa_q6_cleanup();
+			ipa_qmi_stop_workqueues();
 			wan_ioctl_stop_qmi_messages();
 			atomic_set(&is_ssr, 1);
 			if (atomic_read(&is_initialized))

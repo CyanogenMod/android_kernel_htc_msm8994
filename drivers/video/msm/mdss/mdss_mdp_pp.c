@@ -22,6 +22,7 @@
 #include <linux/delay.h>
 #include <linux/msm-bus.h>
 #include <linux/msm-bus-board.h>
+#include <linux/msm_mdp.h>
 
 struct mdp_csc_cfg mdp_csc_convert[MDSS_MDP_MAX_CSC] = {
 	[MDSS_MDP_CSC_RGB2RGB] = {
@@ -36,7 +37,20 @@ struct mdp_csc_cfg mdp_csc_convert[MDSS_MDP_MAX_CSC] = {
 		{ 0x0, 0xff, 0x0, 0xff, 0x0, 0xff,},
 		{ 0x0, 0xff, 0x0, 0xff, 0x0, 0xff,},
 	},
-	[MDSS_MDP_CSC_YUV2RGB] = {
+	
+	[MDSS_MDP_CSC_YUV2RGB_601_FR] = {
+		0,
+		{
+			0x0200, 0x0000, 0x02cd,
+			0x0200, 0xff50, 0xfe94,
+			0x0200, 0x0388, 0x0000,
+		},
+		{ 0x0, 0xff80, 0xff80,},
+		{ 0x0, 0x0, 0x0,},
+		{ 0x0, 0xff, 0x0, 0xff, 0x0, 0xff,},
+		{ 0x0, 0xff, 0x0, 0xff, 0x0, 0xff,},
+	},
+	[MDSS_MDP_CSC_YUV2RGB_601] = {
 		0,
 		{
 			0x0254, 0x0000, 0x0331,
@@ -48,7 +62,20 @@ struct mdp_csc_cfg mdp_csc_convert[MDSS_MDP_MAX_CSC] = {
 		{ 0x0, 0xff, 0x0, 0xff, 0x0, 0xff,},
 		{ 0x0, 0xff, 0x0, 0xff, 0x0, 0xff,},
 	},
-	[MDSS_MDP_CSC_RGB2YUV] = {
+	
+	[MDSS_MDP_CSC_RGB2YUV_601_FR] = {
+		0,
+		{
+			0x0099, 0x012d, 0x0100,
+			0x1fa9, 0x1f57, 0x1f00,
+			0x1f00, 0x1f29, 0x1fd7
+		},
+		{ 0x0, 0x0, 0x0,},
+		{ 0x0000, 0x0080, 0x0080,},
+		{ 0x0, 0xff, 0x0, 0xff, 0x0, 0xff,},
+		{ 0x0000, 0x00ff, 0x0000, 0x00ff, 0x0000, 0x00ff,},
+	},
+	[MDSS_MDP_CSC_RGB2YUV_601] = {
 		0,
 		{
 			0x0083, 0x0102, 0x0032,
@@ -881,13 +908,16 @@ static int pp_vig_pipe_setup(struct mdss_mdp_pipe *pipe, u32 *op)
 			opmode |= (0 << 19) |	/* DST_DATA=RGB */
 				  (1 << 18) |	/* SRC_DATA=YCBCR */
 				  (1 << 17);	/* CSC_1_EN */
-			/*
-			 * TODO: Needs to be part of dirty bit logic: if there
-			 * is a previously configured pipe need to re-configure
-			 * CSC matrix
-			 */
-			mdss_mdp_csc_setup(MDSS_MDP_BLOCK_SSPP, pipe->num,
-					   MDSS_MDP_CSC_YUV2RGB);
+			switch(pipe->color_space) {
+			case MDP_CSC_ITU_R_601_FR:
+				mdss_mdp_csc_setup(MDSS_MDP_BLOCK_SSPP, pipe->num,
+						   MDSS_MDP_CSC_YUV2RGB_601_FR);
+				break;
+			default:
+				mdss_mdp_csc_setup(MDSS_MDP_BLOCK_SSPP, pipe->num,
+						   MDSS_MDP_CSC_YUV2RGB_601);
+				break;
+			}
 		}
 	}
 
@@ -4643,8 +4673,9 @@ int mdss_mdp_ad_input(struct msm_fb_data_type *mfd,
 			}
 			mutex_unlock(&ad->lock);
 			mutex_lock(&mfd->bl_lock);
-			MDSS_BRIGHT_TO_BL(bl, bl, mfd->panel_info->bl_max,
-					mfd->panel_info->brightness_max);
+			if (!mfd->panel_info->act_brt)
+				MDSS_BRIGHT_TO_BL(bl, bl, mfd->panel_info->bl_max,
+						mfd->panel_info->brightness_max);
 			mdss_fb_set_backlight(mfd, bl);
 			mutex_unlock(&mfd->bl_lock);
 			mutex_lock(&ad->lock);

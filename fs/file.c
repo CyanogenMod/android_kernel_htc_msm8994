@@ -22,6 +22,8 @@
 #include <linux/spinlock.h>
 #include <linux/rcupdate.h>
 #include <linux/workqueue.h>
+#include <linux/crc32c.h>
+#include <linux/htc_debug_tools.h>
 
 int sysctl_nr_open __read_mostly = 1024*1024;
 int sysctl_nr_open_min = BITS_PER_LONG;
@@ -50,6 +52,7 @@ static void __free_fdtable(struct fdtable *fdt)
 {
 	free_fdmem(fdt->fd);
 	free_fdmem(fdt->open_fds);
+	free_fdmem(fdt->user);
 	kfree(fdt);
 }
 
@@ -79,6 +82,9 @@ static void copy_fdtable(struct fdtable *nfdt, struct fdtable *ofdt)
 	memset((char *)(nfdt->open_fds) + cpy, 0, set);
 	memcpy(nfdt->close_on_exec, ofdt->close_on_exec, cpy);
 	memset((char *)(nfdt->close_on_exec) + cpy, 0, set);
+
+	memcpy(nfdt->user, ofdt->user, ofdt->max_fds * sizeof(*nfdt->user));
+	memset(nfdt->user + ofdt->max_fds, 0, (nfdt->max_fds - ofdt->max_fds) * sizeof(*nfdt->user));
 }
 
 static struct fdtable * alloc_fdtable(unsigned int nr)
@@ -124,8 +130,16 @@ static struct fdtable * alloc_fdtable(unsigned int nr)
 	data += nr / BITS_PER_BYTE;
 	fdt->close_on_exec = data;
 
+	data = alloc_fdmem(sizeof(*fdt->user) * nr);
+	if (!data)
+		goto out_open;
+
+	fdt->user = (struct fdt_user*) data;
+
 	return fdt;
 
+out_open:
+	free_fdmem(fdt->open_fds);
 out_arr:
 	free_fdmem(fdt->fd);
 out_fdt:
@@ -264,6 +278,7 @@ struct files_struct *dup_fd(struct files_struct *oldf, int *errorp)
 	new_fdt->close_on_exec = newf->close_on_exec_init;
 	new_fdt->open_fds = newf->open_fds_init;
 	new_fdt->fd = &newf->fd_array[0];
+	new_fdt->user = &newf->user_array[0];
 
 	spin_lock(&oldf->file_lock);
 	old_fdt = files_fdtable(oldf);
@@ -306,6 +321,7 @@ struct files_struct *dup_fd(struct files_struct *oldf, int *errorp)
 
 	memcpy(new_fdt->open_fds, old_fdt->open_fds, open_files / 8);
 	memcpy(new_fdt->close_on_exec, old_fdt->close_on_exec, open_files / 8);
+	memset(new_fdt->user, 0, open_files * sizeof(*old_fdt->user));
 
 	for (i = open_files; i != 0; i--) {
 		struct file *f = *old_fds++;
@@ -336,6 +352,7 @@ struct files_struct *dup_fd(struct files_struct *oldf, int *errorp)
 
 		memset(&new_fdt->open_fds[start], 0, left);
 		memset(&new_fdt->close_on_exec[start], 0, left);
+		memset(&new_fdt->user[open_files], 0, (new_fdt->max_fds - open_files) * sizeof(*new_fdt->user));
 	}
 
 	rcu_assign_pointer(newf->fdt, new_fdt);
@@ -451,9 +468,69 @@ struct files_struct init_files = {
 		.fd		= &init_files.fd_array[0],
 		.close_on_exec	= init_files.close_on_exec_init,
 		.open_fds	= init_files.open_fds_init,
+		.user		= &init_files.user_array[0],
 	},
 	.file_lock	= __SPIN_LOCK_UNLOCKED(init_files.file_lock),
 };
+
+static void fdtable_usage_dump(struct fdtable *fdt)
+{
+	int i, last_crc = 0, repeats = 0;
+	char* buf;
+	struct file* file;
+	struct task_struct* user = NULL;
+	int this_crc, pid;
+	char* path;
+	char* spath;
+	unsigned long timestamp;
+
+	buf = (char*) kmalloc(PATH_MAX, GFP_ATOMIC);
+	if (!buf) {
+		pr_err("%s: fail to alloc buffer\n", __func__);
+		return;
+	}
+
+	rcu_read_lock();
+	for (i = 0; i < fdt->max_fds; i++) {
+
+		file = fdt->fd[i];
+		if (!file)
+			continue;
+
+		pid = fdt->user[i].installer;
+		timestamp = fdt->user[i].install_ts;
+
+		user = find_task_by_vpid(pid);
+		if (user)
+			get_task_struct(user);
+
+		path = d_path(&file->f_path, buf, PATH_MAX);
+
+		if (IS_ERR(path))
+			path = "<unknown>";
+		else {
+			spath = strstr(path, ":[");
+			if (spath) spath[0] = '\0';
+		}
+
+		this_crc = crc32c(pid, path, strlen(path));
+		if (this_crc != last_crc || i == fdt->max_fds - 1) {
+			if (repeats)
+				pr_warn(" < ... repeats %d time%s ... >\n", repeats, repeats > 1 ? "s" : "");
+				pr_warn("%d->fd[%d] file: %s, user: %d (%s %d:%d), opened at %lu ms\n", current->tgid, i, path, pid,
+				user ? user->comm : "<unknown>", user ? user->tgid : -1, user ? user->pid : -1, timestamp);
+
+				last_crc = this_crc;
+				repeats = 0;
+		} else
+			repeats++;
+
+		if (user)
+			put_task_struct(user);
+	}
+	rcu_read_unlock();
+	kfree(buf);
+}
 
 /*
  * allocate a file descriptor, mark it busy.
@@ -464,6 +541,8 @@ int __alloc_fd(struct files_struct *files,
 	unsigned int fd;
 	int error;
 	struct fdtable *fdt;
+	static unsigned long debugging_ratelimit = 0;
+	const unsigned long debugging_delay_ms = 30000;
 
 	spin_lock(&files->file_lock);
 repeat:
@@ -502,6 +581,8 @@ repeat:
 		__set_close_on_exec(fd, fdt);
 	else
 		__clear_close_on_exec(fd, fdt);
+
+	memset(&fdt->user[fd], 0, sizeof(*fdt->user));
 	error = fd;
 #if 1
 	/* Sanity check */
@@ -512,6 +593,17 @@ repeat:
 #endif
 
 out:
+	if (unlikely(error == -EMFILE)) {
+		if (jiffies > debugging_ratelimit) {
+			debugging_ratelimit = jiffies + msecs_to_jiffies(debugging_delay_ms);
+
+			pr_warn("[%s] Too many open files (%d/%u), dump all fdt users:\n",
+			__func__, count_open_files(fdt), fdt->max_fds);
+			dump_stack();
+			fdtable_usage_dump(fdt);
+			pr_warn("[%s] end of dump\n", __func__);
+		}
+	}
 	spin_unlock(&files->file_lock);
 	return error;
 }
@@ -574,6 +666,8 @@ void __fd_install(struct files_struct *files, unsigned int fd,
 	fdt = files_fdtable(files);
 	BUG_ON(fdt->fd[fd] != NULL);
 	rcu_assign_pointer(fdt->fd[fd], file);
+	fdt->user[fd].installer = current->pid;
+	fdt->user[fd].install_ts = htc_debug_get_sched_clock_ms();
 	spin_unlock(&files->file_lock);
 }
 
@@ -591,15 +685,31 @@ int __close_fd(struct files_struct *files, unsigned fd)
 {
 	struct file *file;
 	struct fdtable *fdt;
+	struct fdt_user* user;
+	struct task_struct* task;
+
 
 	spin_lock(&files->file_lock);
 	fdt = files_fdtable(files);
-	if (fd >= fdt->max_fds)
+	if (fd >= fdt->max_fds) {
+		pr_debug("[%s] fd %u exceeds max_fds %u (user: %s %d:%d)\n", __func__, fd, fdt->max_fds,
+		current->comm, current->tgid, current->pid);
 		goto out_unlock;
+	}
 	file = fdt->fd[fd];
-	if (!file)
+	if (!file) {
+		user = &fdt->user[fd];
+		if (unlikely(user->remover && user->remover != current->pid)) {
+			task = find_task_by_vpid(user->remover);
+			pr_warn("[%s] fd %u of %s %d:%d is already closed by thread %d (%s %d:%d) at %lu ms, opened at %lu ms\n",
+			__func__, fd, current->comm, current->tgid, current->pid, user->remover,
+			task ? task->comm : "<unknown>", task ? task->tgid : -1, task ? task->pid : -1, user->remove_ts, user->install_ts);
+		}
 		goto out_unlock;
+	}
 	rcu_assign_pointer(fdt->fd[fd], NULL);
+	fdt->user[fd].remover = current->pid;
+	fdt->user[fd].remove_ts = htc_debug_get_sched_clock_ms();
 	__clear_close_on_exec(fd, fdt);
 	__put_unused_fd(files, fd);
 	spin_unlock(&files->file_lock);

@@ -244,3 +244,21 @@
 		};
 	};
 };
+
+&spmi_bus {
+	qcom,pmi8994@3 {
+		qcom,leds@d300 {
+			status = "disabled";
+		};
+	};
+};
+
+&clock_cpu {
+	compatible = "qcom,cpu-clock-8994";
+	qcom,a53-speedbin0-v0 =
+		<	   0 0>,
+		<  940800000 9>;
+	qcom,a57-speedbin0-v0 =
+		<	   0 0>,
+		<  600000000 4>;
+};

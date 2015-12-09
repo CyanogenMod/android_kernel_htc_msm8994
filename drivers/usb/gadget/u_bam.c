@@ -305,6 +305,10 @@ static struct sk_buff *gbam_alloc_skb_from_pool(struct gbam_port *port)
 	} else {
 		pr_debug("%s: pull skb from pool\n", __func__);
 		skb = __skb_dequeue(&d->rx_skb_idle);
+		if (!skb) {
+			pr_err("%s: pull NULL skb from poll\n", __func__);
+			goto alloc_exit;
+		}
 		if (skb_headroom(skb) < BAM_MUX_HDR)
 			skb_reserve(skb, BAM_MUX_HDR);
 	}
@@ -342,6 +346,10 @@ static void gbam_free_rx_skb_idle_list(struct gbam_port *port)
 
 	while (d->rx_skb_idle.qlen > 0) {
 		skb = __skb_dequeue(&d->rx_skb_idle);
+		if (!skb) {
+			pr_err("%s: pull NULL skb from rx_skb_idle list\n", __func__);
+			return;
+		}
 		dma_addr = gbam_get_dma_from_skb(skb);
 
 		if (gadget && dma_addr != DMA_ERROR_CODE) {

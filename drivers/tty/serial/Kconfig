@@ -1062,6 +1062,23 @@ config SERIAL_MSM_HSL
 	help
 	  Select this module to enable MSM high speed UART driver.
 
+config SERIAL_CIR
+	tristate "MSM UART High Speed : Legacy mode CIR Driver"
+	depends on (ARM || ARM64) && ARCH_MSM
+	select SERIAL_CORE
+	default n
+	help
+	   Select this module to enable MSM high speed CIR driver.
+
+config SERIAL_CIR_DYNAMIC_DISABLE
+	tristate "MSM UART High Speed : Legacy mode CIR Driver dynamic disable"
+	depends on (ARM || ARM64) && ARCH_MSM && SERIAL_CIR
+	select SERIAL_CORE
+	default n
+	help
+	   Select this module to disable the CIR UART, power and
+	   GPIO switching function by writing an attribute file.
+
 config SERIAL_MSM_HSL_CONSOLE
 	bool "MSM High speed serial legacy mode console support"
 	depends on SERIAL_MSM_HSL=y

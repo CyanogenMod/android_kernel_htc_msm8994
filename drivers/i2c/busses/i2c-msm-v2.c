@@ -36,6 +36,8 @@
 #include <linux/msm-sps.h>
 #include <linux/msm-bus.h>
 #include <linux/msm-bus-board.h>
+#include <linux/gpio.h>
+#include <linux/of_gpio.h>
 #include <linux/i2c/i2c-msm-v2.h>
 
 #ifdef DEBUG
@@ -65,6 +67,9 @@ static const u32 i2c_msm_mode_to_reg_tbl[] = {
 	0x1, /* map I2C_MSM_XFER_MODE_BLOCK -> binary 01 */
 	0x3  /* map I2C_MSM_XFER_MODE_DMA -> binary 11 */
 };
+
+#define CONTROLLER_SIZE 32
+static int error_times[CONTROLLER_SIZE];
 
 const char *i2c_msm_err_str_table[] = {
 	[I2C_MSM_NO_ERR]     = "NONE",
@@ -696,6 +701,8 @@ static int i2c_msm_fifo_xfer_process(struct i2c_msm_ctrl *ctrl)
 	while (i2c_msm_xfer_next_buf(ctrl))
 		i2c_msm_fifo_read_xfer_buf(ctrl);
 
+	if ((ctrl->adapter.nr < CONTROLLER_SIZE) && (ctrl->adapter.nr >= 0))
+		error_times[ctrl->adapter.nr] = 0;
 	return 0;
 }
 
@@ -2006,6 +2013,11 @@ static int i2c_msm_qup_post_xfer(struct i2c_msm_ctrl *ctrl, int err)
 		err = -ENOTCONN;
 	}
 
+	if (ctrl->xfer.err & BIT(I2C_MSM_ERR_OVR_UNDR_RUN)) {
+		dev_info(ctrl->dev, "%s: I2C_MSM_ERR_OVR_UNDR_RUN\n", __func__);
+		err = -ENOBUFS;
+	}
+
 	return err;
 }
 
@@ -2354,6 +2366,7 @@ enum i2c_msm_dt_entry_type {
 	DT_U32,
 	DT_BOOL,
 	DT_ID,   /* of_alias_get_id() */
+	DT_GPIO,
 };
 
 struct i2c_msm_dt_to_pdata_map {
@@ -2370,6 +2383,7 @@ static int i2c_msm_dt_to_pdata_populate(struct i2c_msm_ctrl *ctrl,
 {
 	int  ret, err = 0;
 	struct device_node *node = pdev->dev.of_node;
+	uint32_t irq_gpio_flags;
 
 	for (; itr->dt_name ; ++itr) {
 		switch (itr->type) {
@@ -2384,6 +2398,14 @@ static int i2c_msm_dt_to_pdata_populate(struct i2c_msm_ctrl *ctrl,
 			break;
 		case DT_ID:
 			ret = of_alias_get_id(node, itr->dt_name);
+			if (ret >= 0) {
+				*((int *) itr->ptr_data) = ret;
+				ret = 0;
+			}
+			break;
+		case DT_GPIO:
+			ret = of_get_named_gpio_flags(node, itr->dt_name, 0,
+						      &irq_gpio_flags);
 			if (ret >= 0) {
 				*((int *) itr->ptr_data) = ret;
 				ret = 0;
@@ -2446,6 +2468,10 @@ static int i2c_msm_rsrcs_process_dt(struct i2c_msm_ctrl *ctrl,
 							DT_OPT,  DT_U32,  0},
 	{"qcom,fs-clk-div",		&fs_clk_div,
 							DT_OPT,  DT_U32,  0},
+	{"qcom,sda-gpio",		&(ctrl->sda_gpio),
+							DT_OPT,  DT_GPIO,  0},
+	{"qcom,scl-gpio",		&(ctrl->scl_gpio),
+							DT_OPT,  DT_GPIO,  0},
 	{NULL,  NULL,					0,       0,       0},
 	};
 
@@ -2904,6 +2930,9 @@ static int i2c_msm_probe(struct platform_device *pdev)
 	ret = i2c_msm_frmwrk_reg(pdev, ctrl);
 	if (ret)
 		goto reg_err;
+
+	if ((ctrl->adapter.nr < CONTROLLER_SIZE) && (ctrl->adapter.nr >= 0))
+		error_times[ctrl->adapter.nr] = 0;
 
 	i2c_msm_dbg(ctrl, MSM_PROF, "probe() completed with success");
 	return 0;

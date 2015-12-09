@@ -16,8 +16,11 @@
 #include <linux/module.h>
 #include <linux/usb.h>
 #include <linux/usb/hcd.h>
+#include <linux/usb/htc_info.h>
 #include <linux/platform_device.h>
 #include <linux/regulator/consumer.h>
+#include <linux/spmi.h>
+#include <linux/power/htc_charger.h>
 
 #include "core.h"
 #include "dwc3_otg.h"
@@ -25,8 +28,11 @@
 #include "debug.h"
 #include "xhci.h"
 
+static struct dwc3_otg *the_dwc3_otg;
+
 #define VBUS_REG_CHECK_DELAY	(msecs_to_jiffies(1000))
 #define MAX_INVALID_CHRGR_RETRY 3
+#define CHIP_VERSION_RETRY 3
 static int max_chgr_retry_count = MAX_INVALID_CHRGR_RETRY;
 module_param(max_chgr_retry_count, int, S_IRUGO | S_IWUSR);
 MODULE_PARM_DESC(max_chgr_retry_count, "Max invalid charger retry count");
@@ -63,16 +69,22 @@ static int dwc3_otg_start_host(struct usb_otg *otg, int on)
 		}
 	}
 
+	USB_INFO("%s: is_v1_pmic = %d, is_v1_cpu = %d\n",
+		__func__, dotg->is_v1_pmic, dotg->is_v1_cpu);
+
 	if (on) {
 		dev_dbg(otg->phy->dev, "%s: turn on host\n", __func__);
 
 		dwc3_otg_notify_host_mode(otg, on);
 		usb_phy_notify_connect(dotg->dwc->usb2_phy, USB_SPEED_HIGH);
-		ret = regulator_enable(dotg->vbus_otg);
-		if (ret) {
-			dev_err(otg->phy->dev, "unable to enable vbus_otg\n");
-			dwc3_otg_notify_host_mode(otg, 0);
-			return ret;
+
+		if (!dotg->is_v1_pmic && !dotg->is_v1_cpu) {
+			ret = regulator_enable(dotg->vbus_otg);
+			if (ret) {
+				dev_err(otg->phy->dev, "unable to enable vbus_otg\n");
+				dwc3_otg_notify_host_mode(otg, 0);
+				return ret;
+			}
 		}
 
 		dwc3_set_mode(dwc, DWC3_GCTL_PRTCAP_HOST);
@@ -90,7 +102,8 @@ static int dwc3_otg_start_host(struct usb_otg *otg, int on)
 			dev_err(otg->phy->dev,
 				"%s: failed to add XHCI pdev ret=%d\n",
 				__func__, ret);
-			regulator_disable(dotg->vbus_otg);
+			if (!dotg->is_v1_pmic && !dotg->is_v1_cpu)
+				regulator_disable(dotg->vbus_otg);
 			dwc3_otg_notify_host_mode(otg, 0);
 			return ret;
 		}
@@ -108,12 +121,13 @@ static int dwc3_otg_start_host(struct usb_otg *otg, int on)
 	} else {
 		dev_dbg(otg->phy->dev, "%s: turn off host\n", __func__);
 
-		ret = regulator_disable(dotg->vbus_otg);
-		if (ret) {
-			dev_err(otg->phy->dev, "unable to disable vbus_otg\n");
-			return ret;
+		if (!dotg->is_v1_pmic && !dotg->is_v1_cpu) {
+			ret = regulator_disable(dotg->vbus_otg);
+			if (ret) {
+				dev_err(otg->phy->dev, "unable to disable vbus_otg\n");
+				return ret;
+			}
 		}
-
 		dbg_event(0xFF, "StHost get", 0);
 		pm_runtime_get(dwc->dev);
 		usb_phy_notify_disconnect(dotg->dwc->usb2_phy, USB_SPEED_HIGH);
@@ -430,6 +444,8 @@ skip_psy_type:
 
 	if (dotg->charger->chg_type == DWC3_CDP_CHARGER)
 		mA = DWC3_IDEV_CHG_MAX;
+	else if (dotg->charger->chg_type == DWC3_SDP_CHARGER)
+		mA = DWC3_IDEV_CHG_USB;
 
 	if (dotg->charger->max_power == mA)
 		return 0;
@@ -509,6 +525,7 @@ static void dwc3_otg_sm_work(struct work_struct *w)
 
 	pm_runtime_resume(phy->dev);
 	dev_dbg(phy->dev, "%s state\n", usb_otg_state_string(phy->state));
+	USB_INFO("%s state\n", usb_otg_state_string(phy->state));
 
 	/* Check OTG state */
 	switch (phy->state) {
@@ -575,6 +592,9 @@ static void dwc3_otg_sm_work(struct work_struct *w)
 					work = 1;
 					break;
 				case DWC3_SDP_CHARGER:
+					printk("[USB] %s: usb_disable = %d\n",
+						__func__,
+						dotg->charger->usb_disable);
 					dwc3_otg_start_peripheral(&dotg->otg,
 									1);
 					phy->state = OTG_STATE_B_PERIPHERAL;
@@ -721,6 +741,40 @@ static void dwc3_otg_sm_work(struct work_struct *w)
 		queue_delayed_work(system_nrt_wq, &dotg->sm_work, delay);
 }
 
+int htc_dwc3_chg_det_check_linestate(void);
+extern void usb_set_connect_type(int);
+static void dwc3_unknown_charger_notify_work(struct work_struct *w)
+{
+	struct dwc3_otg *dotg = container_of(w, struct dwc3_otg, unknown_charger_notify_work.work);
+	u32 line_state;
+
+	line_state = htc_dwc3_chg_det_check_linestate();
+	printk("[USB] %s: line state = %x\n", __func__, (line_state & (3 << 8)));
+	if (line_state == (3 << 8))
+		usb_set_connect_type(CONNECT_TYPE_AC);
+	else {
+		usb_set_connect_type(CONNECT_TYPE_UNKNOWN);
+		power_supply_set_supply_type(dotg->psy, POWER_SUPPLY_TYPE_USB);
+	}
+}
+
+static void usb_disable_work(struct work_struct *w)
+{
+	struct dwc3_otg *dotg = the_dwc3_otg;
+	struct usb_phy *phy = dotg->otg.phy;
+	printk(KERN_INFO "[USB] %s\n", __func__);
+	dwc3_otg_start_peripheral(phy->otg, 0);
+	phy->state = OTG_STATE_B_IDLE;
+	pm_runtime_put_sync(phy->dev);
+}
+
+static void dwc3_otg_notify_usb_disabled(void)
+{
+	struct dwc3_otg *dotg = the_dwc3_otg;
+	printk(KERN_INFO "[USB] %s\n", __func__);
+	queue_work(system_nrt_wq, &dotg->usb_disable_work);
+}
+
 /**
  * dwc3_otg_init - Initializes otg related registers
  * @dwc: Pointer to out controller context structure
@@ -730,6 +784,7 @@ static void dwc3_otg_sm_work(struct work_struct *w)
 int dwc3_otg_init(struct dwc3 *dwc)
 {
 	struct dwc3_otg *dotg;
+	int pre_cpu_version = 0, pre_pmic_version = 0, stable_count = 0, ret = 0;
 
 	dev_dbg(dwc->dev, "dwc3_otg_init\n");
 
@@ -753,18 +808,38 @@ int dwc3_otg_init(struct dwc3 *dwc)
 	dotg->otg.set_peripheral = dwc3_otg_set_peripheral;
 	dotg->otg.phy->set_suspend = dwc3_otg_set_suspend;
 	dotg->otg.phy->state = OTG_STATE_UNDEFINED;
+	dotg->notify_usb_disabled = dwc3_otg_notify_usb_disabled;
+
 	dotg->regs = dwc->regs;
 
 	/* This reference is used by dwc3 modules for checking otg existance */
 	dwc->dotg = dotg;
 	dotg->dwc = dwc;
 	dotg->otg.phy->dev = dwc->dev;
+	the_dwc3_otg = dotg;
 
 	init_completion(&dotg->dwc3_xcvr_vbus_init);
 	INIT_DELAYED_WORK(&dotg->sm_work, dwc3_otg_sm_work);
+	INIT_DELAYED_WORK(&dotg->unknown_charger_notify_work, dwc3_unknown_charger_notify_work);
+	INIT_WORK(&dotg->usb_disable_work, usb_disable_work);
 
 	dbg_event(0xFF, "OTGInit get", 0);
 	pm_runtime_get(dwc->dev);
+
+	while (stable_count++ < CHIP_VERSION_RETRY) {
+		ret = htc_print_cpu_version();
+		if (ret != pre_cpu_version) {
+			pre_cpu_version = ret;
+			stable_count = 0;
+		}
+		ret = htc_print_pmic_version();
+		if (ret != pre_pmic_version) {
+			pre_pmic_version = ret;
+			stable_count = 0;
+		}
+	}
+	dotg->is_v1_pmic = (pre_pmic_version == 1 ? true : false);
+	dotg->is_v1_cpu = (pre_cpu_version == 1 ? true : false);
 
 	return 0;
 }

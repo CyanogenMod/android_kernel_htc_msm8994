@@ -3,6 +3,10 @@
 #include <asm/asm-offsets.h>
 #include <asm/assembler.h>
 
+#ifdef CONFIG_HTC_DEBUG_FOOTPRINT
+#include <htc_mnemosyne/htc_footprint.h>
+#endif
+
 	.text
 /*
  * Implementation of MPIDR_EL1 hash algorithm through shifting
@@ -123,6 +127,36 @@ ENTRY(cpu_resume)
 #else
 	mov	x7, xzr
 #endif
+
+#ifdef CONFIG_HTC_DEBUG_FOOTPRINT
+	MPIDR2INDEX x0, x1
+
+	VIRT2PHYS x1, mnemosyne_phys, cpu_resume, x2
+	ldr	x1, [x1]
+
+	cmp	x1, #0
+	beq	1f							/* if base is NULL, skip it. */
+
+	ldr	x2, =mnemosyne_kernel_exit_counter_from_cpu		/* Get the offset of an element */
+	add	x3, x1, x2						/* Get the address of an element */
+	add	x3, x3, x0, LSL #MNEMOSYNE_ELEMENT_SIZE_BIT_SHIFT	/* calculate data offset with cpu index first. */
+
+	ldr	x2, [x3]
+	add	x2, x2, #1
+	str	x2, [x3]
+	dsb	sy
+
+	ldr	x2, =mnemosyne_kernel_footprint_cpu			/* Get the offset of an element */
+	add	x3, x1, x2						/* Get the address of an element */
+	add	x3, x3, x0, LSL #MNEMOSYNE_ELEMENT_SIZE_BIT_SHIFT	/* calculate data offset with cpu index first. */
+
+	mov	x2, #4
+	strb	w2, [x3] 						/* write footprint 4 */
+	dsb	sy
+
+	1:
+#endif
+
 	adrp	x0, sleep_save_sp
 	add	x0, x0, #:lo12:sleep_save_sp
 	ldr	x0, [x0, #SLEEP_SAVE_SP_PHYS]

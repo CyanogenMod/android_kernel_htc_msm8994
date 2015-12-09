@@ -236,6 +236,7 @@ int kgsl_add_fence_event(struct kgsl_device *device,
 	return 0;
 
 unlock:
+	kgsl_context_put(context);
 	mutex_unlock(&device->mutex);
 
 out:
@@ -245,7 +246,6 @@ out:
 	if (fence)
 		sync_fence_put(fence);
 
-	kgsl_context_put(context);
 	return ret;
 }
 

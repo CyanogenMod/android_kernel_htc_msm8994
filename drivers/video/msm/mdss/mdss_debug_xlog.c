@@ -373,6 +373,8 @@ static void mdss_xlog_dump_array(struct mdss_debug_base *blk_arr[],
 				mdss_dbg_xlog.enable_reg_dump);
 	}
 
+	mdss_dump_debug_bus();
+
 	mdss_xlog_dump_all();
 
 	if (dead && mdss_dbg_xlog.panic_on_err)
@@ -429,6 +431,7 @@ void mdss_xlog_tout_handler_default(bool queue, const char *name, ...)
 		/* schedule work to dump later */
 		mdss_dbg_xlog.work_panic = dead;
 		schedule_work(&mdss_dbg_xlog.xlog_dump_work);
+		flush_work(&mdss_dbg_xlog.xlog_dump_work);
 	} else {
 		mdss_xlog_dump_array(blk_arr, blk_len, dead, name);
 	}

@@ -867,9 +867,13 @@ periph_interrupt(struct spmi_pmic_arb_dev *pmic_arb, u8 apid, bool show)
 				.per = pid,
 				.irq = i,
 			};
-			if (show)
+			if (show) {
 				qpnpint_show_irq(&pmic_arb->controller,
 								&irq_spec);
+#ifdef CONFIG_HTC_POWER_DEBUG
+				printk("[WAKEUP] Resume caused by pmic-0x%x 0x%x 0x%x\n", sid, pid, i);
+#endif
+			}
 			else
 				qpnpint_handle_irq(&pmic_arb->controller,
 								&irq_spec);
@@ -971,7 +975,7 @@ static const struct file_operations pmic_arb_dfs_fops = {
 	.open		= pmic_arb_mapping_data_open,
 	.read		= seq_read,
 	.llseek		= seq_lseek,
-	.release	= seq_release,
+	.release	= single_release,
 };
 
 /* mask interrupts that are stack at boot time */

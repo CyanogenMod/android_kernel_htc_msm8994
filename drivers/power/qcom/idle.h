@@ -19,6 +19,9 @@
 
 #ifndef __ASSEMBLY__
 #if defined(CONFIG_CPU_V7) || defined(CONFIG_ARM64)
+#ifdef CONFIG_HTC_DEBUG_FOOTPRINT$
+void get_pm_boot_vector_symbol_address(unsigned *addr);
+#endif
 extern unsigned long msm_pm_boot_vector[MAX_NUM_CLUSTER * MAX_CPUS_PER_CLUSTER];
 void msm_pm_boot_entry(void);
 #else

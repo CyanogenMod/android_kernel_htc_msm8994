@@ -324,12 +324,14 @@ int clk_prepare(struct clk *clk)
 	if (clk->prepare_count == 0) {
 		parent = clk->parent;
 
-		ret = clk_prepare(parent);
-		if (ret)
-			goto out;
-		ret = clk_prepare(clk->depends);
-		if (ret)
-			goto err_prepare_depends;
+		if (!(clk->flags&CLKFLAG_IGNORE)) {
+			ret = clk_prepare(parent);
+			if (ret)
+				goto out;
+			ret = clk_prepare(clk->depends);
+			if (ret)
+				goto err_prepare_depends;
+		}
 
 		ret = vote_rate_vdd(clk, clk->rate);
 		if (ret)
@@ -375,12 +377,14 @@ int clk_enable(struct clk *clk)
 	if (clk->count == 0) {
 		parent = clk->parent;
 
-		ret = clk_enable(parent);
-		if (ret)
-			goto err_enable_parent;
-		ret = clk_enable(clk->depends);
-		if (ret)
-			goto err_enable_depends;
+		if (!(clk->flags&CLKFLAG_IGNORE)) {
+			ret = clk_enable(parent);
+			if (ret)
+				goto err_enable_parent;
+			ret = clk_enable(clk->depends);
+			if (ret)
+				goto err_enable_depends;
+		}
 
 		trace_clock_enable(name, 1, smp_processor_id());
 		if (clk->ops->enable)
@@ -883,9 +887,10 @@ static int __handoff_clk(struct clk *clk)
 		return -EPROBE_DEFER;
 
 	/* Handoff any 'depends' clock first. */
-	rc = __handoff_clk(clk->depends);
-	if (rc)
-		goto err;
+	if (!(clk->flags&CLKFLAG_IGNORE)) {
+		rc = __handoff_clk(clk->depends);
+		if (rc)
+			goto err;
 
 	/*
 	 * Handoff functions for the parent must be called before the
@@ -893,22 +898,23 @@ static int __handoff_clk(struct clk *clk)
 	 * knowing their rate and state (on/off), it's impossible to figure
 	 * out the rate and state of the children.
 	 */
-	if (clk->ops->get_parent)
+		if (clk->ops->get_parent)
 		clk->parent = clk->ops->get_parent(clk);
 
-	if (IS_ERR(clk->parent)) {
-		rc = PTR_ERR(clk->parent);
-		goto err;
-	}
+		if (IS_ERR(clk->parent)) {
+			rc = PTR_ERR(clk->parent);
+			goto err;
+		}
 
-	rc = __handoff_clk(clk->parent);
-	if (rc)
-		goto err;
-
-	for (i = 0; i < clk->num_parents; i++) {
-		rc = __handoff_clk(clk->parents[i].src);
+		rc = __handoff_clk(clk->parent);
 		if (rc)
 			goto err;
+
+		for (i = 0; i < clk->num_parents; i++) {
+			rc = __handoff_clk(clk->parents[i].src);
+			if (rc)
+				goto err;
+		}
 	}
 
 	if (clk->ops->handoff)
@@ -922,13 +928,15 @@ static int __handoff_clk(struct clk *clk)
 			goto err;
 		}
 
-		rc = clk_prepare_enable(clk->parent);
-		if (rc)
-			goto err;
+		if (!(clk->flags&CLKFLAG_IGNORE)) {
+			rc = clk_prepare_enable(clk->parent);
+			if (rc)
+				goto err;
 
-		rc = clk_prepare_enable(clk->depends);
-		if (rc)
-			goto err_depends;
+			rc = clk_prepare_enable(clk->depends);
+			if (rc)
+				goto err_depends;
+		}
 
 		rc = vote_rate_vdd(clk, clk->rate);
 		WARN(rc, "%s unable to vote for voltage!\n", clk->dbg_name);
@@ -1009,6 +1017,9 @@ int msm_clock_register(struct clk_lookup *table, size_t size)
 	/* maintain backwards compatibility */
 	if (table[0].con_id || table[0].dev_id)
 		clkdev_add_table(table, size);
+#ifdef CONFIG_HTC_POWER_DEBUG
+	htc_clock_status_debug_init(table, size);
+#endif
 
 	do {
 		found_more_clks = false;
@@ -1089,6 +1100,10 @@ EXPORT_SYMBOL(of_msm_clock_register);
  */
 int __init msm_clock_init(struct clock_init_data *data)
 {
+#ifdef CONFIG_HTC_POWER_DEBUG
+	struct clk_lookup *clock_tbl;
+	size_t num_clocks;
+#endif
 	if (!data)
 		return -EINVAL;
 
@@ -1104,7 +1119,9 @@ int __init msm_clock_init(struct clock_init_data *data)
 
 	if (data->post_init)
 		data->post_init();
-
+#ifdef CONFIG_HTC_POWER_DEBUG
+	clock_blocked_register(clock_tbl, num_clocks);
+#endif
 	return 0;
 }
 

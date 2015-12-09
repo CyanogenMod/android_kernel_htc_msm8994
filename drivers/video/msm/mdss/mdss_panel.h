@@ -449,6 +449,24 @@ struct mdss_panel_info {
 	struct lvds_panel_info lvds;
 	struct edp_panel_info edp;
 
+	
+	uint8_t htc_panel_id;
+	int camera_blk;
+	int camera_dua_blk;
+	int first_power_on;
+	u32 mdss_pp_hue;
+	u32 skip_frame;
+
+	uint32_t pcc_r;
+	uint32_t pcc_g;
+	uint32_t pcc_b;
+
+	int max_brt;
+	int act_max_brt;
+	bool act_brt;
+	bool even_roi;
+	bool skip_first_pinctl;
+
 	/* debugfs structure for the panel */
 	struct mdss_panel_debugfs_info *debugfs_info;
 };

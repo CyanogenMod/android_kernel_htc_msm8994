@@ -397,6 +397,10 @@ static void __init msm_platform_smp_prepare_cpus(unsigned int max_cpus)
 	int cpu, map;
 	unsigned int flags = 0;
 
+#ifdef CONFIG_HTC_DEBUG_FOOTPRINT
+	init_cpu_debug_counter_for_cold_boot();
+#endif
+
 	if (scm_is_mc_boot_available())
 		return msm_platform_smp_prepare_cpus_mc(max_cpus);
 

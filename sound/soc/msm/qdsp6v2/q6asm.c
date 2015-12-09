@@ -41,6 +41,11 @@
 #include <sound/audio_cal_utils.h>
 #include <sound/msm-dts-eagle.h>
 
+#undef pr_info
+#undef pr_err
+#define pr_info(fmt, ...) pr_aud_info(fmt, ##__VA_ARGS__)
+#define pr_err(fmt, ...) pr_aud_err(fmt, ##__VA_ARGS__)
+
 #define TRUE        0x01
 #define FALSE       0x00
 
@@ -120,6 +125,55 @@ static int in_cont_index;
 static int out_cold_index;
 static char *out_buffer;
 static char *in_buffer;
+
+int q6asm_enable_effect(struct audio_client *ac, uint32_t module_id,
+			uint32_t param_id, uint32_t payload_size,
+			void *payload)
+{
+	int sz = sizeof(struct asm_params) + payload_size, rc = 0;
+	u8 *q6_cmd = (u8*)kzalloc(sz,GFP_KERNEL);
+	struct asm_params *pasm = (struct asm_params*)q6_cmd;
+
+	if (!q6_cmd) {
+		pr_err("%s, q6_cmd memory alloc failed", __func__);
+		return -ENOMEM;
+	}
+
+	q6asm_add_hdr(ac, &pasm->hdr, sz, TRUE);
+
+	pasm->hdr.opcode = ASM_STREAM_CMD_SET_PP_PARAMS_V2;
+	pasm->param.data_payload_addr_lsw = 0;
+	pasm->param.data_payload_addr_msw = 0;
+	pasm->param.mem_map_handle = 0;
+	pasm->param.data_payload_size = sz -
+				sizeof(pasm->hdr) - sizeof(pasm->param);
+	pasm->data.module_id = module_id;
+	pasm->data.param_id = param_id;
+	pasm->data.param_size = payload_size;
+
+	memcpy(q6_cmd + sizeof(struct asm_params),payload,payload_size);
+
+	rc = apr_send_pkt(ac->apr, (uint32_t *)q6_cmd);
+	if (rc < 0) {
+		pr_err("%s: Enable Q6 effect fail\n", __func__);
+		rc = -EINVAL;
+		goto fail_cmd;
+	}
+
+	rc = wait_event_timeout(ac->cmd_wait,
+			(atomic_read(&ac->cmd_state) == 0), 5*HZ);
+	if (!rc) {
+		pr_err("%s: timeout in sending command to aprn", __func__);
+		rc = -EINVAL;
+		goto fail_cmd;
+	}
+
+	rc = 0;
+fail_cmd:
+	if(q6_cmd)
+		kfree(q6_cmd);
+	return rc;
+}
 
 
 static int audio_output_latency_dbgfs_open(struct inode *inode,
@@ -816,7 +870,7 @@ int q6asm_audio_client_buf_free_contiguous(unsigned int dir,
 	struct audio_port_data *port;
 	int cnt = 0;
 	int rc = 0;
-	pr_debug("%s: Session id %d\n", __func__, ac->session);
+	pr_info("%s: Session id %d\n", __func__, ac->session);
 	mutex_lock(&ac->cmd_lock);
 	port = &ac->port[dir];
 	if (!port->buf) {
@@ -1172,7 +1226,7 @@ int q6asm_audio_client_buf_alloc_contiguous(unsigned int dir,
 		return -EINVAL;
 	}
 
-	pr_debug("%s: session[%d]bufsz[%d]bufcnt[%d]\n",
+	pr_info("%s: session[%d]bufsz[%d]bufcnt[%d]\n",
 			__func__, ac->session,
 			bufsz, bufcnt);
 
@@ -2210,6 +2264,9 @@ static int __q6asm_open_write(struct audio_client *ac, uint32_t format,
 	dev_vdbg(ac->dev, "%s: session[%d] wr_format[0x%x]\n",
 		__func__, ac->session, format);
 
+	pr_info("%s: session[%d] wr_format[0x%x] bits_per_sample %d stream_id %d, ac->io_mode=%d",
+	__func__, ac->session, format,bits_per_sample,stream_id, ac->io_mode);
+
 	q6asm_stream_add_hdr(ac, &open.hdr, sizeof(open), TRUE, stream_id);
 	atomic_set(&ac->cmd_state, 1);
 	/*
@@ -2240,10 +2297,17 @@ static int __q6asm_open_write(struct audio_client *ac, uint32_t format,
 	open.bits_per_sample = bits_per_sample;
 
 	open.postprocopo_id = q6asm_get_asm_topology();
+
 	if ((ac->perf_mode != LEGACY_PCM_MODE) &&
 	    ((open.postprocopo_id == ASM_STREAM_POSTPROC_TOPO_ID_DTS_HPX) ||
 	     (open.postprocopo_id == ASM_STREAM_POSTPROC_TOPO_ID_HPX_PLUS)))
 		open.postprocopo_id = ASM_STREAM_POSTPROCOPO_ID_NONE;
+
+	if ((ac->io_mode & COMPRESSED_IO) || (ac->io_mode & COMPRESSED_STREAM_IO)) {
+		open.postprocopo_id = HTC_POPP_TOPOLOGY;
+	}
+
+	pr_info("%s: session %d topology 0x%x\n",__func__,ac->session,open.postprocopo_id);
 
 	/* For DTS EAGLE only, force 24 bit */
 	if ((open.postprocopo_id == ASM_STREAM_POSTPROC_TOPO_ID_DTS_HPX) ||
@@ -3834,6 +3898,10 @@ int q6asm_memory_map(struct audio_client *ac, phys_addr_t buf_add, int dir,
 		pr_err("%s: timeout. waited for memory_map\n", __func__);
 		rc = -EINVAL;
 		kfree(buffer_node);
+#ifdef CONFIG_HTC_DEBUG_DSP
+		pr_err("%s: audio trigger ramdump\n", __func__);
+		BUG();
+#endif
 		goto fail_cmd;
 	}
 	if (atomic_read(&ac->mem_state) < 0) {
@@ -3841,6 +3909,10 @@ int q6asm_memory_map(struct audio_client *ac, phys_addr_t buf_add, int dir,
 			__func__, atomic_read(&ac->mem_state));
 		rc = -EINVAL;
 		kfree(buffer_node);
+#ifdef CONFIG_HTC_DEBUG_DSP
+		pr_err("%s: audio trigger ramdump\n", __func__);
+		BUG();
+#endif
 		goto fail_cmd;
 	}
 	buffer_node->buf_phys_addr = buf_add;
@@ -3909,12 +3981,20 @@ int q6asm_memory_unmap(struct audio_client *ac, phys_addr_t buf_add, int dir)
 		pr_err("%s: timeout. waited for memory_unmap of handle 0x%x\n",
 			__func__, mem_unmap.mem_map_handle);
 		rc = -ETIMEDOUT;
+#ifdef CONFIG_HTC_DEBUG_DSP
+		pr_err("%s: audio trigger ramdump\n", __func__);
+		BUG();
+#endif
 		goto fail_cmd;
 	} else if (atomic_read(&ac->mem_state) < 0) {
 		pr_err("%s DSP returned error %d map handle 0x%x\n",
 			__func__, atomic_read(&ac->mem_state),
 			mem_unmap.mem_map_handle);
 		rc = -EINVAL;
+#ifdef CONFIG_HTC_DEBUG_DSP
+		pr_err("%s: audio trigger ramdump\n", __func__);
+		BUG();
+#endif
 		goto fail_cmd;
 	} else if (atomic_read(&ac->unmap_cb_success) == 0) {
 		pr_err("%s: Error in mem unmap callback of handle 0x%x\n",
@@ -5461,17 +5541,17 @@ static int __q6asm_cmd(struct audio_client *ac, int cmd, uint32_t stream_id)
 			__func__, hdr.token, stream_id, ac->session);
 	switch (cmd) {
 	case CMD_PAUSE:
-		pr_debug("%s: CMD_PAUSE\n", __func__);
+		pr_info("%s:q6asm CMD_PAUSE session %d\n", __func__,ac->session);
 		hdr.opcode = ASM_SESSION_CMD_PAUSE;
 		state = &ac->cmd_state;
 		break;
 	case CMD_SUSPEND:
-		pr_debug("%s: CMD_SUSPEND\n", __func__);
+		pr_info("%s:q6asm CMD_SUSPEND session %d\n", __func__,ac->session);
 		hdr.opcode = ASM_SESSION_CMD_SUSPEND;
 		state = &ac->cmd_state;
 		break;
 	case CMD_FLUSH:
-		pr_debug("%s: CMD_FLUSH\n", __func__);
+		pr_info("%s:q6asm CMD_FLUSH session %d\n", __func__,ac->session);
 		hdr.opcode = ASM_STREAM_CMD_FLUSH;
 		state = &ac->cmd_state;
 		break;
@@ -5481,13 +5561,13 @@ static int __q6asm_cmd(struct audio_client *ac, int cmd, uint32_t stream_id)
 		state = &ac->cmd_state;
 		break;
 	case CMD_EOS:
-		pr_debug("%s: CMD_EOS\n", __func__);
+		pr_info("%s:q6asm session %d send EOS \n", __func__,ac->session);
 		hdr.opcode = ASM_DATA_CMD_EOS;
 		atomic_set(&ac->cmd_state, 0);
 		state = &ac->cmd_state;
 		break;
 	case CMD_CLOSE:
-		pr_debug("%s: CMD_CLOSE\n", __func__);
+		pr_info("%s:q6asm close session %d\n", __func__,ac->session);
 		hdr.opcode = ASM_STREAM_CMD_CLOSE;
 		state = &ac->cmd_state;
 		break;
@@ -5508,6 +5588,12 @@ static int __q6asm_cmd(struct audio_client *ac, int cmd, uint32_t stream_id)
 	if (!rc) {
 		pr_err("%s: timeout. waited for response opcode[0x%x]\n",
 				__func__, hdr.opcode);
+#ifdef CONFIG_HTC_DEBUG_DSP
+		if(cmd == CMD_FLUSH) {
+			pr_err("audio trigger ramdump to keep status of flush timeout\n");
+			BUG();
+		}
+#endif
 		goto fail_cmd;
 	}
 	if (atomic_read(state) < 0) {
@@ -5696,6 +5782,55 @@ int q6asm_send_meta_data(struct audio_client *ac, uint32_t initial_samples,
 {
 	return __q6asm_send_meta_data(ac, ac->stream_id, initial_samples,
 				     trailing_samples);
+}
+
+int q6asm_stream_sample_rate_to_htc_misc_effect(struct audio_client *ac, uint32_t stream_id,
+		uint32_t module_id, uint32_t param_id, uint32_t sample_rate)
+{
+	int sz = sizeof(struct asm_params) + sizeof(uint32_t), rc = 0;
+	u8 *q6_cmd = (u8*)kzalloc(sz,GFP_KERNEL);
+	struct asm_params *pasm = (struct asm_params*)q6_cmd;
+
+	if (!q6_cmd) {
+		pr_err("%s, q6_cmd memory alloc failed", __func__);
+		return -ENOMEM;
+	}
+	q6asm_stream_add_hdr(ac, &pasm->hdr, sz, TRUE, stream_id);
+
+	pasm->hdr.opcode = ASM_STREAM_CMD_SET_PP_PARAMS_V2;
+	pasm->param.data_payload_addr_lsw = 0;
+	pasm->param.data_payload_addr_msw = 0;
+	pasm->param.mem_map_handle = 0;
+	pasm->param.data_payload_size = sz -
+				sizeof(pasm->hdr) - sizeof(pasm->param);
+	pasm->data.module_id = module_id;
+	pasm->data.param_id = param_id;
+	pasm->data.param_size = sizeof(uint32_t);
+
+	memcpy(q6_cmd + sizeof(struct asm_params), &sample_rate, sizeof(uint32_t));
+
+	rc = apr_send_pkt(ac->apr, (uint32_t *)q6_cmd);
+	if (rc < 0) {
+		pr_err("%s: sample_rate to HtcMiscEffect fail\n", __func__);
+		rc = -EINVAL;
+		goto fail_cmd;
+	}
+
+	rc = wait_event_timeout(ac->cmd_wait,
+			(atomic_read(&ac->cmd_state) == 0), 5*HZ);
+	if (!rc) {
+		pr_err("%s: timeout in sending command to apr", __func__);
+		rc = -EINVAL;
+		goto fail_cmd;
+	}
+
+	pr_debug("%s: send sample rate(%u) to HtcMiscEffect, rc: %d\n", __func__,
+						sample_rate, rc);
+	rc = 0;
+fail_cmd:
+	if(q6_cmd)
+		kfree(q6_cmd);
+	return rc;
 }
 
 static void q6asm_reset_buf_state(struct audio_client *ac)

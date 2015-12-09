@@ -763,44 +763,12 @@ static int tspp_get_pinctrl(struct tspp_device *device)
 	}
 	device->pinctrl.tsif0_mode2 = state;
 
-	state = pinctrl_lookup_state(pinctrl, "tsif1-mode1");
-	if (IS_ERR(state)) {
-		pr_err("%s: Unable to find state %s\n",
-			__func__, "tsif1-mode1");
-		return -EINVAL;
-	}
-	device->pinctrl.tsif1_mode1 = state;
-
-	state = pinctrl_lookup_state(pinctrl, "tsif1-mode2");
-	if (IS_ERR(state)) {
-		pr_err("%s: Unable to find state %s\n",
-			__func__, "tsif1-mode2");
-		return -EINVAL;
-	}
-	device->pinctrl.tsif1_mode2 = state;
-
-	state = pinctrl_lookup_state(pinctrl, "dual-tsif-mode1");
-	if (IS_ERR(state)) {
-		pr_err("%s: Unable to find state %s\n",
-			__func__, "dual-tsif-mode1");
-		return -EINVAL;
-	}
-	device->pinctrl.dual_mode1 = state;
-
-	state = pinctrl_lookup_state(pinctrl, "dual-tsif-mode2");
-	if (IS_ERR(state)) {
-		pr_err("%s: Unable to find state %s\n",
-			__func__, "dual-tsif-mode2");
-		return -EINVAL;
-	}
-	device->pinctrl.dual_mode2 = state;
-
+	
 	device->pinctrl.tsif0_active = false;
 	device->pinctrl.tsif1_active = false;
 
 	return 0;
 }
-
 
 /*** Clock functions ***/
 static int tspp_clock_start(struct tspp_device *device)

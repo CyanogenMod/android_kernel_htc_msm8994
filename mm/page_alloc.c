@@ -793,6 +793,7 @@ bool is_cma_pageblock(struct page *page)
 {
 	return get_pageblock_migratetype(page) == MIGRATE_CMA;
 }
+EXPORT_SYMBOL(is_cma_pageblock);
 
 /* Free whole pageblock and set it's migration type to MIGRATE_CMA. */
 void __init init_cma_reserved_pageblock(struct page *page)
@@ -1044,16 +1045,12 @@ static void change_pageblock_range(struct page *pageblock_page,
 
 /* Remove an element from the buddy allocator from the fallback list */
 static inline struct page *
-__rmqueue_fallback(struct zone *zone, int order, int start_migratetype)
+__rmqueue_fallback_order(struct zone *zone, int order, int start_migratetype, int current_order)
 {
 	struct free_area * area;
-	int current_order;
 	struct page *page;
 	int migratetype, i;
 
-	/* Find the largest possible block of pages in the other list */
-	for (current_order = MAX_ORDER-1; current_order >= order;
-						--current_order) {
 		for (i = 0;; i++) {
 			migratetype = fallbacks[start_migratetype][i];
 
@@ -1117,6 +1114,28 @@ __rmqueue_fallback(struct zone *zone, int order, int start_migratetype)
 
 			return page;
 		}
+
+	return NULL;
+}
+
+static inline struct page *
+__rmqueue_fallback(struct zone *zone, int order, int start_migratetype)
+{
+	int current_order;
+	struct page *page;
+
+	
+	for (current_order = MAX_ORDER-1; current_order >= max(PAGE_ALLOC_COSTLY_ORDER+1, order); --current_order) {
+		page = __rmqueue_fallback_order(zone, order, start_migratetype, current_order);
+		if (page)
+			return page;
+	}
+
+	
+	for (current_order = order; current_order <= PAGE_ALLOC_COSTLY_ORDER; ++current_order) {
+		page = __rmqueue_fallback_order(zone, order, start_migratetype, current_order);
+		if (page)
+			return page;
 	}
 
 	return NULL;

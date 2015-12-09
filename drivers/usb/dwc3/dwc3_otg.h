@@ -23,6 +23,7 @@
 #include "power.h"
 
 #define DWC3_IDEV_CHG_MAX 1500
+#define DWC3_IDEV_CHG_USB 500
 #define DWC3_HVDCP_CHG_MAX 1800
 
 /*
@@ -47,6 +48,7 @@ struct dwc3_otg {
 	void __iomem		*regs;
 	struct regulator	*vbus_otg;
 	struct delayed_work	sm_work;
+	struct delayed_work	unknown_charger_notify_work;
 	struct dwc3_charger	*charger;
 	struct dwc3_ext_xceiv	*ext_xceiv;
 #define ID		 0
@@ -57,6 +59,10 @@ struct dwc3_otg {
 	struct completion	dwc3_xcvr_vbus_init;
 	int			charger_retry_count;
 	int			vbus_retry_count;
+	bool			is_v1_pmic;
+	bool			is_v1_cpu;
+	struct work_struct usb_disable_work;
+	void	(*notify_usb_disabled)(void);
 };
 
 /**
@@ -87,6 +93,8 @@ struct dwc3_charger {
 	bool			charging_disabled;
 
 	bool			skip_chg_detect;
+
+	bool			usb_disable;
 
 	/* start/stop charger detection, provided by external charger module */
 	void	(*start_detection)(struct dwc3_charger *charger, bool start);

@@ -92,6 +92,7 @@ struct hdmi_tx_ctrl {
 	u32 vote_hdmi_core_on;
 	u8  timing_gen_on;
 	u8  mhl_hpd_on;
+	u8  mhl_write_burst_vic;
 
 	struct hdmi_util_ds_data ds_data;
 	struct completion hpd_int_done;

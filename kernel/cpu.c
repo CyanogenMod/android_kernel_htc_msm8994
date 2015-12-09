@@ -28,6 +28,9 @@
 /* Serializes the updates to cpu_online_mask, cpu_present_mask */
 static DEFINE_MUTEX(cpu_add_remove_lock);
 
+extern int have_cpu_mask;
+extern struct cpumask cpu_mask;
+
 /*
  * The following two APIs (cpu_maps_update_begin/done) must be used when
  * attempting to serialize the updates to cpu_online_mask & cpu_present_mask.
@@ -316,7 +319,7 @@ static int __ref _cpu_down(unsigned int cpu, int tasks_frozen)
 		return -EBUSY;
 
 	if (!cpu_online(cpu))
-		return -EINVAL;
+		return 0;
 
 	cpu_hotplug_begin();
 
@@ -395,7 +398,12 @@ static int __cpuinit _cpu_up(unsigned int cpu, int tasks_frozen)
 
 	cpu_hotplug_begin();
 
-	if (cpu_online(cpu) || !cpu_present(cpu)) {
+	if (cpu_online(cpu)) {
+		ret = 0;
+		goto out;
+	}
+
+	if (!cpu_present(cpu)) {
 		ret = -EINVAL;
 		goto out;
 	}
@@ -448,6 +456,9 @@ int __cpuinit cpu_up(unsigned int cpu)
 	int nid;
 	pg_data_t	*pgdat;
 #endif
+
+	if(unlikely(have_cpu_mask) && cpumask_test_cpu(cpu, &cpu_mask))
+		return -EACCES;
 
 	if (!cpu_possible(cpu)) {
 		printk(KERN_ERR "can't online cpu %d because it is not "

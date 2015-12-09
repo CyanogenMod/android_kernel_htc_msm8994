@@ -1321,6 +1321,12 @@ struct ext4_sb_info {
 	struct list_head s_es_lru;
 	struct percpu_counter s_extent_cache_cnt;
 	spinlock_t s_es_lru_lock ____cacheline_aligned_in_smp;
+
+#ifdef CONFIG_EXT4_E2FSCK_RECOVER
+       
+       struct work_struct reboot_work;
+       struct workqueue_struct *recover_wq;
+#endif
 };
 
 static inline struct ext4_sb_info *EXT4_SB(struct super_block *sb)

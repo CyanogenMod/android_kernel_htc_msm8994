@@ -516,6 +516,16 @@ config BATTERY_GOLDFISH
 	  Say Y to enable support for the battery and AC power in the
 	  Goldfish emulator.
 
+config HTC_BATT_CORE
+	depends on POWER_SUPPLY
+	default n
+	bool "HTC battery core driver"
+
+config HTC_BATT_8960
+	depends on HTC_BATT_CORE
+	default n
+	bool "HTC battery driver for 8960"
+
 config QPNP_VM_BMS
 	tristate "QPNP Voltage-Mode Battery Monitoring System driver"
 	depends on SPMI

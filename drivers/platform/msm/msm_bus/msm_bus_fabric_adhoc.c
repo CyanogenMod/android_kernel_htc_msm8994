@@ -268,6 +268,34 @@ exit_flush_bw_data:
 
 }
 
+#ifdef CONFIG_HTC_DEBUG_MSMBUS
+#include <linux/hrtimer.h>
+struct htc_noc_data_type {
+	unsigned long vote;
+	unsigned int dirty;
+};
+
+static char htc_noc_log[HTC_MAX_NOC_LOG_BUF];
+unsigned int htc_noc_log_idx;
+
+
+static struct htc_noc_data_type htc_noc[HTC_MAX_NOC_NOC];
+char htc_noc_client_name[HTC_MAX_NOC_CLIENT][HTC_MAX_NOC_NAME];
+static char *htc_noc_str[HTC_MAX_NOC_NOC] = {
+	"BIMC",
+	"SNOC",
+	"MMSSNOC",
+	"reserved",
+	"PNOC/PCNOC",
+	"CNOC",
+	"ovirt" };
+
+static void log_htc_noc_log(char *log) {
+	if((htc_noc_log_idx + HTC_MAX_NOC_LOG_LENGTH) > HTC_MAX_NOC_LOG_BUF) htc_noc_log_idx = 0;
+	htc_noc_log_idx += scnprintf(htc_noc_log + htc_noc_log_idx, HTC_MAX_NOC_LOG_BUF - htc_noc_log_idx, "|%s|\n", log);
+}
+#endif
+
 static int flush_clk_data(struct device *node_device, int ctx)
 {
 	struct msm_bus_node_device_type *node;
@@ -328,6 +356,19 @@ static int flush_clk_data(struct device *node_device, int ctx)
 		MSM_BUS_DBG("%s: Updated %d clk to %llu", __func__,
 				node->node_info->id, nodeclk->rate);
 
+#ifdef CONFIG_HTC_DEBUG_MSMBUS
+		if(node->node_info->is_fab_dev) {
+			int noc_idx = node->node_info->id >> 10;
+
+			if(noc_idx >= HTC_MAX_NOC_NOC)
+				goto exit_flush_clk_data;
+
+			if(htc_noc[noc_idx].vote != rounded_rate) {
+				htc_noc[noc_idx].vote = rounded_rate;
+				htc_noc[noc_idx].dirty = 1;
+			}
+		}
+#endif
 	}
 exit_flush_clk_data:
 	/* Reset the aggregated clock rate for fab devices*/
@@ -339,7 +380,11 @@ exit_flush_clk_data:
 	return ret;
 }
 
+#ifdef CONFIG_HTC_DEBUG_MSMBUS
+int msm_bus_commit_data(int *dirty_nodes, int ctx, int num_dirty, int cl)
+#else
 int msm_bus_commit_data(int *dirty_nodes, int ctx, int num_dirty)
+#endif
 {
 	int ret = 0;
 	int i = 0;
@@ -369,6 +414,31 @@ int msm_bus_commit_data(int *dirty_nodes, int ctx, int num_dirty)
 			MSM_BUS_ERR("%s: Error flushing clk data for node %d",
 					__func__, dirty_nodes[i]);
 	}
+
+#ifdef CONFIG_HTC_DEBUG_MSMBUS
+	{
+		bool __dirty = false;
+		char buf[HTC_MAX_NOC_LOG_LENGTH];
+		int idx = 0;
+		struct timespec ts;
+
+		for(i = 0; i < HTC_MAX_NOC_NOC; i++) __dirty |= htc_noc[i].dirty;
+
+		if(__dirty) {
+			ts = ktime_to_timespec(ktime_get());
+			idx += scnprintf(buf + idx, HTC_MAX_NOC_LOG_LENGTH - idx, "%d.%09d ", (int)ts.tv_sec, (int)ts.tv_nsec);
+			idx += scnprintf(buf + idx, HTC_MAX_NOC_LOG_LENGTH - idx, "[MSMBUS] %s: ", htc_noc_client_name[cl]);
+			for(i = 0; i < HTC_MAX_NOC_NOC; i++) {
+				if(htc_noc[i].dirty) {
+					idx += scnprintf(buf + idx, HTC_MAX_NOC_LOG_LENGTH - idx, "%s=>%lu ", htc_noc_str[i], htc_noc[i].vote);
+					htc_noc[i].dirty = 0;
+				}
+			}
+			log_htc_noc_log(buf);
+		}
+	}
+#endif
+
 	kfree(dirty_nodes);
 	/* Aggregate the bus clocks */
 	bus_for_each_dev(&msm_bus_type, NULL, (void *)&ctx,
@@ -1207,6 +1277,13 @@ static int msm_bus_device_probe(struct platform_device *pdev)
 
 	/* Register the arb layer ops */
 	msm_bus_arb_setops_adhoc(&arb_ops);
+
+#ifdef CONFIG_HTC_DEBUG_MSMBUS
+	memset(htc_noc, 0, sizeof(htc_noc));
+	memset(htc_noc_client_name, 0, sizeof(htc_noc_client_name));
+	memset(htc_noc_log, 0, sizeof(htc_noc_log));
+	htc_noc_log_idx = 0;
+#endif
 	bus_for_each_dev(&msm_bus_type, NULL, NULL, msm_bus_node_debug);
 
 	devm_kfree(&pdev->dev, pdata->info);

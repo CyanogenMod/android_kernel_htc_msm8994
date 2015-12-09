@@ -1497,9 +1497,8 @@ struct common_data {
 	uint32_t default_vol_step_val;
 	uint32_t default_vol_ramp_duration_ms;
 	uint32_t default_mute_ramp_duration_ms;
-	bool ec_ref_ext;
-	uint16_t ec_port_id;
-
+	bool ec_ref_ext[MAX_VOC_SESSIONS];
+	uint16_t ec_port_id[MAX_VOC_SESSIONS];
 	/* APR to MVM in the Q6 */
 	void *apr_q6_mvm;
 	/* APR to CVS in the Q6 */
@@ -1659,7 +1658,7 @@ uint32_t voc_get_session_id(char *name);
 int voc_start_playback(uint32_t set, uint16_t port_id);
 int voc_start_record(uint32_t port_id, uint32_t set, uint32_t session_id);
 int voice_get_idx_for_session(u32 session_id);
-int voc_set_ext_ec_ref(uint16_t port_id, bool state);
+int voc_set_ext_ec_ref(uint16_t port_id, bool state, int voc_idx); 
 int voc_update_amr_vocoder_rate(uint32_t session_id);
 int voc_disable_device(uint32_t session_id);
 int voc_enable_device(uint32_t session_id);

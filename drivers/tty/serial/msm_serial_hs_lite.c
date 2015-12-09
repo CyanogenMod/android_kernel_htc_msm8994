@@ -52,6 +52,7 @@
 #include <linux/platform_data/qcom-serial_hs_lite.h>
 #include <linux/msm-bus.h>
 #include "msm_serial_hs_hwreg.h"
+#include <linux/htc_flags.h>
 
 /*
  * There are 3 different kind of UART Core available on MSM.
@@ -95,6 +96,8 @@ struct msm_hsl_port {
 	/* BLSP UART required BUS Scaling data */
 	struct msm_bus_scale_pdata *bus_scale_table;
 };
+
+static int msm_serial_hsl_enable;
 
 #define UARTDM_VERSION_11_13	0
 #define UARTDM_VERSION_14	1
@@ -1963,6 +1966,13 @@ static int __init msm_serial_hsl_init(void)
 {
 	int ret;
 
+	
+	if (get_kernel_flag() & KERNEL_FLAG_SERIAL_HSL_ENABLE)
+		msm_serial_hsl_enable = 1;
+
+	if (!msm_serial_hsl_enable)
+		msm_hsl_uart_driver.cons = NULL;
+
 	ret = uart_register_driver(&msm_hsl_uart_driver);
 	if (unlikely(ret))
 		return ret;
@@ -1984,7 +1994,8 @@ static void __exit msm_serial_hsl_exit(void)
 {
 	debugfs_remove_recursive(debug_base);
 #ifdef CONFIG_SERIAL_MSM_HSL_CONSOLE
-	unregister_console(&msm_hsl_console);
+	if (msm_serial_hsl_enable)
+		unregister_console(&msm_hsl_console);
 #endif
 	platform_driver_unregister(&msm_hsl_platform_driver);
 	uart_unregister_driver(&msm_hsl_uart_driver);

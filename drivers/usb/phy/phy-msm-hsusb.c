@@ -135,6 +135,7 @@ struct msm_hsphy {
 	void __iomem		*tcsr;
 	void __iomem		*csr;
 	int			hsphy_init_seq;
+	int 			hsphy_host_init_seq;
 	bool			set_pllbtune;
 	u32			core_ver;
 
@@ -179,6 +180,7 @@ static int msm_hsusb_config_vdd(struct msm_hsphy *phy, int high)
 static int msm_hsusb_ldo_enable(struct msm_hsphy *phy, int on)
 {
 	int rc = 0;
+	static int L24_keep = 0;
 
 	dev_dbg(phy->phy.dev, "reg (%s)\n", on ? "HPM" : "LPM");
 
@@ -217,25 +219,19 @@ static int msm_hsusb_ldo_enable(struct msm_hsphy *phy, int on)
 		dev_err(phy->phy.dev, "unable to set voltage for vdda33\n");
 		goto put_vdda33_lpm;
 	}
-
-	rc = regulator_enable(phy->vdda33);
-	if (rc) {
-		dev_err(phy->phy.dev, "Unable to enable vdda33\n");
-		goto unset_vdda33;
+	if (L24_keep == 0) {
+		L24_keep = 1;
+		rc = regulator_enable(phy->vdda33);
+		if (rc) {
+			dev_err(phy->phy.dev, "Unable to enable vdda33\n");
+			goto unset_vdda33;
+		}
 	}
 
 	return 0;
 
 disable_regulators:
-	rc = regulator_disable(phy->vdda33);
-	if (rc)
-		dev_err(phy->phy.dev, "Unable to disable vdda33\n");
-
 unset_vdda33:
-	rc = regulator_set_voltage(phy->vdda33, 0, USB_HSPHY_3P3_VOL_MAX);
-	if (rc)
-		dev_err(phy->phy.dev, "unable to set voltage for vdda33\n");
-
 put_vdda33_lpm:
 	rc = regulator_set_optimum_mode(phy->vdda33, 0);
 	if (rc < 0)
@@ -365,12 +361,22 @@ static int msm_hsphy_init(struct usb_phy *uphy)
 	 * VBUS valid threshold, disconnect valid threshold, DC voltage level,
 	 * preempasis and rise/fall time.
 	 */
-	if (override_phy_init)
+	if (override_phy_init) {
 		phy->hsphy_init_seq = override_phy_init;
-	if (phy->hsphy_init_seq)
+		phy->hsphy_host_init_seq = override_phy_init;
+	}
+	if (!uphy->is_in_host && phy->hsphy_init_seq) {
+		printk("[USB] peripheral mode phy setting\n");
 		msm_usb_write_readback(phy->base,
 					PARAMETER_OVERRIDE_X_REG(0), 0x03FFFFFF,
 					phy->hsphy_init_seq & 0x03FFFFFF);
+	}
+	if (uphy->is_in_host && phy->hsphy_host_init_seq) {
+		printk("[USB] host mode phy setting\n");
+		msm_usb_write_readback(phy->base,
+					PARAMETER_OVERRIDE_X_REG(0), 0x03FFFFFF,
+					phy->hsphy_host_init_seq & 0x03FFFFFF);
+	}
 
 	return 0;
 }
@@ -611,13 +617,24 @@ static int msm_hsphy_set_suspend(struct usb_phy *uphy, int suspend)
 		 * parameters like VBUS valid threshold, disconnect valid
 		 * threshold, DC voltage level,preempasis and rise/fall time
 		 */
-		if (override_phy_init)
+		if (override_phy_init) {
 			phy->hsphy_init_seq = override_phy_init;
-		if (phy->hsphy_init_seq)
+			phy->hsphy_host_init_seq = override_phy_init;
+		}
+		if (!uphy->is_in_host && phy->hsphy_init_seq) {
+			printk("[USB] peripheral mode phy setting\n");
 			msm_usb_write_readback(phy->base,
 					PARAMETER_OVERRIDE_X_REG(0),
 					0x03FFFFFF,
 					phy->hsphy_init_seq & 0x03FFFFFF);
+		}
+		if (uphy->is_in_host && phy->hsphy_host_init_seq) {
+			printk("[USB] host mode phy setting\n");
+			msm_usb_write_readback(phy->base,
+					PARAMETER_OVERRIDE_X_REG(0),
+					0x03FFFFFF,
+					phy->hsphy_host_init_seq & 0x03FFFFFF);
+		}
 	}
 
 	phy->suspended = !!suspend; /* double-NOT coerces to bool value */
@@ -844,6 +861,12 @@ static int msm_hsphy_probe(struct platform_device *pdev)
 	else if (!phy->hsphy_init_seq)
 		dev_warn(dev, "hsphy init seq cannot be 0. Using POR value\n");
 
+	if (of_property_read_u32(dev->of_node, "qcom,hsphy-host-init",
+					&phy->hsphy_host_init_seq))
+		dev_dbg(dev, "unable to read hsphy host init seq\n");
+	else if (!phy->hsphy_host_init_seq)
+		dev_warn(dev, "hsphy host init seq cannot be 0. Using POR value\n");
+
 	if (of_property_read_u32(dev->of_node, "qcom,num-ports",
 					&phy->num_ports))
 		phy->num_ports = 1;
@@ -881,6 +904,8 @@ static int msm_hsphy_probe(struct platform_device *pdev)
 	phy->phy.reset			= msm_hsphy_reset;
 	/*FIXME: this conflicts with dwc3_otg */
 	/*phy->phy.type			= USB_PHY_TYPE_USB2; */
+
+	phy->phy.is_in_host = false;
 
 	ret = usb_add_phy_dev(&phy->phy);
 	if (ret)

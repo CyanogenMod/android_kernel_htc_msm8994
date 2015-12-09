@@ -1778,6 +1778,17 @@ static int bcl_probe(struct platform_device *pdev)
 	return 0;
 }
 
+void set_bcl_freq_limit(uint32_t freq_limit)
+{
+	uint32_t *freq_lim = NULL;
+
+	freq_lim = (gbcl->bcl_monitor_type == BCL_IBAT_MONITOR_TYPE) ?
+			&gbcl->btm_freq_max : &gbcl->bcl_p_freq_max;
+
+	if (freq_lim)
+		*freq_lim = freq_limit;
+}
+
 static int bcl_remove(struct platform_device *pdev)
 {
 	remove_bcl_sysfs(gbcl);

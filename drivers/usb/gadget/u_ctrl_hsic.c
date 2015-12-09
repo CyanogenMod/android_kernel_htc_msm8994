@@ -139,6 +139,8 @@ ghsic_send_cpkt_tomodem(u8 portno, void *buf, size_t len)
 
 	port->to_modem++;
 
+	kfree(cbuf);
+
 	return 0;
 }
 
@@ -456,6 +458,7 @@ static int gctrl_port_alloc(int portno, enum gadget_type gtype)
 	port->wq = create_singlethread_workqueue(name);
 	if (!port->wq) {
 		pr_err("%s: Unable to create workqueue:%s\n", __func__, name);
+		kfree(port);
 		return -ENOMEM;
 	}
 

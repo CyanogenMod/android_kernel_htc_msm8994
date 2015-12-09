@@ -26,6 +26,14 @@ struct address_space;
 
 #define USE_SPLIT_PTLOCKS	(NR_CPUS >= CONFIG_SPLIT_PTLOCK_CPUS)
 
+struct page_user_trace {
+	pid_t pid;
+	char comm[8];
+	pid_t tgid;
+	char tgcomm[8];
+	unsigned long entries[UL(CONFIG_HTC_DEBUG_PAGE_ENTRIES_NR)];
+};
+
 /*
  * Each physical page in the system has a struct page associated with
  * it to keep track of whatever it is we are using the page for at the
@@ -186,6 +194,11 @@ struct page {
 	gfp_t gfp_mask;
 	struct stack_trace trace;
 	unsigned long trace_entries[8];
+#endif
+
+#ifdef CONFIG_HTC_DEBUG_PAGE_USER_TRACE
+	struct page_user_trace trace_alloc;
+	struct page_user_trace trace_free;
 #endif
 }
 /*

@@ -2481,7 +2481,7 @@ static const struct file_operations allocations_show_fops = {
 	.open = ocmem_allocations_open,
 	.read = seq_read,
 	.llseek = seq_lseek,
-	.release = seq_release,
+	.release = single_release,
 };
 
 int ocmem_sched_init(struct platform_device *pdev)
