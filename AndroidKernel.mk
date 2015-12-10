@@ -76,9 +76,6 @@ KERNEL_MODULES_OUT := $(TARGET_OUT)/lib/modules
 
 TARGET_PREBUILT_KERNEL := $(TARGET_PREBUILT_INT_KERNEL)
 
-KERNEL_ENABLE_EXFAT ?= $(shell cat kernel/arch/$(KERNEL_ARCH)/configs/$(KERNEL_DEFCONFIG) | egrep -v "^\s*\#" | egrep "CONFIG_EXFAT_FS" | sed 's/^\s*CONFIG_EXFAT_FS\s*=\s*//' )
-KERNEL_EXFAT_PATH ?= $(shell cat kernel/arch/$(KERNEL_ARCH)/configs/$(KERNEL_DEFCONFIG) | egrep -v "^\s*\#" | egrep "CONFIG_EXFAT_PATH" | sed 's/^\s*CONFIG_EXFAT_PATH\s*=\s*\"//' | sed 's/\".*//' )
-KERNEL_EXFAT_VERSION ?= $(shell cat kernel/arch/$(KERNEL_ARCH)/configs/$(KERNEL_DEFCONFIG) | egrep -v "^\s*\#" | egrep "CONFIG_EXFAT_VERSION" | sed 's/^\s*CONFIG_EXFAT_VERSION\s*=\s*\"//' | sed 's/\".*//' )
 BUILD_PATH ?= $(shell pwd)
 
 define mv-modules
@@ -97,6 +94,8 @@ mpath=`dirname $$mdpath`; rm -rf $$mpath;\
 fi
 endef
 
+KERNEL_BUILD_STAMP := $(KERNEL_OUT)/.build_stamp
+
 $(KERNEL_OUT):
 	mkdir -p $(KERNEL_OUT)
 
@@ -107,92 +106,10 @@ $(KERNEL_CONFIG): $(KERNEL_OUT)
 			echo $(KERNEL_CONFIG_OVERRIDE) >> $(KERNEL_OUT)/.config; \
 			$(MAKE) -C kernel O=../$(KERNEL_OUT) ARCH=$(KERNEL_ARCH) CROSS_COMPILE=$(KERNEL_CROSS_COMPILE) PRIVATE_RCMS_NAME=$(PRIVATE_RCMS_NAME) PRIVATE_SKU_NAME=$(PRIVATE_SKU_NAME) oldconfig; fi
 
-$(TARGET_PREBUILT_INT_KERNEL): $(KERNEL_OUT) $(KERNEL_HEADERS_INSTALL)
+$(KERNEL_HEADERS_INSTALL) $(TARGET_PREBUILT_INT_KERNEL): $(KERNEL_BUILD_STAMP)
+
+$(KERNEL_BUILD_STAMP): $(KERNEL_OUT) $(KERNEL_SRC_DIR)/
 	$(hide) echo "Building kernel..."
-	$(hide) rm -rf $(KERNEL_OUT)/arch/$(KERNEL_ARCH)/boot/dts
-ifeq ($(KERNEL_ENABLE_EXFAT), m)
-	cp vendor/tuxera/exfat/tuxera_update_htc.sh kernel/
-	cp vendor/tuxera/exfat/update_tuxera.sh kernel/
-	cp vendor/tuxera/exfat/build_exfat.sh kernel/
-	cp -rf vendor/tuxera/exfat/texfat kernel/fs/
-	cp -rf vendor/tuxera/exfat/$(KERNEL_EXFAT_PATH) kernel/fs/
-	mkdir -p $(KERNEL_OUT)/fs/$(KERNEL_EXFAT_PATH)
-endif
-	$(MAKE) -C kernel O=../$(KERNEL_OUT) ARCH=$(KERNEL_ARCH) CROSS_COMPILE=$(KERNEL_CROSS_COMPILE) PRIVATE_RCMS_NAME=$(PRIVATE_RCMS_NAME) PRIVATE_SKU_NAME=$(PRIVATE_SKU_NAME) $(KERNEL_CFLAGS)
-ifeq ($(KERNEL_ENABLE_EXFAT), m)
-ifeq ($(HTC_DEBUG_FLAG), DEBUG)
-ifeq ($(strip $(KERNEL_EXFAT_VERSION)),)
-	./kernel/update_tuxera.sh -p $(KERNEL_EXFAT_PATH) -t target/htc.d/htc -o $(KERNEL_OUT)
-else
-	./kernel/update_tuxera.sh -p $(KERNEL_EXFAT_PATH) -t $(KERNEL_EXFAT_VERSION) -o $(KERNEL_OUT)
-endif
-else
-ifeq ($(TARGET_BUILD_VARIANT), user)
-	$(warning "User-Release")
-ifeq ($(strip $(KERNEL_EXFAT_VERSION)),)
-	./kernel/update_tuxera.sh -p $(KERNEL_EXFAT_PATH) -t target/htc.d/htc -o $(KERNEL_OUT) -r
-else
-	./kernel/update_tuxera.sh -p $(KERNEL_EXFAT_PATH) -t $(KERNEL_EXFAT_VERSION) -o $(KERNEL_OUT) -r
-endif
-else
-	$(warning "NonUser-Release")
-ifeq ($(strip $(KERNEL_EXFAT_VERSION)),)
-	./kernel/update_tuxera.sh -p $(KERNEL_EXFAT_PATH) -t target/htc.d/htc -o $(KERNEL_OUT) -u
-else
-	./kernel/update_tuxera.sh -p $(KERNEL_EXFAT_PATH) -t $(KERNEL_EXFAT_VERSION) -o $(KERNEL_OUT) -u
-endif
-endif
-
-endif
-endif
-	$(MAKE) -C kernel O=../$(KERNEL_OUT) ARCH=$(KERNEL_ARCH) CROSS_COMPILE=$(KERNEL_CROSS_COMPILE) PRIVATE_RCMS_NAME=$(PRIVATE_RCMS_NAME) PRIVATE_SKU_NAME=$(PRIVATE_SKU_NAME) $(KERNEL_CFLAGS) modules
-	$(MAKE) -C kernel O=../$(KERNEL_OUT) INSTALL_MOD_PATH=../../$(KERNEL_MODULES_INSTALL) INSTALL_MOD_STRIP=1 ARCH=$(KERNEL_ARCH) CROSS_COMPILE=$(KERNEL_CROSS_COMPILE) PRIVATE_RCMS_NAME=$(PRIVATE_RCMS_NAME) PRIVATE_SKU_NAME=$(PRIVATE_SKU_NAME) modules_install
-
-ifeq ($(KERNEL_ENABLE_EXFAT), m)
-ifeq ($(HTC_DEBUG_FLAG), DEBUG)
-	# Build exfat modules for DEBUG
-	$(MAKE) -C kernel O=../$(KERNEL_OUT) ARCH=$(KERNEL_ARCH) CROSS_COMPILE=$(KERNEL_CROSS_COMPILE) PRIVATE_RCMS_NAME=$(PRIVATE_RCMS_NAME) PRIVATE_SKU_NAME=$(PRIVATE_SKU_NAME) SUBDIRS=$(BUILD_PATH)/kernel/fs/$(KERNEL_EXFAT_PATH)/objects modules
-	$(MAKE) -C kernel O=../$(KERNEL_OUT) SUBDIRS=fs/$(KERNEL_EXFAT_PATH)/objects INSTALL_MOD_PATH=../../$(KERNEL_MODULES_INSTALL) ARCH=$(KERNEL_ARCH) CROSS_COMPILE=$(KERNEL_CROSS_COMPILE) PRIVATE_RCMS_NAME=$(PRIVATE_RCMS_NAME) PRIVATE_SKU_NAME=$(PRIVATE_SKU_NAME) modules_install
-	cp kernel/fs/$(KERNEL_EXFAT_PATH)/objects/texfat.ko $(KERNEL_MODULES_OUT)/
-	mkdir -p $(TARGET_OUT)/bin/
-	cp -rf kernel/fs/$(KERNEL_EXFAT_PATH)/bin/* $(TARGET_OUT)/bin/
-else
-ifeq ($(TARGET_BUILD_VARIANT), user)
-	# Build exfat modules for NonDebug-USER
-	$(MAKE) -C kernel O=../$(KERNEL_OUT) ARCH=$(KERNEL_ARCH) CROSS_COMPILE=$(KERNEL_CROSS_COMPILE) PRIVATE_RCMS_NAME=$(PRIVATE_RCMS_NAME) PRIVATE_SKU_NAME=$(PRIVATE_SKU_NAME) SUBDIRS=$(BUILD_PATH)/kernel/fs/$(KERNEL_EXFAT_PATH)/objects-user modules
-	$(MAKE) -C kernel O=../$(KERNEL_OUT) SUBDIRS=fs/$(KERNEL_EXFAT_PATH)/objects-user INSTALL_MOD_PATH=../../$(KERNEL_MODULES_INSTALL) ARCH=$(KERNEL_ARCH) CROSS_COMPILE=$(KERNEL_CROSS_COMPILE) PRIVATE_RCMS_NAME=$(PRIVATE_RCMS_NAME) PRIVATE_SKU_NAME=$(PRIVATE_SKU_NAME) modules_install
-	cp kernel/fs/$(KERNEL_EXFAT_PATH)/objects-user/texfat.ko $(KERNEL_MODULES_OUT)/
-	mkdir -p $(TARGET_OUT)/bin/
-	cp -rf kernel/fs/$(KERNEL_EXFAT_PATH)/bin/* $(TARGET_OUT)/bin/
-else
-	# Build exfat modules for NonDebug-USERDEBUG
-	$(MAKE) -C kernel O=../$(KERNEL_OUT) ARCH=$(KERNEL_ARCH) CROSS_COMPILE=$(KERNEL_CROSS_COMPILE) PRIVATE_RCMS_NAME=$(PRIVATE_RCMS_NAME) PRIVATE_SKU_NAME=$(PRIVATE_SKU_NAME) SUBDIRS=$(BUILD_PATH)/kernel/fs/$(KERNEL_EXFAT_PATH)/objects-userdebug modules
-	$(MAKE) -C kernel O=../$(KERNEL_OUT) SUBDIRS=fs/$(KERNEL_EXFAT_PATH)/objects-userdebug INSTALL_MOD_PATH=../../$(KERNEL_MODULES_INSTALL) ARCH=$(KERNEL_ARCH) CROSS_COMPILE=$(KERNEL_CROSS_COMPILE) PRIVATE_RCMS_NAME=$(PRIVATE_RCMS_NAME) PRIVATE_SKU_NAME=$(PRIVATE_SKU_NAME) modules_install
-	cp kernel/fs/$(KERNEL_EXFAT_PATH)/objects-userdebug/texfat.ko $(KERNEL_MODULES_OUT)/
-	mkdir -p $(TARGET_OUT)/bin/
-	cp -rf kernel/fs/$(KERNEL_EXFAT_PATH)/bin/* $(TARGET_OUT)/bin/
-endif
-endif
-endif
-	$(mv-modules)
-	$(clean-module-folder)
-
-ifeq ($(KERNEL_ENABLE_EXFAT), m)
-	rm kernel/tuxera_update_htc.sh
-	rm kernel/update_tuxera.sh
-	rm kernel/build_exfat.sh
-	rm -rf kernel/fs/texfat*
-endif
-
-
-	$(info start build keydar_build_kernel_modules.sh)
-	vendor/mocana/scripts/keydar_build_kernel_modules.sh -v -M -c $(KERNEL_CROSS_COMPILE) -s `pwd`/vendor/mocana/src/mss -k 3.10 -K `pwd`/$(KERNEL_OUT) -e `pwd`/vendor/mocana/src/ecryptfs-mocana -a `pwd`/vendor/mocana/src/crypto-api-template -D `pwd`/$(KERNEL_MODULES_OUT)
-
-ifeq ($(MOCANA_FIPS_MODULE), true)
-	$(info start build keydar_build_kernel_modules.sh)
-	vendor/mocana/scripts/keydar_build_kernel_modules.sh -v -M -c $(KERNEL_CROSS_COMPILE) -s `pwd`/vendor/mocana/src/mss -k 3.10 -K `pwd`/$(KERNEL_OUT) -r `pwd`/vendor/mocana/src/dm-crypt-mocana -a `pwd`/vendor/mocana/src/crypto-api-template -D `pwd`/$(KERNEL_MODULES_OUT)
-endif
-$(KERNEL_HEADERS_INSTALL): $(KERNEL_OUT)
 	$(hide) if [ ! -z "$(KERNEL_HEADER_DEFCONFIG)" ]; then \
 			$(hide) rm -f ../$(KERNEL_CONFIG); \
 			$(MAKE) -C kernel O=../$(KERNEL_OUT) ARCH=$(KERNEL_HEADER_ARCH) CROSS_COMPILE=$(KERNEL_CROSS_COMPILE) PRIVATE_RCMS_NAME=$(PRIVATE_RCMS_NAME) PRIVATE_SKU_NAME=$(PRIVATE_SKU_NAME) $(KERNEL_HEADER_DEFCONFIG); \
@@ -207,6 +124,14 @@ fi
 			echo "Overriding kernel config with '$(KERNEL_CONFIG_OVERRIDE)'"; \
 			echo $(KERNEL_CONFIG_OVERRIDE) >> $(KERNEL_OUT)/.config; \
 			$(MAKE) -C kernel O=../$(KERNEL_OUT) ARCH=$(KERNEL_ARCH) CROSS_COMPILE=$(KERNEL_CROSS_COMPILE) PRIVATE_RCMS_NAME=$(PRIVATE_RCMS_NAME) PRIVATE_SKU_NAME=$(PRIVATE_SKU_NAME) oldconfig; fi
+
+	$(hide) rm -rf $(KERNEL_OUT)/arch/$(KERNEL_ARCH)/boot/dts
+	$(MAKE) -C kernel O=../$(KERNEL_OUT) ARCH=$(KERNEL_ARCH) CROSS_COMPILE=$(KERNEL_CROSS_COMPILE) $(KERNEL_CFLAGS)
+	$(MAKE) -C kernel O=../$(KERNEL_OUT) ARCH=$(KERNEL_ARCH) CROSS_COMPILE=$(KERNEL_CROSS_COMPILE) $(KERNEL_CFLAGS) modules
+	$(MAKE) -C kernel O=../$(KERNEL_OUT) INSTALL_MOD_PATH=../../$(KERNEL_MODULES_INSTALL) INSTALL_MOD_STRIP=1 ARCH=$(KERNEL_ARCH) CROSS_COMPILE=$(KERNEL_CROSS_COMPILE) modules_install
+	$(mv-modules)
+	$(clean-module-folder)
+	$(hide) touch $(KERNEL_HEADERS_INSTALL) $(TARGET_PREBUILT_INT_KERNEL) $(KERNEL_BUILD_STAMP)
 
 kerneltags: $(KERNEL_OUT) $(KERNEL_CONFIG)
 	$(MAKE) -C kernel O=../$(KERNEL_OUT) ARCH=$(KERNEL_ARCH) CROSS_COMPILE=$(KERNEL_CROSS_COMPILE) PRIVATE_RCMS_NAME=$(PRIVATE_RCMS_NAME) PRIVATE_SKU_NAME=$(PRIVATE_SKU_NAME) tags
