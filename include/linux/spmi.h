@@ -481,7 +481,5 @@ struct spmi_resource *spmi_get_dev_container_byname(struct spmi_device *dev,
 						    const char *label);
 #endif
 
-#ifdef CONFIG_HTC_POWER_DEBUG
 extern int htc_print_pmic_version(void);
 extern int htc_print_cpu_version(void);
-#endif
