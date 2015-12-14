@@ -633,12 +633,6 @@ struct dentry *spmi_dfs_get_root(void)
 	return dbgfs_data.root;
 }
 
-#ifdef CONFIG_HTC_POWER_DEBUG
-#define VREG_DUMP_DRIVER_NAME   "htc,vreg-dump"
-#define VREG_NAME_VOL_LEN       32
-#define VREG_EN_PD_MODE_LEN     8
-#define VREG_DUMP_LEN           128
-
 struct _vreg {
         int id;
         int type;
@@ -659,6 +653,14 @@ struct _qpnp_vregs {
         u32 pd_bit;
         int total_vregs;
 };
+
+struct _qpnp_vregs qpnp_vregs;
+
+#ifdef CONFIG_HTC_POWER_DEBUG
+#define VREG_DUMP_DRIVER_NAME   "htc,vreg-dump"
+#define VREG_NAME_VOL_LEN       32
+#define VREG_EN_PD_MODE_LEN     8
+#define VREG_DUMP_LEN           128
 
 enum {
         VREG_TYPE_NLDO,
@@ -758,8 +760,6 @@ static struct qpnp_voltage_range ult_nldo_ranges[] = {
 static struct qpnp_voltage_range ult_pldo_ranges[] = {
         VOLTAGE_RANGE(0, 1750000, 1750000, 3337500, 12500),
 };
-
-struct _qpnp_vregs qpnp_vregs;
 #endif
 
 /*
@@ -913,6 +913,18 @@ static void __exit spmi_dfs_destroy(void)
 		spmi_dfs_delete_all_ctrl(&dbgfs_data.ctrl);
 	}
 	mutex_unlock(&dbgfs_data.lock);
+}
+
+void force_disable_PM8994_VREG_ID_L30(void)
+{
+	int ret;
+	uint8_t voltage_sel = 0x00;
+	
+	
+	ret = spmi_write_data(qpnp_vregs.ctrl, &voltage_sel, 0x00015D46, 1);
+	if (ret) {
+		pr_err("force_disable_PM8994_VREG_ID_L30, SPMI write failed, err = %d\n", ret);
+	}
 }
 
 #ifdef CONFIG_HTC_POWER_DEBUG
@@ -1818,18 +1830,6 @@ static struct platform_driver htc_vreg_dump_driver = {
 		.owner = THIS_MODULE,
 	},
 };
-
-void force_disable_PM8994_VREG_ID_L30(void)
-{
-	int ret;
-	uint8_t voltage_sel = 0x00;
-	
-	
-	ret = spmi_write_data(qpnp_vregs.ctrl, &voltage_sel, 0x00015D46, 1);
-	if (ret) {
-		pr_err("force_disable_PM8994_VREG_ID_L30, SPMI write failed, err = %d\n", ret);
-	}
-}
 
 int __init htc_vreg_dump_init(void)
 {
