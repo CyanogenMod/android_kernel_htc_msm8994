@@ -776,9 +776,51 @@ int spmi_driver_register(struct spmi_driver *drv)
 }
 EXPORT_SYMBOL_GPL(spmi_driver_register);
 
-#ifdef CONFIG_HTC_POWER_DEBUG
 #define MAX_REG_PER_TRANSACTION	(8)
+#define PMIC_VERSION		0x103
 
+uint8_t pmic_version = 0xFF;
+
+int htc_spmi_read_data(struct spmi_controller *ctrl, uint8_t *buf, int offset, int cnt)
+{
+	int ret = 0;
+	int len;
+	uint8_t sid;
+	uint16_t addr;
+
+	while (cnt > 0) {
+		sid = (offset >> 16) & 0xF;
+		addr = offset & 0xFFFF;
+		len = min(cnt, MAX_REG_PER_TRANSACTION);
+
+		ret = spmi_ext_register_readl(ctrl, sid, addr, buf, len);
+		if (ret < 0) {
+			pr_err("SPMI read failed, err = %d\n", ret);
+			goto done;
+		}
+
+		cnt -= len;
+		buf += len;
+		offset += len;
+	}
+
+done:
+	return ret;
+}
+
+void htc_get_pmic_version(struct spmi_controller *ctrl)
+{
+	if (pmic_version == 0xFF)
+		htc_spmi_read_data(ctrl, &pmic_version, PMIC_VERSION, 1);
+}
+
+int htc_print_pmic_version(void)
+{
+	printk(KERN_INFO "PMIC version is %d \n", pmic_version);
+	return pmic_version;
+}
+
+#ifdef CONFIG_HTC_POWER_DEBUG
 #define PM8994_PON_REVISION2			0x801
 #define PM8994_PON_PON_REASON1			0x808
 #define PM8994_PON_WARM_RESET_REASON1		0x80A
@@ -797,8 +839,6 @@ EXPORT_SYMBOL_GPL(spmi_driver_register);
 #define PMI8994_PON_POFF_REASON2		0x2080D
 #define PMI8994_PON_SOFT_RESET_REASON1		0x2080E
 #define PMI8994_PON_SOFT_RESET_REASON2		0x2080F
-
-#define PMIC_VERSION		0x103
 
 
 enum {
@@ -921,33 +961,6 @@ void htc_print_reset_reason(int type, uint8_t value)
 	}
 }
 
-int htc_spmi_read_data(struct spmi_controller *ctrl, uint8_t *buf, int offset, int cnt)
-{
-	int ret = 0;
-	int len;
-	uint8_t sid;
-	uint16_t addr;
-
-	while (cnt > 0) {
-		sid = (offset >> 16) & 0xF;
-		addr = offset & 0xFFFF;
-		len = min(cnt, MAX_REG_PER_TRANSACTION);
-
-		ret = spmi_ext_register_readl(ctrl, sid, addr, buf, len);
-		if (ret < 0) {
-			pr_err("SPMI read failed, err = %d\n", ret);
-			goto done;
-		}
-
-		cnt -= len;
-		buf += len;
-		offset += len;
-	}
-
-done:
-	return ret;
-}
-
 uint8_t pm8994_reason_1 = 0xFF;
 uint8_t pmi8994_reason_1 = 0xFF;
 uint8_t pm8994_warm_reset_reason_1 = 0xFF;
@@ -962,14 +975,7 @@ uint8_t pm8994_poff_reason_1 = 0xFF;
 uint8_t pmi8994_poff_reason_1 = 0xFF;
 uint8_t pm8994_poff_reason_2 = 0xFF;
 uint8_t pmi8994_poff_reason_2 = 0xFF;
-uint8_t pmic_version = 0xFF;
 
-void htc_get_pmic_version(struct spmi_controller *ctrl)
-{
-	if (pmic_version == 0xFF)
-		htc_spmi_read_data(ctrl, &pmic_version, PMIC_VERSION, 1);
-
-}
 void htc_get_pon_boot_reason(struct spmi_controller *ctrl)
 {
 	
@@ -1020,12 +1026,6 @@ void htc_get_pon_boot_reason(struct spmi_controller *ctrl)
 
 	if (pmi8994_poff_reason_2 == 0xFF)
 		htc_spmi_read_data(ctrl, &pmi8994_poff_reason_2, PMI8994_PON_POFF_REASON2, 1);
-}
-
-int htc_print_pmic_version(void)
-{
-        printk(KERN_INFO "PMIC version is %d \n", pmic_version);
-	return pmic_version;
 }
 
 void htc_print_pon_boot_reason(void)
