@@ -3224,22 +3224,17 @@ static int msm_hs_runtime_suspend(struct device *dev)
 	return 0;
 }
 
-#define BT_UART_PORT_ID  0
-void msm_hs_uart_gpio_config_ext(int on)
+void msm_hs_uart_gpio_config_ext(int port, int on)
 {
-	struct msm_hs_port *msm_uport = msm_hs_get_hs_port(BT_UART_PORT_ID);
+	struct msm_hs_port *msm_uport = msm_hs_get_hs_port(port);
 	int ret = 0;
 	if (msm_uport) {
 		if (msm_uport->use_pinctrl) {
-			if (on) {
-				htc_bt_pri("%s: set gpio_state_active\n", __func__);
-				ret = pinctrl_select_state(msm_uport->pinctrl,
-							msm_uport->gpio_state_active);
-			} else {
-				htc_bt_pri("%s: set gpio_state_suspend\n", __func__);
-				ret = pinctrl_select_state(msm_uport->pinctrl,
-							msm_uport->gpio_state_suspend);
-			}
+			htc_bt_pri("%s: set gpio_state_%s\n",
+					__func__, on ? "active" : "suspend");
+			ret = pinctrl_select_state(msm_uport->pinctrl,
+					on ? msm_uport->gpio_state_active :
+					msm_uport->gpio_state_suspend);
 			if (ret)
 				MSM_HS_ERR("%s(): error select state", __func__);
 		}
