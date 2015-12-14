@@ -183,7 +183,7 @@ static int msm_watchdog_suspend(struct device *dev)
 	}
 #endif
 
-	msm_watchdog_do_suspend(wdog_dd->base);
+	msm_watchdog_do_suspend(wdog_dd);
 
 	return 0;
 }
@@ -219,7 +219,7 @@ static int msm_watchdog_resume(struct device *dev)
 	}
 #endif
 
-	msm_watchdog_do_resume(wdog_dd->base);
+	msm_watchdog_do_resume(wdog_dd);
 
 	return 0;
 }
