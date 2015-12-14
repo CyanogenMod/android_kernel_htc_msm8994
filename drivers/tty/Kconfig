@@ -335,7 +335,7 @@ config N_GSM
 
 config N_SMUX
 	tristate "SMUX line discipline support"
-	depends on NET && SERIAL_MSM_HS
+	depends on NET && (SERIAL_MSM_HS || SERIAL_MSM_HS_BRCM)
 	help
 	  This line discipline provides support for the Serial MUX protocol
 	  and provides a TTY and kernel API for multiple logical channels.
