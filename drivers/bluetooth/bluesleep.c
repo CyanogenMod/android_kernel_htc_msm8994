@@ -86,13 +86,6 @@ enum {
 	DEBUG_VERBOSE = 1U << 3,
 };
 
-/* HTC msm_serial_hs_brcm functions */
-extern unsigned int msm_hs_tx_empty_brcm(struct uart_port *uport);
-extern void msm_hs_request_clock_off_brcm(struct uart_port *uport);
-extern void msm_hs_request_clock_on_brcm(struct uart_port *uport);
-extern struct uart_port *msm_hs_get_uart_port_brcm(int port_index);
-extern void msm_hs_set_mctrl_brcm(struct uart_port *uport, unsigned int mctrl);
-
 static int debug_mask = DEBUG_USER_STATE;
 module_param_named(debug_mask, debug_mask, int, S_IRUGO | S_IWUSR | S_IWGRP);
 
@@ -201,11 +194,11 @@ static void hsuart_power(int on)
 	if (test_bit(BT_SUSPEND, &flags))
 		return;
 	if (on) {
-		msm_hs_request_clock_on_brcm(bsi->uport);
-		msm_hs_set_mctrl_brcm(bsi->uport, TIOCM_RTS);
+		msm_hs_request_clock_on(bsi->uport);
+		msm_hs_set_mctrl(bsi->uport, TIOCM_RTS);
 	} else {
-		msm_hs_set_mctrl_brcm(bsi->uport, 0);
-		msm_hs_request_clock_off_brcm(bsi->uport);
+		msm_hs_set_mctrl(bsi->uport, 0);
+		msm_hs_request_clock_off(bsi->uport);
 	}
 }
 
@@ -253,7 +246,7 @@ static void bluesleep_sleep_work(struct work_struct *work)
 			return;
 		}
 
-		if (msm_hs_tx_empty_brcm(bsi->uport)) {
+		if (msm_hs_tx_empty(bsi->uport)) {
 			if (debug_mask & DEBUG_SUSPEND)
 				pr_info("going to sleep...\n");
 			set_bit(BT_ASLEEP, &flags);
@@ -671,8 +664,8 @@ static int bluesleep_resume(struct platform_device *pdev)
 			(gpio_get_value(bsi->host_wake) == bsi->irq_polarity)) {
 			if (debug_mask & DEBUG_SUSPEND)
 				pr_info("bluesleep resume from BT event...\n");
-			msm_hs_request_clock_on_brcm(bsi->uport);
-			msm_hs_set_mctrl_brcm(bsi->uport, TIOCM_RTS);
+			msm_hs_request_clock_on(bsi->uport);
+			msm_hs_set_mctrl(bsi->uport, TIOCM_RTS);
 		}
 		clear_bit(BT_SUSPEND, &flags);
 	}
@@ -772,7 +765,7 @@ static ssize_t bluesleep_proc_write(struct file *file, const char *buf,
 			/* HCI_DEV_REG */
 			if (!has_lpm_enabled) {
 				has_lpm_enabled = true;
-				bsi->uport = msm_hs_get_uart_port_brcm(BT_PORT_ID);
+				bsi->uport = msm_hs_get_uart_port(BT_PORT_ID);
 				/* if bluetooth started, start bluesleep*/
 				bluesleep_start();
 			}
