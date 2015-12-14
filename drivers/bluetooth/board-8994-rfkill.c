@@ -25,11 +25,13 @@
 #include <linux/fs.h>
 
 extern void bt_export_bd_address(void);
-extern void msm_hs_uart_gpio_config_ext(int on);
+extern void msm_hs_uart_gpio_config_ext(int port, int on);
 extern void bluesleep_set_bt_pwr_state(int on);
 
 extern bool get_gpio4_state(void);
 extern int lock_wlan_seci_gpio(void);
+
+#define BT_UART_PORT_ID 0
 
 #define BT_REG_ON    114
 #define BT_WAKE_HOST 108
@@ -72,7 +74,7 @@ static void htc_config_bt_on(void)
 	
 
 	
-	msm_hs_uart_gpio_config_ext(1);
+	msm_hs_uart_gpio_config_ext(BT_UART_PORT_ID, 1);
 
 	
 	rc = pinctrl_select_state(bt_pinctrl, bt_wake_host_set_state_on);
@@ -112,7 +114,7 @@ static void htc_config_bt_off(void)
 	mdelay(2);
 
 	
-	msm_hs_uart_gpio_config_ext(0);
+	msm_hs_uart_gpio_config_ext(BT_UART_PORT_ID, 0);
 
 	printk(KERN_INFO "[BT]== R OFF ==\n");
 }
