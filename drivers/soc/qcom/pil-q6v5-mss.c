@@ -111,7 +111,9 @@ static void log_modem_sfr(void)
 	{
 		pr_err("RIL debug: trigger kernel panic to get full ramdump.\n");
 		panic("Panic triggered by RIL debugging");
+#if defined(CONFIG_HTC_DEBUG_SSR)
 		skip_ssr_on_fatal =1;
+#endif
 	}
 
 #if defined(CONFIG_HTC_DEBUG_SSR)
