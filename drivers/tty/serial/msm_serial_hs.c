@@ -3123,6 +3123,23 @@ static int msm_hs_runtime_suspend(struct device *dev) {}
 static int msm_hs_runtime_resume(struct device *dev) {}
 #endif
 
+#define BT_UART_PORT_ID 0
+void msm_hs_uart_gpio_config_ext(int on)
+{
+	struct msm_hs_port *msm_uport = msm_hs_get_hs_port(BT_UART_PORT_ID);
+	int ret = 0;
+	if (msm_uport) {
+		if (msm_uport->use_pinctrl) {
+			ret = pinctrl_select_state(msm_uport->pinctrl,
+					on ? msm_uport->gpio_state_active :
+					msm_uport->gpio_state_suspend);
+			if (ret)
+				MSM_HS_ERR("%s(): error select state", __func__);
+		}
+	}
+}
+EXPORT_SYMBOL(msm_hs_uart_gpio_config_ext);
+
 
 static int msm_hs_probe(struct platform_device *pdev)
 {
