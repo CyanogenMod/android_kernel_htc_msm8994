@@ -264,14 +264,6 @@ static void msm_hs_bus_voting(struct msm_hs_port *msm_uport, unsigned int vote);
 static struct msm_hs_port *msm_hs_get_hs_port(int port_index);
 static void msm_hs_queue_rx_desc(struct msm_hs_port *msm_uport);
 
-unsigned int msm_hs_tx_empty_brcm(struct uart_port *uport);
-void msm_hs_request_clock_off_brcm(struct uart_port *uport);
-void msm_hs_request_clock_on_brcm(struct uart_port *uport);
-struct uart_port *msm_hs_get_uart_port_brcm(int port_index);
-void msm_hs_set_mctrl_brcm(struct uart_port *uport,
-				    unsigned int mctrl);
-
-
 #define UARTDM_TO_MSM(uart_port) \
 	container_of((uart_port), struct msm_hs_port, uport)
 
@@ -287,12 +279,12 @@ static int msm_hs_ioctl(struct uart_port *uport, unsigned int cmd,
 	switch (cmd) {
 	case MSM_ENABLE_UART_CLOCK: {
 		MSM_HS_DBG("%s():ENABLE UART CLOCK: cmd=%d\n", __func__, cmd);
-		msm_hs_request_clock_on_brcm(&msm_uport->uport);
+		msm_hs_request_clock_on(&msm_uport->uport);
 		break;
 	}
 	case MSM_DISABLE_UART_CLOCK: {
 		MSM_HS_DBG("%s():DISABLE UART CLOCK: cmd=%d\n", __func__, cmd);
-		msm_hs_request_clock_off_brcm(&msm_uport->uport);
+		msm_hs_request_clock_off(&msm_uport->uport);
 		break;
 	}
 	case MSM_GET_UART_CLOCK_STATUS: {
@@ -437,11 +429,11 @@ static ssize_t set_clock(struct device *dev, struct device_attribute *attr,
 		state = buf[0] - '0';
 		switch (state) {
 		case 0:
-			msm_hs_request_clock_off_brcm(&msm_uport->uport);
+			msm_hs_request_clock_off(&msm_uport->uport);
 			ret = count;
 			break;
 		case 1:
-			msm_hs_request_clock_on_brcm(&msm_uport->uport);
+			msm_hs_request_clock_on(&msm_uport->uport);
 			ret = count;
 			break;
 		default:
@@ -1085,7 +1077,7 @@ static void msm_hs_set_termios(struct uart_port *uport,
 	msm_hs_clock_unvote(msm_uport);
 }
 
-unsigned int msm_hs_tx_empty_brcm(struct uart_port *uport)
+unsigned int msm_hs_tx_empty(struct uart_port *uport)
 {
 	unsigned int data;
 	unsigned int ret = 0;
@@ -1101,7 +1093,7 @@ unsigned int msm_hs_tx_empty_brcm(struct uart_port *uport)
 
 	return ret;
 }
-EXPORT_SYMBOL(msm_hs_tx_empty_brcm);
+EXPORT_SYMBOL(msm_hs_tx_empty);
 
 static void msm_hs_stop_tx_locked(struct uart_port *uport)
 {
@@ -1748,7 +1740,7 @@ void msm_hs_set_mctrl_locked_brcm(struct uart_port *uport,
 		msm_hs_enable_flow_control(uport);
 }
 
-void msm_hs_set_mctrl_brcm(struct uart_port *uport,
+void msm_hs_set_mctrl(struct uart_port *uport,
 				    unsigned int mctrl)
 {
 	unsigned long flags;
@@ -1760,7 +1752,7 @@ void msm_hs_set_mctrl_brcm(struct uart_port *uport,
 	spin_unlock_irqrestore(&uport->lock, flags);
 	msm_hs_clock_unvote(msm_uport);
 }
-EXPORT_SYMBOL(msm_hs_set_mctrl_brcm);
+EXPORT_SYMBOL(msm_hs_set_mctrl);
 
 static void msm_hs_enable_ms_locked(struct uart_port *uport)
 {
@@ -1989,7 +1981,7 @@ static irqreturn_t msm_hs_isr(int irq, void *dev)
 }
 
 
-struct uart_port *msm_hs_get_uart_port_brcm(int port_index)
+struct uart_port *msm_hs_get_uart_port(int port_index)
 {
 	struct uart_state *state = msm_hs_driver.state + port_index;
 
@@ -1998,17 +1990,17 @@ struct uart_port *msm_hs_get_uart_port_brcm(int port_index)
 
 	return NULL;
 }
-EXPORT_SYMBOL(msm_hs_get_uart_port_brcm);
+EXPORT_SYMBOL(msm_hs_get_uart_port);
 
 static struct msm_hs_port *msm_hs_get_hs_port(int port_index)
 {
-	struct uart_port *uport = msm_hs_get_uart_port_brcm(port_index);
+	struct uart_port *uport = msm_hs_get_uart_port(port_index);
 	if (uport)
 		return UARTDM_TO_MSM(uport);
 	return NULL;
 }
 
-void msm_hs_request_clock_off_brcm(struct uart_port *uport) {
+void msm_hs_request_clock_off(struct uart_port *uport) {
 	unsigned long flags;
 	struct msm_hs_port *msm_uport = UARTDM_TO_MSM(uport);
 	int data;
@@ -2027,9 +2019,9 @@ void msm_hs_request_clock_off_brcm(struct uart_port *uport) {
 	}
 	spin_unlock_irqrestore(&uport->lock, flags);
 }
-EXPORT_SYMBOL(msm_hs_request_clock_off_brcm);
+EXPORT_SYMBOL(msm_hs_request_clock_off);
 
-void msm_hs_request_clock_on_brcm(struct uart_port *uport)
+void msm_hs_request_clock_on(struct uart_port *uport)
 {
 	struct msm_hs_port *msm_uport = UARTDM_TO_MSM(uport);
 	unsigned long flags;
@@ -2121,7 +2113,7 @@ void msm_hs_request_clock_on_brcm(struct uart_port *uport)
 	mutex_unlock(&msm_uport->clk_mutex);
 	msm_hs_clock_unvote(msm_uport);
 }
-EXPORT_SYMBOL(msm_hs_request_clock_on_brcm);
+EXPORT_SYMBOL(msm_hs_request_clock_on);
 
 static irqreturn_t msm_hs_wakeup_isr(int irq, void *dev)
 {
@@ -2141,7 +2133,7 @@ static irqreturn_t msm_hs_wakeup_isr(int irq, void *dev)
 
 	if (wakeup) {
 		spin_unlock_irqrestore(&uport->lock, flags);
-		msm_hs_request_clock_on_brcm(uport);
+		msm_hs_request_clock_on(uport);
 		spin_lock_irqsave(&uport->lock, flags);
 		if (msm_uport->wakeup.inject_rx) {
 			tty = uport->state->port.tty;
@@ -3193,7 +3185,7 @@ static int msm_hs_runtime_resume(struct device *dev)
 	htc_bt_pri("%s\n", __func__);
 
 	if (msm_uport) {
-		msm_hs_request_clock_on_brcm(&msm_uport->uport);
+		msm_hs_request_clock_on(&msm_uport->uport);
 #if 0 
 		if (msm_uport->use_pinctrl) {
 			htc_bt_pri("%s: set gpio_state_active\n", __func__);
@@ -3217,7 +3209,7 @@ static int msm_hs_runtime_suspend(struct device *dev)
 	htc_bt_pri("%s\n", __func__);
 
 	if (msm_uport) {
-		msm_hs_request_clock_off_brcm(&msm_uport->uport);
+		msm_hs_request_clock_off(&msm_uport->uport);
 #if 0 
 		if (msm_uport->use_pinctrl) {
 			htc_bt_pri("%s: set gpio_state_suspend\n", __func__);
@@ -3292,7 +3284,7 @@ static struct uart_driver msm_hs_driver = {
 };
 
 static struct uart_ops msm_hs_ops = {
-	.tx_empty = msm_hs_tx_empty_brcm,
+	.tx_empty = msm_hs_tx_empty,
 	.set_mctrl = msm_hs_set_mctrl_locked_brcm,
 	.get_mctrl = msm_hs_get_mctrl_locked,
 	.stop_tx = msm_hs_stop_tx_locked,
