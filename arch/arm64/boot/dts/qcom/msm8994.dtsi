@@ -579,22 +579,20 @@
 	};
 
 	blsp2_uart2: uart@f995e000 { /* BLSP2 UART2 */
-		compatible = "qcom,msm-hsuart-v14-brcm";
+		compatible = "qcom,msm-hsuart-v14";
 		reg = <0xf995e000 0x1000>,
 			<0xf9944000 0x19000>;
 		status = "disabled";
 		reg-names = "core_mem", "bam_mem";
-		interrupt-names = "core_irq", "bam_irq", "wakeup_irq";
+		interrupt-names = "core_irq", "bam_irq";
 		#address-cells = <0>;
 		interrupt-parent = <&blsp2_uart2>;
-		interrupts = <0 1 2>;
+		interrupts = <0 1>;
 		#interrupt-cells = <1>;
 		interrupt-map-mask = <0xffffffff>;
 		interrupt-map = <0 &intc 0 114 0
-				1 &intc 0 239 0
-				2 &msm_gpio 46 0>;
+				1 &intc 0 239 0>;
 
-		qcom,inject-rx-on-wakeup;
 		qcom,rx-char-to-inject = <0xFD>;
 
 		qcom,bam-tx-ep-pipe-index = <2>;
