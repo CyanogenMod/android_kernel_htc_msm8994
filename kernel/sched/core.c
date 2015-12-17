@@ -599,59 +599,6 @@ void resched_cpu(int cpu)
 }
 
 #ifdef CONFIG_NO_HZ_COMMON
-
-#ifdef CONFIG_SCHED_HMP
-
-extern int over_schedule_budget(int cpu);
-__read_mostly unsigned int sysctl_power_aware_timer_migration;
-
-static int _get_nohz_timer_target_hmp(void)
-{
-	int i, best_cpu = smp_processor_id();
-	int min_cost = INT_MAX, min_cstate = INT_MAX;
-
-	if (!sysctl_power_aware_timer_migration)
-		return nr_cpu_ids;
-
-	rcu_read_lock();
-
-	for_each_online_cpu(i) {
-		struct rq *rq = cpu_rq(i);
-		int cpu_cost = power_cost_at_freq(i, rq->max_possible_freq);
-		int cstate = rq->cstate;
-
-		 if (over_schedule_budget(i))
-			continue;
-
-		if (power_delta_exceeded(cpu_cost, min_cost)) {
-			if (cpu_cost > min_cost)
-				continue;
-
-			best_cpu = i;
-			min_cost = cpu_cost;
-			min_cstate = cstate;
-			continue;
-		}
-
-		if (cstate < min_cstate) {
-			best_cpu = i;
-			min_cstate = cstate;
-		}
-	}
-	rcu_read_unlock();
-
-	return best_cpu;
-}
-
-#else
-
-static int _get_nohz_timer_target_hmp(void)
-{
-	return raw_smp_processor_id();
-}
-
-#endif
-
 /*
  * In the semi idle case, use the nearest busy cpu for migrating timers
  * from an idle cpu.  This is good for power-savings.
@@ -663,17 +610,8 @@ static int _get_nohz_timer_target_hmp(void)
 int get_nohz_timer_target(void)
 {
 	int cpu = smp_processor_id();
-	int i, lower_power_cpu;
+	int i;
 	struct sched_domain *sd;
-
-	if (sched_enable_hmp) {
-		lower_power_cpu =  _get_nohz_timer_target_hmp();
-		if (lower_power_cpu < nr_cpu_ids)
-			return lower_power_cpu;
-	}
-
-	if (!idle_cpu(cpu))
-		return cpu;
 
 	rcu_read_lock();
 	for_each_domain(cpu, sd) {
@@ -1673,62 +1611,10 @@ static void update_cpu_busy_time(struct task_struct *p, struct rq *rq,
 
 	BUG();
 }
-
-static inline void update_cpu_load(struct rq *rq, u64 wallclock)
-{
-	int nr_full_windows;
-	int i;
-	u64 sum = 0, avg, elapsetime;
-	u64 load = rq->prev_runnable_sum;
-	struct rq * rqi;
-
-	if (wallclock - rq->load_last_update_timestamp < sched_ravg_window)
-		return;
-
-	load =  scale_load_to_cpu(load, cpu_of(rq));
-
-	if (load > sched_ravg_window)
-		load = sched_ravg_window;
-
-	nr_full_windows = div64_u64((rq->window_start - rq->load_last_update_timestamp),
-						sched_ravg_window);
-
-	for (i = 0; i < nr_full_windows + 1 && i < SCHED_LOAD_WINDOW_SIZE; i++) {
-		rq->load_history[rq->load_history_index] = load;
-		if (++rq->load_history_index == SCHED_LOAD_WINDOW_SIZE)
-			rq->load_history_index = 0;
-	}
-
-	for (i = 0; i < SCHED_LOAD_WINDOW_SIZE; i++) {
-		sum += rq->load_history[i];
-	}
-
-	avg = div64_u64(sum, SCHED_LOAD_WINDOW_SIZE);
-
-	rq->load_avg = real_to_pct(avg);
-	rq->load_last_update_timestamp = wallclock;
-
-	elapsetime = SCHED_LOAD_WINDOW_SIZE * sched_ravg_window;
-
-	for (i = 0; i < NR_CPUS; i++) {
-		if (i == cpu_of(rq))
-			continue;
-		rqi = cpu_rq(i);
-		if (wallclock - rqi->load_last_update_timestamp > elapsetime) {
-			rqi->load_last_update_timestamp = wallclock;
-			memset(rqi->load_history, 0, sizeof(rqi->load_history));
-			rqi->load_avg = 0;
-		}
-	}
-}
 #else	/* CONFIG_SCHED_FREQ_INPUT */
 
 static inline void update_cpu_busy_time(struct task_struct *p, struct rq *rq,
 	     int event, u64 wallclock, u64 irqtime)
-{
-}
-
-static inline void update_cpu_load(struct rq *rq, u64 wallclock)
 {
 }
 
@@ -1938,7 +1824,6 @@ static void update_task_ravg(struct task_struct *p, struct rq *rq,
 
 	update_task_demand(p, rq, event, wallclock);
 	update_cpu_busy_time(p, rq, event, wallclock, irqtime);
-	update_cpu_load(rq, wallclock);
 
 done:
 	trace_sched_update_task_ravg(p, rq, event, wallclock, irqtime);
@@ -2054,10 +1939,6 @@ static inline void set_window_start(struct rq *rq)
 #ifdef CONFIG_SCHED_FREQ_INPUT
 		rq->curr_runnable_sum = rq->prev_runnable_sum = 0;
 #endif
-		memset(rq->load_history, 0, sizeof(rq->load_history));
-		rq->load_avg = 0;
-		rq->load_history_index = 0;
-		rq->load_last_update_timestamp = 0;
 		raw_spin_unlock(&sync_rq->lock);
 	}
 
@@ -2196,11 +2077,6 @@ void reset_all_window_stats(u64 window_start, unsigned int window_size)
 #ifdef CONFIG_SCHED_FREQ_INPUT
 		rq->curr_runnable_sum = rq->prev_runnable_sum = 0;
 #endif
-		memset(rq->load_history, 0, sizeof(rq->load_history));
-		rq->load_avg = 0;
-		rq->load_history_index = 0;
-		rq->load_last_update_timestamp = 0;
-
 		reset_cpu_hmp_stats(cpu, 1);
 
 		fixup_nr_big_small_task(cpu, 0);
@@ -2467,8 +2343,6 @@ static void __update_min_max_capacity(void)
 	int max = 0, min = INT_MAX;
 
 	for_each_online_cpu(i) {
-		if (cpu_rq(i)->budget == 0)
-			continue;
 		if (cpu_rq(i)->capacity > max)
 			max = cpu_rq(i)->capacity;
 		if (cpu_rq(i)->capacity < min)
@@ -6809,7 +6683,6 @@ void sched_show_task(struct task_struct *p)
 	unsigned long free = 0;
 	int ppid;
 	unsigned state;
-	struct task_struct *group_leader;
 
 	state = p->state ? __ffs(p->state) + 1 : 0;
 	printk(KERN_INFO "%-15.15s %c", p->comm,
@@ -6831,40 +6704,15 @@ void sched_show_task(struct task_struct *p)
 	rcu_read_lock();
 	ppid = task_pid_nr(rcu_dereference(p->real_parent));
 	rcu_read_unlock();
-	printk(KERN_CONT "%5lu %5d %6d 0x%08lx c%d %llu\n", free,
+	printk(KERN_CONT "%5lu %5d %6d 0x%08lx\n", free,
 		task_pid_nr(p), ppid,
-		(unsigned long)task_thread_info(p)->flags, p->on_cpu,
-#if defined(CONFIG_SCHEDSTATS) || defined(CONFIG_TASK_DELAY_ACCT)
-		div64_u64(task_rq(p)->clock - p->sched_info.last_arrival, NSEC_PER_MSEC));
-#else
-		(unsigned long long)0);
-#endif
-
-	group_leader = p->group_leader;
-	printk(KERN_CONT "  tgid: %d, group leader: %s\n",
-			p->tgid, group_leader ? group_leader->comm : "unknown");
-
-#if defined(CONFIG_DEBUG_MUTEXES)
-	if (state == TASK_UNINTERRUPTIBLE) {
-		struct task_struct* blocker = p->blocked_by;
-		if (blocker) {
-			printk(KERN_CONT " blocked by %.32s (%d:%d) for %u ms\n",
-				blocker->comm, blocker->tgid, blocker->pid,
-				jiffies_to_msecs(jiffies - p->blocked_since));
-		}
-	}
-#endif
+		(unsigned long)task_thread_info(p)->flags);
 
 	print_worker_info(KERN_INFO, p);
 	show_stack(p, NULL);
 }
 
 void show_state_filter(unsigned long state_filter)
-{
-	show_thread_group_state_filter(NULL, state_filter);
-}
-
-void show_thread_group_state_filter(const char *tg_comm, unsigned long state_filter)
 {
 	struct task_struct *g, *p;
 
@@ -6882,17 +6730,14 @@ void show_thread_group_state_filter(const char *tg_comm, unsigned long state_fil
 		 * console might take a lot of time:
 		 */
 		touch_nmi_watchdog();
-		if (!tg_comm || (tg_comm && !strncmp(tg_comm, g->comm, TASK_COMM_LEN))) {
-			if (!state_filter || (p->state & state_filter))
-				sched_show_task(p);
-		}
+		if (!state_filter || (p->state & state_filter))
+			sched_show_task(p);
 	} while_each_thread(g, p);
 
 	touch_all_softlockup_watchdogs();
 
 #ifdef CONFIG_SYSRQ_SCHED_DEBUG
-	if (!tg_comm)
-		sysrq_sched_debug_show();
+	sysrq_sched_debug_show();
 #endif
 	rcu_read_unlock();
 	/*
@@ -9301,11 +9146,6 @@ void __init sched_init(void)
 		rq->notifier_sent = 0;
 #endif
 #endif
-		memset(rq->load_history, 0, sizeof(rq->load_history));
-		rq->load_avg = 0;
-		rq->budget= 100;
-		rq->load_history_index = 0;
-		rq->load_last_update_timestamp = 0;
 
 		INIT_LIST_HEAD(&rq->cfs_tasks);
 

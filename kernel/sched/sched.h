@@ -63,8 +63,6 @@ extern __read_mostly int scheduler_running;
 #define NICE_0_LOAD		SCHED_LOAD_SCALE
 #define NICE_0_SHIFT		SCHED_LOAD_SHIFT
 
-#define SCHED_LOAD_WINDOW_SIZE 10
-
 /*
  * These are the 'tuning knobs' of the scheduler:
  */
@@ -538,12 +536,6 @@ struct rq {
 	u64 prev_runnable_sum;
 #endif
 
-	u64 load_history[SCHED_LOAD_WINDOW_SIZE];
-	int load_avg;
-	int budget;
-	int load_history_index;
-	u64 load_last_update_timestamp;
-
 #ifdef CONFIG_IRQ_TIME_ACCOUNTING
 	u64 prev_irq_time;
 #endif
@@ -763,8 +755,6 @@ extern void sched_account_irqtime(int cpu, struct task_struct *curr,
 				 u64 delta, u64 wallclock);
 unsigned int cpu_temp(int cpu);
 extern unsigned int nr_eligible_big_tasks(int cpu);
-extern void update_up_down_migrate(void);
-extern int power_delta_exceeded(unsigned int cpu_cost, unsigned int base_cost);
 
 /*
  * 'load' is in reference to "best cpu" at its best frequency.
