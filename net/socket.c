@@ -587,13 +587,18 @@ const struct file_operations bad_sock_fops = {
  *	an inode not a file.
  */
 
+#ifdef CONFIG_HTC_PORT_LIST
 int add_or_remove_port(struct sock *sk, int add_or_remove);	
+#endif
 
 void sock_release(struct socket *sock)
 {
+#ifdef CONFIG_HTC_PORT_LIST
+	
 	if (sock->sk != NULL)
 		add_or_remove_port(sock->sk, 0);
 	
+#endif
 
 	if (sock->ops) {
 		struct module *owner = sock->ops->owner;
@@ -1576,11 +1581,12 @@ SYSCALL_DEFINE2(listen, int, fd, int, backlog)
 		}
 		fput_light(sock->file, fput_needed);
 
+#ifdef CONFIG_HTC_PORT_LIST
 		
 		if (sock->sk != NULL)
 			add_or_remove_port(sock->sk, 1);
 		
-
+#endif
 	}
 	return err;
 }
