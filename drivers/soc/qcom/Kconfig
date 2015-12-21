@@ -185,6 +185,12 @@ config MSM_SMD_DEBUG
 	  what channels caused interrupt activity, and when internal state
 	  change events occur.
 
+config HTC_PORT_LIST
+	depends on MSM_SMD
+	bool "HTC port list driver"
+	help
+	  Support HTC TCP port debugging driver.
+
 config MSM_MPM_OF
 	bool "Modem Power Manager"
 	depends on OF

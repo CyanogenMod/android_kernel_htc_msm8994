@@ -45,7 +45,7 @@ obj-$(CONFIG_MSM_SCM) += scm.o scm-boot.o scm-mpu.o scm-htc.o
 
 obj-$(CONFIG_MSM_SMD) += smd.o smd_debug.o smd_private.o smd_init_dt.o smsm_debug.o
 # ++SSD_RIL: Garbage_Filter_TCP
-obj-$(CONFIG_MSM_SMD) += htc_port_list.o
+obj-$(CONFIG_HTC_PORT_LIST) += htc_port_list.o
 # --SSD_RIL: Garbage_Filter_TCP
 
 obj-$(CONFIG_MSM_SMEM) += smem.o smem_debug.o
