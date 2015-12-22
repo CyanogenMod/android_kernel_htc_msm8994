@@ -19,8 +19,8 @@ DHDCFLAGS = -Wall -Wstrict-prototypes -Dlinux -DBCMDRIVER               \
 	-DMIRACAST_AMPDU_SIZE=8	-DWL_IFACE_COMB_NUM_CHANNELS	\
 	-DDHD_SET_FW_HIGHSPEED -DHTC_TX_TRACKING -DSOFTAP \
 	-DSUPPORT_2G_HT40 -DENABLE_FW_ROAM_SUSPEND -DDHD_RX_DUMP -DDHD_TX_DUMP \
-	-Idrivers/net/wireless/bcmdhd -Idrivers/net/wireless/bcmdhd/include   \
-	-Idrivers/net/wireless/bcmdhd/common/include
+	-Idrivers/net/wireless/bcmdhd_4356 -Idrivers/net/wireless/bcmdhd_4356/include   \
+	-Idrivers/net/wireless/bcmdhd_4356/common/include
 
 DHDOFILES = aiutils.o siutils.o sbutils.o bcmutils.o bcmwifi_channels.o \
 	dhd_linux.o dhd_linux_platdev.o dhd_linux_sched.o dhd_pno.o \
