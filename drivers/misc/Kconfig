@@ -626,6 +626,24 @@ config QCOM_LIQUID_DOCK
 	  the docking station of various models of Qualcomm Technology's
 	  LiQUID Mobile Development Platforms.
 
+config CABLE_DETECT_8XXX
+	boolean "Cable detect driver"
+	default n
+	help
+	  Detect usb, ac and other htc accessories
+
+config CABLE_DETECT_ACCESSORY
+	boolean "CABLE ACCESSORY DETECT"
+	default n
+
+config VIB_TRIGGERS
+        boolean "Vibrator trigger interface support"
+        default n
+        help
+          This option enables trigger support for the vibrator function.
+          These triggers allow kernel events to drive the vibrator. If
+          unsure, say N.
+
 source "drivers/misc/c2port/Kconfig"
 source "drivers/misc/eeprom/Kconfig"
 source "drivers/misc/cb710/Kconfig"
@@ -636,4 +654,7 @@ source "drivers/misc/altera-stapl/Kconfig"
 source "drivers/misc/mei/Kconfig"
 source "drivers/misc/vmw_vmci/Kconfig"
 source "drivers/misc/qcom/Kconfig"
+source "drivers/misc/headset/Kconfig"
+source "drivers/misc/fpr_Synaptics/Kconfig"
+source "drivers/misc/fpr_CrucialTec/Kconfig"
 endmenu

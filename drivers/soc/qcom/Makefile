@@ -25,11 +25,13 @@ obj-$(CONFIG_MSM_MEMORY_DUMP_V2) += memory_dump_v2.o
 obj-$(CONFIG_MSM_DDR_HEALTH) += ddr-health.o
 obj-$(CONFIG_MSM_MPM_OF) += mpm-of.o
 obj-$(CONFIG_MSM_RPM_SMD) += rpm-smd.o
+obj-$(CONFIG_MSM_RPM_SMD) += rpm_htc_cmd.o
 ifdef CONFIG_DEBUG_FS
 obj-$(CONFIG_MSM_RPM_SMD) += rpm-smd-debug.o
 endif
 obj-$(CONFIG_MSM_RPM_RBCPR_STATS_V2_LOG) += rpm_rbcpr_stats_v2.o
 obj-$(CONFIG_MSM_RPM_STATS_LOG) += rpm_stats.o rpm_master_stat.o
+obj-y += rpm_stats_ver.o
 obj-$(CONFIG_MSM_RPM_LOG) += rpm_log.o
 obj-$(CONFIG_QCOM_NPA_DUMP) += npa-dump.o
 obj-$(CONFIG_MSM_JTAG) += jtag-fuse.o jtag.o
@@ -39,9 +41,13 @@ obj-$(CONFIG_MSM_QMI_INTERFACE) += qmi_interface.o
 
 obj-$(CONFIG_MSM_CACHE_DUMP) += cache_dump.o
 obj-$(CONFIG_MSM_CPUSS_DUMP) += cpuss_dump.o
-obj-$(CONFIG_MSM_SCM) += scm.o scm-boot.o scm-mpu.o
+obj-$(CONFIG_MSM_SCM) += scm.o scm-boot.o scm-mpu.o scm-htc.o
 
 obj-$(CONFIG_MSM_SMD) += smd.o smd_debug.o smd_private.o smd_init_dt.o smsm_debug.o
+# ++SSD_RIL: Garbage_Filter_TCP
+obj-$(CONFIG_MSM_SMD) += htc_port_list.o
+# --SSD_RIL: Garbage_Filter_TCP
+
 obj-$(CONFIG_MSM_SMEM) += smem.o smem_debug.o
 obj-$(CONFIG_MSM_SMEM_LOGGING) += smem_log.o
 obj-$(CONFIG_MSM_COMMON_LOG) += common_log.o
@@ -87,3 +93,6 @@ obj-$(CONFIG_MSM_SYSTEM_HEALTH_MONITOR) += system_health_monitor.o
 obj-$(CONFIG_MSM_RTB) += msm_rtb-hotplug.o
 obj-$(CONFIG_QCOM_EARLY_RANDOM)	+= early_random.o
 obj-$(CONFIG_MSM_PACMAN)        += msm_pacman.o
+
+# For HTC Implementation of Power Control of LCM power source
+obj-y += display/

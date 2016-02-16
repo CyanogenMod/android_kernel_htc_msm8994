@@ -264,4 +264,19 @@ config SEEMP_CORE
 	help
 		This option enables malware protection component
 		to log on-device software API activity.
+
+config QPNP_PMIC_DOG
+	bool "QPNP PMIC DOG Driver"
+	depends on OF_SPMI && SPMI
+	default y
+	help
+	  This driver enable PMIC DOG on booting stage and disable it soon.
+
+config HTC_DEBUG_MSMBUS
+	bool "htc msmbus debug"
+	default n
+	help
+		This option enables HTC MSMBUS debug info. Print some HTC MSMBUS NoC vote
+		information and which client vote this bandwidth.
+
 endmenu

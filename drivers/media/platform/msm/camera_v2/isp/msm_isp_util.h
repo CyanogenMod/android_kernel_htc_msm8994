@@ -1,4 +1,4 @@
-/* Copyright (c) 2013-2015, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2013-2014, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -15,7 +15,6 @@
 #include "msm_isp.h"
 #include <soc/qcom/camera2.h>
 
-/* #define CONFIG_MSM_ISP_DBG 1 */
 
 #ifdef CONFIG_MSM_ISP_DBG
 #define ISP_DBG(fmt, args...) printk(fmt, ##args)
@@ -77,6 +76,5 @@ void msm_isp_fetch_engine_done_notify(struct vfe_device *vfe_dev,
 	struct msm_vfe_fetch_engine_info *fetch_engine_info);
 void msm_camera_io_dump_2(void __iomem *addr, int size);
 void msm_isp_print_fourcc_error(const char *origin, uint32_t fourcc_format);
-void msm_isp_flush_tasklet(struct vfe_device *vfe_dev);
 
-#endif /* __MSM_ISP_UTIL_H__ */
+#endif 

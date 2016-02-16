@@ -22,6 +22,21 @@
 
 #define HAL_BUFFER_MAX 0xb
 
+/* HTC_START: ION debug mechanism enhancement
+ * Move struct smem_client from msm_smem.c and add three members
+ * (clnt_alloc, clnt_import, inst) in the struct to enhance ION
+ * debug mechanism
+ */
+struct smem_client {
+        int mem_type;
+        void *clnt;
+        void *clnt_alloc;
+        void *clnt_import;
+        struct msm_vidc_platform_resources *res;
+        struct msm_vidc_inst *inst;
+};
+/* HTC_END */
+
 enum smem_type {
 	SMEM_ION,
 };

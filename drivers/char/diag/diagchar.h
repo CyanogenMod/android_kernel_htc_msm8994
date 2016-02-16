@@ -25,7 +25,9 @@
 #include <soc/qcom/smd.h>
 #include <asm/atomic.h>
 #include "diagfwd_bridge.h"
-
+/*++ 2014/10/17, USB Team, PCN00016 ++*/
+#include <linux/usb/usbdiag.h>
+/*-- 2014/10/17, USB Team, PCN00016 --*/
 /* Size of the USB buffers used for read and write*/
 #define USB_MAX_OUT_BUF 4096
 #define APPS_BUF_SIZE	4096
@@ -49,6 +51,11 @@
 #define APPS_DATA		(LAST_PERIPHERAL + 1)
 #define REMOTE_DATA		4
 #define APPS_PROC		1
+/*++ 2014/09/18, USB Team, PCN00002 ++*/
+#define MODEM_PROC		0
+#define LPASS_PROC		2
+#define WCNSS_PROC		3
+/*-- 2014/09/18, USB Team, PCN00002 --*/
 
 #define USER_SPACE_DATA 8192
 #define PKT_SIZE 4096
@@ -202,6 +209,10 @@ do {							\
 enum remote_procs {
 	MDM = 1,
 	MDM2 = 2,
+/*++ 2014/09/18, USB Team, PCN00002 ++*/
+	MDM3 = 3,
+	MDM4 = 4,
+/*-- 2014/09/18, USB Team, PCN00002 --*/
 	QSC = 5,
 };
 
@@ -250,6 +261,9 @@ struct bindpkt_params {
 struct diag_client_map {
 	char name[20];
 	int pid;
+/*++ 2014/09/18, USB Team, PCN00002 ++*/
+	int timeout;
+/*-- 2014/09/18, USB Team, PCN00002 --*/
 };
 
 struct real_time_vote_t {
@@ -442,6 +456,16 @@ struct diagchar_dev {
 	struct mutex real_time_mutex;
 	struct work_struct diag_real_time_work;
 	struct workqueue_struct *diag_real_time_wq;
+/*++ 2014/10/17, USB Team, PCN00016 ++*/
+#if DIAG_XPST
+	unsigned char nohdlc;
+	unsigned char in_busy_dmrounter;
+	struct mutex smd_lock;
+	unsigned char init_done;
+	unsigned char is2ARM11;
+	int debug_dmbytes_recv;
+#endif
+/*-- 2014/10/17, USB Team, PCN00016 --*/
 #ifdef CONFIG_DIAG_OVER_USB
 	int usb_connected;
 #endif
@@ -464,6 +488,14 @@ struct diagchar_dev {
 	struct diag_ws_ref_t dci_ws;
 	struct diag_ws_ref_t md_ws;
 	spinlock_t ws_lock;
+/*++ 2014/09/18, USB Team, PCN00002 ++*/
+	int qxdm2sd_drop;
+/*++ 2014/10/17, USB Team, PCN00016 ++*/
+	int qxdmusb_drop;
+/*-- 2014/10/17, USB Team, PCN00016 --*/
+	struct timeval st0;
+	struct timeval st1;
+/*-- 2014/09/18, USB Team, PCN00002 --*/
 	/* Pointers to Diag Masks */
 	struct diag_mask_info *msg_mask;
 	struct diag_mask_info *log_mask;
@@ -484,9 +516,25 @@ struct diagchar_dev {
 };
 
 extern struct diagchar_dev *driver;
-
+/*++ 2014/09/18, USB Team, PCN00002 ++*/
+#define DIAG_DBG_READ  1
+#define DIAG_DBG_WRITE 2
+#define DIAG_DBG_DROP  3
+extern unsigned diag7k_debug_mask;
+extern unsigned diag9k_debug_mask;
+#define DIAGFWD_7K_RAWDATA(buf, src, flag) \
+	__diagfwd_dbg_raw_data(buf, src, flag, diag7k_debug_mask)
+#define DIAGFWD_9K_RAWDATA(buf, src, flag) \
+	__diagfwd_dbg_raw_data(buf, src, flag, diag9k_debug_mask)
+void __diagfwd_dbg_raw_data(void *buf, const char *src, unsigned dbg_flag, unsigned mask);
+/*-- 2014/09/18, USB Team, PCN00002 --*/
 extern int wrap_enabled;
 extern uint16_t wrap_count;
+
+/*++ 2014/10/17, USB Team, PCN00016 ++*/
+#define    SMDDIAG_NAME "DIAG"
+extern struct diagchar_dev *driver;
+/*-- 2014/10/17, USB Team, PCN00016 --*/
 
 void diag_get_timestamp(char *time_str);
 int diag_find_polling_reg(int i);

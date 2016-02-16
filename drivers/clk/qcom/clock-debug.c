@@ -242,7 +242,7 @@ static const struct file_operations fmax_rates_fops = {
 	.open		= fmax_rates_open,
 	.read		= seq_read,
 	.llseek		= seq_lseek,
-	.release	= seq_release,
+	.release	= single_release,
 };
 
 static int orphan_list_show(struct seq_file *m, void *unused)
@@ -264,7 +264,7 @@ static const struct file_operations orphan_list_fops = {
 	.open		= orphan_list_open,
 	.read		= seq_read,
 	.llseek		= seq_lseek,
-	.release	= seq_release,
+	.release	= single_release,
 };
 
 #define clock_debug_output(m, c, fmt, ...)		\
@@ -301,6 +301,50 @@ static int clock_debug_print_clock(struct clk *c, struct seq_file *m)
 
 	return 1;
 }
+
+int htc_clock_debug_print_clock(struct clk *c)
+{
+	char buff[64];
+	if (!c || !c->prepare_count)
+		return 0;
+
+	if (c->vdd_class)
+		snprintf(buff, sizeof(buff), "%s:%u:%u [%ld, %d]",
+			c->dbg_name, c->prepare_count, c->count,
+			c->rate, find_vdd_level(c, c->rate));
+	else
+		snprintf(buff, sizeof(buff), "%s:%u:%u [%ld]",
+			c->dbg_name, c->prepare_count, c->count,
+			c->rate);
+
+	while ((c = clk_get_parent(c))) {
+		if(!strcmp(c->dbg_name, "cxo_clk_src")) {
+			printk("\t%s\n", buff);
+		}
+	}
+
+	return 1;
+}
+
+void htc_clock_debug_print_blocked_clocks(void)
+{
+	struct clk *c;
+	int cnt = 0;
+
+	if (!mutex_trylock(&clk_list_lock)) {
+		pr_err("clock-debug: Clocks are being registered. Cannot print clock state now.\n");
+		return;
+	}
+	printk("Blocked cxo clocks:\n");
+	list_for_each_entry(c, &clk_list, list) {
+		cnt += htc_clock_debug_print_clock(c);
+	}
+	mutex_unlock(&clk_list_lock);
+
+	if (!cnt)
+		printk("No clocks enabled.\n");
+}
+EXPORT_SYMBOL_GPL(htc_clock_debug_print_blocked_clocks);
 
 /**
  * clock_debug_print_enabled_clocks() - Print names of enabled clocks
@@ -342,7 +386,7 @@ static const struct file_operations enabled_clocks_fops = {
 	.open		= enabled_clocks_open,
 	.read		= seq_read,
 	.llseek		= seq_lseek,
-	.release	= seq_release,
+	.release	= single_release,
 };
 
 static int trace_clocks_show(struct seq_file *m, void *unused)
@@ -412,7 +456,7 @@ static const struct file_operations list_rates_fops = {
 	.open		= list_rates_open,
 	.read		= seq_read,
 	.llseek		= seq_lseek,
-	.release	= seq_release,
+	.release	= single_release,
 };
 
 static ssize_t clock_parent_read(struct file *filp, char __user *ubuf,
@@ -518,7 +562,7 @@ static const struct file_operations clock_print_hw_fops = {
 	.open		= print_hw_open,
 	.read		= seq_read,
 	.llseek		= seq_lseek,
-	.release	= seq_release,
+	.release	= single_release,
 };
 
 
@@ -594,6 +638,128 @@ error:
 }
 static DEFINE_MUTEX(clk_debug_lock);
 static int clk_debug_init_once;
+
+#ifdef CONFIG_HTC_POWER_DEBUG
+static struct dentry *debugfs_base;
+static u32 debug_suspend;
+static struct clk_lookup *msm_clocks;
+static size_t num_msm_clocks;
+static struct dentry *debugfs_clock_base;
+
+struct clk *clock_debug_parent_get(void *data)
+{
+        struct clk *clock = data;
+
+        if (clock->ops->get_parent)
+                return clock->ops->get_parent(clock);
+
+        return 0;
+}
+
+
+int htc_clock_dump(struct clk *clock, struct seq_file *m)
+{
+        int len = 0;
+        u64 value = 0;
+        struct clk *parent;
+        char nam_buf[20];
+        char en_buf[20];
+        char hz_buf[20];
+        char loc_buf[20];
+        char par_buf[20];
+
+        if (!clock)
+                return 0;
+
+        memset(nam_buf,  ' ', sizeof(nam_buf));
+        nam_buf[19] = 0;
+        memset(en_buf, 0, sizeof(en_buf));
+        memset(hz_buf, 0, sizeof(hz_buf));
+        memset(loc_buf, 0, sizeof(loc_buf));
+        memset(par_buf,  ' ', sizeof(par_buf));
+        par_buf[19] = 0;
+
+        len = strlen(clock->dbg_name);
+        if (len > 19)
+                len = 19;
+        memcpy(nam_buf, clock->dbg_name, len);
+
+        clock_debug_enable_get(clock, &value);
+        if (value)
+                sprintf(en_buf, "Y");
+        else
+                sprintf(en_buf, "N");
+
+        clock_debug_rate_get(clock, &value);
+        sprintf(hz_buf, "%llu", value);
+
+        clock_debug_local_get(clock, &value);
+        if (value)
+                sprintf(loc_buf, "Y");
+        else
+                sprintf(loc_buf, "N");
+
+        parent = clock_debug_parent_get(clock);
+        if (parent) {
+                len = strlen(parent->dbg_name);
+                if (len > 19)
+                        len = 19;
+                memcpy(par_buf, parent->dbg_name, len);
+        } else
+                memcpy(par_buf, "NULL", 4);
+
+        if (m)
+                seq_printf(m, "%s: [EN]%s, [LOC]%s, [SRC]%s, [FREQ]%s\n", nam_buf, en_buf, loc_buf, par_buf, hz_buf);
+        else
+                pr_info("%s: [EN]%s, [LOC]%s, [SRC]%s, [FREQ]%s\n", nam_buf, en_buf, loc_buf, par_buf, hz_buf);
+
+        return 0;
+}
+
+int list_clocks_show(struct seq_file *m, void *unused)
+{
+        int index;
+        char *title_msg = "------------ HTC Clock -------------\n";
+        if (m)
+                seq_printf(m, title_msg);
+        else
+                pr_info("%s", title_msg);
+
+        for (index = 0; index < num_msm_clocks; index++)
+                htc_clock_dump(msm_clocks[index].clk, m);
+        return 0;
+}
+
+static int list_clocks_open(struct inode *inode, struct file *file)
+{
+        return single_open(file, list_clocks_show, inode->i_private);
+}
+
+static const struct file_operations list_clocks_fops = {
+        .open = list_clocks_open,
+        .read = seq_read,
+        .llseek = seq_lseek,
+        .release = single_release,
+};
+
+
+int htc_clock_status_debug_init(struct clk_lookup *table, size_t size)
+{
+        int err = 0;
+
+        debugfs_clock_base = debugfs_create_dir("htc_clock", NULL);
+        if (!debugfs_clock_base)
+                return -ENOMEM;
+
+        if (!debugfs_create_file("list_clocks", S_IRUGO, debugfs_clock_base,
+                                &msm_clocks, &list_clocks_fops))
+                return -ENOMEM;
+	msm_clocks = table;
+        num_msm_clocks = size;
+
+        return err;
+}
+#endif
 
 /**
  * clock_debug_init() - Initialize clock debugfs

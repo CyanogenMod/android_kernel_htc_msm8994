@@ -172,7 +172,7 @@ int xts_crypt(struct blkcipher_desc *desc, struct scatterlist *sdst,
 {
 	const unsigned int bsize = XTS_BLOCK_SIZE;
 	const unsigned int max_blks = req->tbuflen / bsize;
-	struct blkcipher_walk walk;
+	struct blkcipher_walk walk={};
 	unsigned int nblocks;
 	be128 *src, *dst, *t;
 	be128 *t_buf = req->tbuf;

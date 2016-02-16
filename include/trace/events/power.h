@@ -34,7 +34,6 @@ DEFINE_EVENT(cpu, cpu_idle,
 	TP_ARGS(state, cpu_id)
 );
 
-/* This file can get included multiple times, TRACE_HEADER_MULTI_READ at top */
 #ifndef _PWR_EVENT_AVOID_DOUBLE_DEFINING
 #define _PWR_EVENT_AVOID_DOUBLE_DEFINING
 
@@ -175,10 +174,6 @@ DEFINE_EVENT(wakeup_source, wakeup_source_deactivate,
 	TP_ARGS(name, state)
 );
 
-/*
- * The clock events are used for clock enable/disable and for
- *  clock rate change
- */
 DECLARE_EVENT_CLASS(clock,
 
 	TP_PROTO(const char *name, unsigned int state, unsigned int cpu_id),
@@ -266,9 +261,6 @@ TRACE_EVENT(clock_state,
 					__entry->count, __entry->rate)
 );
 
-/*
- * The power domain events are used for power domains transitions
- */
 DECLARE_EVENT_CLASS(power_domain,
 
 	TP_PROTO(const char *name, unsigned int state, unsigned int cpu_id),
@@ -574,7 +566,6 @@ DEFINE_EVENT(timer_status, single_cycle_exit_timer_stop,
 		timer_rate, mode)
 );
 
-#endif /* _TRACE_POWER_H */
+#endif 
 
-/* This part must be outside protection */
 #include <trace/define_trace.h>

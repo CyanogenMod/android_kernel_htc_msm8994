@@ -674,8 +674,10 @@ int wcd9xxx_slim_ch_master_open(struct wcd9xxx *wcd9xxx,
 	return 0;
 fail:
 	mutex_unlock(&tx_master->lock);
-	kfree(slim_cfg);
+//htc audio ++: modify sequence to avoid to use slim_cfg pointer that will be freed ahead
 	slim_control_ch(wcd9xxx->slim, slim_cfg->grph, SLIM_CH_REMOVE, true);
+	kfree(slim_cfg);
+//htc audio --
 return rc;
 }
 EXPORT_SYMBOL(wcd9xxx_slim_ch_master_open);

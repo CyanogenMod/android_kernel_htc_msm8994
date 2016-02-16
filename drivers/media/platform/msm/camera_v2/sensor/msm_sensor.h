@@ -38,14 +38,6 @@
 #define DEFINE_MSM_MUTEX(mutexname) \
 	static struct mutex mutexname = __MUTEX_INITIALIZER(mutexname)
 
-enum msm_sensor_sensor_slave_info_type {
-	MSM_SENSOR_SLAVEADDR_DATA,
-	MSM_SENSOR_IDREGADDR_DATA,
-	MSM_SENSOR_SENSOR_ID_DATA,
-	MSM_SENSOR_SENIDMASK_DATA,
-	MSM_SENSOR_NUM_ID_INFO_DATA,
-};
-
 struct msm_sensor_ctrl_t;
 
 enum msm_sensor_state_t {
@@ -61,6 +53,14 @@ struct msm_sensor_fn_t {
 	int (*sensor_power_down) (struct msm_sensor_ctrl_t *);
 	int (*sensor_power_up) (struct msm_sensor_ctrl_t *);
 	int (*sensor_match_id) (struct msm_sensor_ctrl_t *);
+	int (*sensor_i2c_read_fuseid)(struct sensorb_cfg_data *cdata, struct msm_sensor_ctrl_t *s_ctrl); 
+#ifdef CONFIG_COMPAT
+	int (*sensor_i2c_read_fuseid32)(struct sensorb_cfg_data32 *cdata, struct msm_sensor_ctrl_t *s_ctrl); 
+#endif
+	int (*sensor_i2c_read_emmc)(struct sensorb_cfg_data *cdata);
+#ifdef CONFIG_COMPAT
+	int (*sensor_i2c_read_emmc32)(struct sensorb_cfg_data32 *cdata);
+#endif
 };
 
 struct msm_sensor_ctrl_t {
@@ -87,9 +87,12 @@ struct msm_sensor_ctrl_t {
 	struct device_node *of_node;
 	enum msm_camera_stream_type_t camera_stream_type;
 	uint32_t set_mclk_23880000;
+	uint8_t driver_ic; 
 };
 
 int msm_sensor_config(struct msm_sensor_ctrl_t *s_ctrl, void __user *argp);
+
+int msm_sensor_config32(struct msm_sensor_ctrl_t *s_ctrl, void __user *argp);
 
 int msm_sensor_power_up(struct msm_sensor_ctrl_t *s_ctrl);
 
@@ -109,6 +112,12 @@ int msm_sensor_i2c_probe(struct i2c_client *client,
 int msm_sensor_free_sensor_data(struct msm_sensor_ctrl_t *s_ctrl);
 
 int32_t msm_sensor_init_default_params(struct msm_sensor_ctrl_t *s_ctrl);
+
+unsigned char *get_cam_emmc_cal(int* length);
+struct file* msm_fopen(const char* path, int flags, int rights);
+int msm_fwrite(struct file* file, unsigned long long offset, unsigned char* data, unsigned int size);
+void msm_fclose(struct file* file);
+uint32_t msm_sensor_get_boardinfo(struct device_node *of_node);
 
 int32_t msm_sensor_get_dt_gpio_req_tbl(struct device_node *of_node,
 	struct msm_camera_gpio_conf *gconf, uint16_t *gpio_array,

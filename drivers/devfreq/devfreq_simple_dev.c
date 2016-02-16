@@ -29,6 +29,10 @@
 #include <linux/of.h>
 #include <linux/clk.h>
 #include <trace/events/power.h>
+#ifdef CONFIG_HTC_DEBUG_FOOTPRINT
+#include <htc_mnemosyne/htc_footprint.h>
+#endif
+
 
 struct dev_data {
 	struct clk *clk;
@@ -63,6 +67,12 @@ static int dev_target(struct device *dev, unsigned long *freq, u32 flags)
 	struct dev_data *d = dev_get_drvdata(dev);
 
 	find_freq(&d->profile, freq, flags);
+
+#ifdef CONFIG_HTC_DEBUG_FOOTPRINT
+	set_acpuclk_l2_freq_footprint(FT_PREV_RATE, clk_get_rate(d->clk));
+	set_acpuclk_l2_freq_footprint(FT_NEW_RATE, *freq * 1000);
+#endif
+
 	return clk_set_rate(d->clk, *freq * 1000);
 }
 

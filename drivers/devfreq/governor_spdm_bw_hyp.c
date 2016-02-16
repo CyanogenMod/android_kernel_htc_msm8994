@@ -23,6 +23,7 @@
 #include <soc/qcom/rpm-smd.h>
 #include "governor.h"
 #include "devfreq_spdm.h"
+#include <linux/delay.h>
 
 enum msm_spdm_rt_res {
 	SPDM_RES_ID = 1,
@@ -33,6 +34,8 @@ enum msm_spdm_rt_res {
 
 static LIST_HEAD(devfreqs);
 static DEFINE_MUTEX(devfreqs_lock);
+
+static unsigned long spdm_hyp_timeout;
 
 static int enable_clocks(void)
 {
@@ -76,6 +79,9 @@ static irqreturn_t threaded_isr(int irq, void *dev_id)
 	struct spdm_args desc = { { 0 } };
 	int ext_status = 0;
 
+	while (time_before_eq(jiffies, spdm_hyp_timeout))
+		msleep(10);
+
 	/* call hyp to get bw_vote */
 	desc.arg[0] = SPDM_CMD_GET_BW_ALL;
 	ext_status = spdm_ext_call(&desc, 1);
@@ -97,6 +103,8 @@ static irqreturn_t threaded_isr(int irq, void *dev_id)
 		}
 	}
 	mutex_unlock(&devfreqs_lock);
+
+	spdm_hyp_timeout = jiffies + msecs_to_jiffies(10);
 	return IRQ_HANDLED;
 }
 

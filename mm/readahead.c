@@ -19,6 +19,7 @@
 #include <linux/pagemap.h>
 #include <linux/syscalls.h>
 #include <linux/file.h>
+#include <trace/events/mmcio.h>
 
 /*
  * Initialise a struct file's readahead state.  Assumes that the caller has
@@ -200,8 +201,10 @@ __do_page_cache_readahead(struct address_space *mapping, struct file *filp,
 	 * uptodate then the caller will launch readpage again, and
 	 * will then handle the error.
 	 */
-	if (ret)
+	if (ret) {
+		trace_readahead(filp, ret);
 		read_pages(mapping, filp, &page_pool, ret);
+	}
 	BUG_ON(!list_empty(&page_pool));
 out:
 	return ret;

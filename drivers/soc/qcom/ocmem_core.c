@@ -1172,7 +1172,7 @@ static const struct file_operations power_show_fops = {
 	.open = ocmem_power_open,
 	.read = seq_read,
 	.llseek = seq_lseek,
-	.release = seq_release,
+	.release = single_release,
 };
 
 int ocmem_core_init(struct platform_device *pdev)

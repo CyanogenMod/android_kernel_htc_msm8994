@@ -76,6 +76,7 @@
 #define SLAVE_CTX 1
 
 #define XIN_HALT_TIMEOUT_US	0x4000
+#define XIN_HALT_RETRY		64
 
 enum mdss_mdp_perf_state_type {
 	PERF_SW_COMMIT_STATE = 0,
@@ -119,8 +120,10 @@ enum mdss_mdp_block_type {
 
 enum mdss_mdp_csc_type {
 	MDSS_MDP_CSC_RGB2RGB,
-	MDSS_MDP_CSC_YUV2RGB,
-	MDSS_MDP_CSC_RGB2YUV,
+	MDSS_MDP_CSC_YUV2RGB_601,
+	MDSS_MDP_CSC_YUV2RGB_601_FR,
+	MDSS_MDP_CSC_RGB2YUV_601,
+	MDSS_MDP_CSC_RGB2YUV_601_FR,
 	MDSS_MDP_CSC_YUV2YUV,
 	MDSS_MDP_MAX_CSC
 };
@@ -536,6 +539,7 @@ struct mdss_mdp_pipe {
 	struct mdp_scale_data scale;
 	u8 chroma_sample_h;
 	u8 chroma_sample_v;
+	uint8_t color_space;
 };
 
 struct mdss_mdp_writeback_arg {

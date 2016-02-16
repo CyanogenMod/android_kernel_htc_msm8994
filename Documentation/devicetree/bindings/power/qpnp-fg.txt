@@ -44,6 +44,7 @@ Parent node optional properties:
 					hysterisis(in decidegC).
 - qcom,ext-sense-type:			Current sense channel used by the FG.
 					Set this to use external rsense.
+
 - qcom,thermal-coefficients:		Byte array of thermal coefficients for
 					reading battery thermistor. This should
 					be exactly 6 bytes in length.
@@ -59,6 +60,7 @@ Parent node optional properties:
 					in milliAmpere.
 - qcom,bcl-mh-threshold-ma:		BCL MPM to HPM mode transition threshold
 					in milliAmpere.
+- qcom,resume-soc:			soc to resume charging in percentage.
 - qcom,use-otp-profile:			Specify this flag to avoid RAM loading
 					any battery profile.
 - qcom,sw-rbias-control:		Boolean property which defines whether

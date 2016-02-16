@@ -209,6 +209,7 @@ enum mmc_blk_status {
 	MMC_BLK_URGENT,
 	MMC_BLK_URGENT_DONE,
 	MMC_BLK_NO_REQ_TO_STOP,
+	MMC_BLK_WP_ERR,
 };
 
 enum mmc_packed_stop_reasons {
@@ -324,6 +325,7 @@ struct mmc_card {
 #define MMC_TYPE_SD		1		/* SD card */
 #define MMC_TYPE_SDIO		2		/* SDIO card */
 #define MMC_TYPE_SD_COMBO	3		/* SD combo (IO+mem) card */
+#define MMC_TYPE_NA            0xFF
 	unsigned int		state;		/* (our) card state */
 #define MMC_STATE_PRESENT	(1<<0)		/* present in sysfs */
 #define MMC_STATE_READONLY	(1<<1)		/* card is read-only */
@@ -389,6 +391,7 @@ struct mmc_card {
 	struct mmc_part	part[MMC_NUM_PHY_PARTITION]; /* physical partitions */
 	unsigned int    nr_parts;
 	unsigned int	part_curr;
+	unsigned char	speed_class; /* SD card class level */
 
 	struct mmc_wr_pack_stats wr_pack_stats; /* packed commands stats*/
 
@@ -469,6 +472,7 @@ struct mmc_fixup {
 #define EXT_CSD_REV_ANY (-1u)
 
 #define CID_MANFID_SANDISK	0x2
+#define CID_MANFID_SANDISK_2 0x45
 #define CID_MANFID_TOSHIBA	0x11
 #define CID_MANFID_MICRON	0x13
 #define CID_MANFID_SAMSUNG	0x15

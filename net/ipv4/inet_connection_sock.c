@@ -23,6 +23,7 @@
 #include <net/route.h>
 #include <net/tcp_states.h>
 #include <net/xfrm.h>
+#include <net/htc_net_debug.h>
 
 #ifdef INET_CSK_DEBUG
 const char inet_csk_timer_bug_msg[] = "inet_csk BUG: unknown timer value\n";
@@ -691,6 +692,7 @@ struct sock *inet_csk_clone_lock(const struct sock *sk,
 
 		newsk->sk_state = TCP_SYN_RECV;
 		newicsk->icsk_bind_hash = NULL;
+		NET_DEBUG("%s: [0x%p] sk:0x%p, sk_state:%d, pid:%d, process:%s.\n", __func__, current_thread_info()->task, sk, sk->sk_state, current->pid, current->comm);
 
 		inet_sk(newsk)->inet_dport = inet_rsk(req)->rmt_port;
 		inet_sk(newsk)->inet_num = ntohs(inet_rsk(req)->loc_port);

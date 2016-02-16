@@ -135,12 +135,15 @@ extern int mmc_switch_ignore_timeout(struct mmc_card *, u8, u8, u8,
 extern int mmc_send_ext_csd(struct mmc_card *card, u8 *ext_csd);
 
 #define MMC_ERASE_ARG		0x00000000
+#if 0 /* Replace secure-trim and secure-erase arges with trim and erase */
 #define MMC_SECURE_ERASE_ARG	0x80000000
+#endif
 #define MMC_TRIM_ARG		0x00000001
 #define MMC_DISCARD_ARG		0x00000003
+#if 0 /* Replace secure-trim and secure-erase arges with trim and erase */
 #define MMC_SECURE_TRIM1_ARG	0x80000001
 #define MMC_SECURE_TRIM2_ARG	0x80008000
-
+#endif
 #define MMC_SECURE_ARGS		0x80000000
 #define MMC_TRIM_ARGS		0x00008001
 
@@ -172,6 +175,7 @@ extern void mmc_set_ios(struct mmc_host *host);
 extern int mmc_flush_cache(struct mmc_card *);
 
 extern int mmc_detect_card_removed(struct mmc_host *host);
+extern int mmc_remove_sd_card(struct mmc_host *host);
 
 extern void mmc_blk_init_bkops_statistics(struct mmc_card *card);
 extern void mmc_rpm_hold(struct mmc_host *host, struct device *dev);

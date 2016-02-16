@@ -23,6 +23,41 @@
 
 #include <linux/err.h>
 
+/*++ 2014/09/18, USB Team, PCN00002 ++*/
+/*DRIVER_DIAG_FUNCTION*/
+#define DIAG_ERR(fmt, args...) \
+	printk(KERN_ERR "[USBDIAG:ERR] " fmt, ## args)
+#define DIAG_WARNING(fmt, args...) \
+	printk(KERN_WARNING "[USBDIAG] " fmt, ## args)
+#define DIAG_INFO(fmt, args...) \
+	printk(KERN_INFO "[USBDIAG] " fmt, ## args)
+#define DIAG_DBUG(fmt, args...) \
+	printk(KERN_DEBUG "[USBDIAG] " fmt, ## args)
+
+/*DRIVER_DIAGFWD_FUNCTION*/
+#define DIAGFWD_ERR(fmt, args...) \
+	printk(KERN_ERR "[USBDIAG:ERR] " fmt, ## args)
+#define DIAGFWD_WARNING(fmt, args...) \
+	printk(KERN_WARNING "[USBDIAG] " fmt, ## args)
+#define DIAGFWD_INFO(fmt, args...) \
+	printk(KERN_INFO "[USBDIAG] " fmt, ## args)
+#define DIAGFWD_DBUG(fmt, args...) \
+	printk(KERN_DEBUG "[USBDIAG] " fmt, ## args)
+
+/* DRIVER_SDLOG_FUNCTION*/
+#define SDLOG_ERR(fmt, args...) \
+	printk(KERN_ERR "[USBDIAG:ERR] " fmt, ## args)
+#define SDLOG_WARNING(fmt, args...) \
+	printk(KERN_WARNING "[USBDIAG] " fmt, ## args)
+#define SDLOG_INFO(fmt, args...) \
+	printk(KERN_INFO "[USBDIAG] " fmt, ## args)
+#define SDLOG_DBUG(fmt, args...) \
+	printk(KERN_DEBUG "[USBDIAG] " fmt, ## args)
+/*-- 2014/09/18, USB Team, PCN00002 --*/
+/*++ 2014/10/17, USB Team, PCN00016 ++*/
+/* #define SDQXDM_DEBUG */
+#define DIAG_XPST 1
+/*-- 2014/10/17, USB Team, PCN00016 --*/
 #define DIAG_LEGACY		"diag"
 #define DIAG_MDM		"diag_mdm"
 #define DIAG_QSC		"diag_qsc"
@@ -81,4 +116,11 @@ int usb_diag_write(struct usb_diag_ch *ch, struct diag_request *d_req)
 	return -ENODEV;
 }
 #endif /* CONFIG_USB_G_ANDROID */
+/*++ 2014/10/17, USB Team, PCN00016 ++*/
+int checkcmd_modem_epst(unsigned char *buf);
+int modem_to_userspace(void *buf, int r, int cmdtype, int is9k);
+extern int sdio_diag_initialized;
+extern int smd_diag_initialized;
+
 #endif /* _DRIVERS_USB_DIAG_H_ */
+/*-- 2014/10/17, USB Team, PCN00016 --*/

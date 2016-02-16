@@ -2600,6 +2600,11 @@ int msm_mmsscc_8994_probe(struct platform_device *pdev)
 	int compatlen = 0;
 	bool is_v2 = false;
 
+        if (!pdev) {
+                pr_err("8994 mmss probe fails\n");
+                return -ENODEV;
+        }
+
 	res = platform_get_resource_byname(pdev, IORESOURCE_MEM, "cc_base");
 	if (!res) {
 		dev_err(&pdev->dev, "Unable to retrieve register base.\n");

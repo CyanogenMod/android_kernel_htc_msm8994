@@ -612,8 +612,8 @@ int32_t ov5645_sensor_config(struct msm_sensor_ctrl_t *s_ctrl,
 
 		break;
 	case CFG_SET_INIT_SETTING:
-		/* 1. Write Recommend settings */
-		/* 2. Write change settings */
+		
+		
 		rc = s_ctrl->sensor_i2c_client->i2c_func_tbl->
 			i2c_write_conf_tbl(
 			s_ctrl->sensor_i2c_client, ov5645_recommend_settings,
@@ -622,7 +622,7 @@ int32_t ov5645_sensor_config(struct msm_sensor_ctrl_t *s_ctrl,
 		break;
 
 	case CFG_SET_RESOLUTION: {
-	/*copy from user the desired resoltuion*/
+	
 		enum msm_sensor_resolution_t res = MSM_SENSOR_INVALID_RES;
 		if (copy_from_user(&res, (void *)cdata->cfg.setting,
 			sizeof(enum msm_sensor_resolution_t))) {
@@ -726,14 +726,6 @@ int32_t ov5645_sensor_config(struct msm_sensor_ctrl_t *s_ctrl,
 			break;
 		}
 
-		if (!conf_array.size ||
-			conf_array.size > I2C_REG_DATA_MAX) {
-
-			pr_err("%s:%d failed\n", __func__, __LINE__);
-			rc = -EFAULT;
-			break;
-		}
-
 		reg_setting = kzalloc(conf_array.size *
 			(sizeof(struct msm_camera_i2c_reg_array)), GFP_KERNEL);
 		if (!reg_setting) {
@@ -820,11 +812,11 @@ int32_t ov5645_sensor_config(struct msm_sensor_ctrl_t *s_ctrl,
 	case CFG_SET_SHARPNESS:
 		break;
 	case CFG_SET_AUTOFOCUS:
-		/* TO-DO: set the Auto Focus */
+		
 		pr_debug("%s: Setting Auto Focus", __func__);
 		break;
 	case CFG_CANCEL_AUTOFOCUS:
-		/* TO-DO: Cancel the Auto Focus */
+		
 		pr_debug("%s: Cancelling Auto Focus", __func__);
 		break;
 	case CFG_SET_ISO:
@@ -893,8 +885,8 @@ int32_t ov5645_sensor_config32(struct msm_sensor_ctrl_t *s_ctrl,
 
 		break;
 	case CFG_SET_INIT_SETTING:
-		/* 1. Write Recommend settings */
-		/* 2. Write change settings */
+		
+		
 		rc = s_ctrl->sensor_i2c_client->i2c_func_tbl->
 			i2c_write_conf_tbl(
 			s_ctrl->sensor_i2c_client, ov5645_recommend_settings,
@@ -903,7 +895,7 @@ int32_t ov5645_sensor_config32(struct msm_sensor_ctrl_t *s_ctrl,
 		break;
 
 	case CFG_SET_RESOLUTION: {
-	/*copy from user the desired resoltuion*/
+	
 		enum msm_sensor_resolution_t res = MSM_SENSOR_INVALID_RES;
 		if (copy_from_user(&res,
 			(void *)compat_ptr(cdata->cfg.setting),
@@ -1014,14 +1006,6 @@ int32_t ov5645_sensor_config32(struct msm_sensor_ctrl_t *s_ctrl,
 		conf_array.size = conf_array32.size;
 		conf_array.reg_setting = compat_ptr(conf_array32.reg_setting);
 
-		if (!conf_array.size ||
-			conf_array.size > I2C_REG_DATA_MAX) {
-
-			pr_err("%s:%d failed\n", __func__, __LINE__);
-			rc = -EFAULT;
-			break;
-		}
-
 		reg_setting = kzalloc(conf_array.size *
 			(sizeof(struct msm_camera_i2c_reg_array)), GFP_KERNEL);
 		if (!reg_setting) {
@@ -1077,11 +1061,11 @@ int32_t ov5645_sensor_config32(struct msm_sensor_ctrl_t *s_ctrl,
 	case CFG_SET_SHARPNESS:
 		break;
 	case CFG_SET_AUTOFOCUS:
-		/* TO-DO: set the Auto Focus */
+		
 		pr_debug("%s: Setting Auto Focus", __func__);
 		break;
 	case CFG_CANCEL_AUTOFOCUS:
-		/* TO-DO: Cancel the Auto Focus */
+		
 		pr_debug("%s: Cancelling Auto Focus", __func__);
 		break;
 	case CFG_SET_ISO:

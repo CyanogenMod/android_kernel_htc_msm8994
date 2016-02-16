@@ -86,6 +86,10 @@ struct usb_phy {
 	struct usb_phy_io_ops	*io_ops;
 	void __iomem		*io_priv;
 
+/*++ 2014/11/26 USB Team, PCN00023 ++*/
+	bool is_in_host;
+/*-- 2014/11/26 USB Team, PCN00023 --*/
+
 	/* for notification of usb_phy_events */
 	struct atomic_notifier_head	notifier;
 

@@ -425,6 +425,43 @@ Additional properties added to the second level nodes that represent timings pro
 					"dsi_lp_mode" = DSI low power mode (default)
 					"dsi_hs_mode" = DSI high speed mode
 
+- htc,mdss-camera-blk:			Specifies the brightness of camera
+
+- htc,mdss-camera-dua-blk:		Specifies the brightness of dua camera
+
+- htc,cabc-ui-cmds: 			A byte stream formed by multiple dcs packets base on
+					qcom dsi controller protocol.
+
+- htc,cabc-video-cmds: 			A byte stream formed by multiple dcs packets base on
+					qcom dsi controller protocol.
+
+- htc,cabc-off-cmds: 			A byte stream formed by multiple dcs packets base on
+					qcom dsi controller protocol.
+
+- htc,dimming-on-cmds: 			A byte stream formed by multiple dcs packets base on
+					qcom dsi controller protocol.
+
+- htc,sre-on-cmds: 				A byte stream formed by multiple dcs packets base on
+					qcom dsi controller protocol.
+
+- htc,sre-off-cmds: 			A byte stream formed by multiple dcs packets base on
+					qcom dsi controller protocol.
+
+- htc,mdss-sre-ebi-level:		Specifies the EBI value for enable sre function by the panel.
+
+- htc,mdss-pp-hue:			Specifies pp hue adjustment for panel
+
+- htc,brt-code-table:		A array that specifies the backlight 2.0 brightness transform table.
+
+- htc,brt-bl-table:			An array that specifies the backlight 2.0 bl and brightness
+					transform table.
+					Each set will have the format defined as below:
+					--> brightness level
+					--> bl level
+
+- htc,nits-bl-table:		An array that specifies the backlight 2.0 nits and bl
+					transform table.
+
 Note, if a given optional qcom,* binding is not present, then the driver will configure
 the default values specified.
 

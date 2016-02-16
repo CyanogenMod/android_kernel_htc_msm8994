@@ -278,6 +278,8 @@ static inline void adjust_jiffies(unsigned long val, struct cpufreq_freqs *ci)
 static void __cpufreq_notify_transition(struct cpufreq_policy *policy,
 		struct cpufreq_freqs *freqs, unsigned int state)
 {
+	int j;
+
 	BUG_ON(irqs_disabled());
 
 	if (cpufreq_disabled())
@@ -312,7 +314,15 @@ static void __cpufreq_notify_transition(struct cpufreq_policy *policy,
 		adjust_jiffies(CPUFREQ_POSTCHANGE, freqs);
 		pr_debug("FREQ: %lu - CPU: %lu", (unsigned long)freqs->new,
 			(unsigned long)freqs->cpu);
-		trace_cpu_frequency(freqs->new, freqs->cpu);
+		if (likely(policy)) {
+			for_each_cpu(j, policy->cpus) {
+				if (cpu_online(j))
+					trace_cpu_frequency(freqs->new, j);
+			}
+		}
+		else {
+			trace_cpu_frequency(freqs->new, freqs->cpu);
+		}
 		srcu_notifier_call_chain(&cpufreq_transition_notifier_list,
 				CPUFREQ_POSTCHANGE, freqs);
 		if (likely(policy) && likely(policy->cpu == freqs->cpu))
@@ -912,6 +922,7 @@ static int cpufreq_add_policy_cpu(struct cpufreq_policy *policy,
 		}
 	}
 
+	trace_cpu_frequency(policy->cur, cpu);
 	return sysfs_create_link(&dev->kobj, &policy->kobj, "cpufreq");
 }
 #endif
@@ -1151,6 +1162,7 @@ static int __cpufreq_add_dev(struct device *dev, struct subsys_interface *sif,
 
 	pr_debug("initialization complete\n");
 
+	trace_cpu_frequency(policy->cur, cpu);
 	return 0;
 
 err_out_unregister:
@@ -1361,6 +1373,7 @@ static int __cpufreq_remove_dev_finish(struct device *dev,
 		}
 	}
 
+	trace_cpu_frequency(0, cpu);
 	return 0;
 }
 
@@ -1844,6 +1857,11 @@ static int __cpufreq_governor(struct cpufreq_policy *policy,
 #else
 	struct cpufreq_governor *gov = NULL;
 #endif
+	if (!policy->governor) {
+		printk(KERN_WARNING "policy->governor is NULL, policy->cpu = %u\n",
+			       policy->cpu);
+		return -EBUSY;
+	}
 
 	if (policy->governor->max_transition_latency &&
 	    policy->cpuinfo.transition_latency >

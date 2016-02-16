@@ -22,6 +22,16 @@
 #include <linux/spinlock.h>
 #include <linux/syscore_ops.h>
 #include "pinctrl-msm.h"
+#ifdef CONFIG_POWER_KEY_EID
+#include <linux/gpio_keys.h>
+#include <linux/string.h>
+#endif
+
+
+#if defined(CONFIG_HTC_POWER_DEBUG) && defined(CONFIG_PINCTRL_MSM_TLMM)
+#include <linux/debugfs.h>
+#include <linux/seq_file.h>
+#endif
 
 /* config translations */
 #define drv_str_to_rval(drv)	((drv >> 1) - 1)
@@ -160,6 +170,7 @@
 					 pi->pintype_data->gp_reg_size * (pin))
 #define TLMM_GP_INTR_STATUS(pi, pin)	(pi->reg_base + 0x0c + \
 					 pi->pintype_data->gp_reg_size * (pin))
+static DEFINE_SPINLOCK(tlmm_gp_lock);
 
 /* QDSD Pin type register offsets */
 #define TLMMV_QDSD_PULL_MASK			0x3
@@ -790,6 +801,32 @@ static irqreturn_t msm_tlmm_gp_handle_irq(int irq, struct msm_tlmm_irq_chip *ic)
 	return IRQ_HANDLED;
 }
 
+#if defined(CONFIG_HTC_POWER_DEBUG) && defined(CONFIG_PINCTRL_MSM_TLMM)
+void __msm_gpio_get_dump_info(struct gpio_chip *gc, unsigned gpio, struct msm_gpio_dump_info *data)
+{
+        struct msm_pintype_info *pinfo = gc_to_pintype(gc);
+        unsigned int cfg_dump;
+
+        cfg_dump = readl_relaxed(TLMM_GP_CFG(pinfo, gpio));
+        data->pull = cfg_dump & 0x3;
+        data->func_sel = (cfg_dump >> 2) & 0xf;
+        data->drv = (cfg_dump >> 6) & 0x7;
+        data->dir = (cfg_dump >> 9) & 0x1;
+
+        if (data->dir)
+                data->value = (readl_relaxed(TLMM_GP_INOUT(pinfo, gpio)) >> 1) & 0x1;
+        else {
+                data->value = readl_relaxed(TLMM_GP_INOUT(pinfo, gpio)) & 0x1;
+                data->int_en = readl_relaxed(TLMM_GP_INTR_CFG(pinfo, gpio)) & 0x1;
+                if (data->int_en)
+                        data->int_owner = (readl_relaxed(TLMM_GP_INTR_CFG(pinfo, gpio)) >> 5) & 0x7;
+        }
+
+       return;
+}
+#endif
+
+
 static void msm_tlmm_irq_ack(struct irq_data *d)
 {
 	struct msm_tlmm_irq_chip *ic = irq_data_get_irq_chip_data(d);
@@ -949,6 +986,45 @@ static int msm_tlmm_gp_irq_suspend(void)
 	return 0;
 }
 
+void msm_tlmm_gp_show_resume_irq(void)
+{
+	unsigned long irq_flags;
+	int i, irq, intstat;
+	struct msm_tlmm_irq_chip *ic = &msm_tlmm_gp_irq;
+	int ngpio = ic->num_irqs;
+	struct msm_pintype_info *pinfo = ic_to_pintype(ic);
+	struct gpio_chip *gc = pintype_get_gc(pinfo);
+
+	if (!msm_show_resume_irq_mask)
+		return;
+
+	spin_lock_irqsave(&tlmm_gp_lock, irq_flags);
+	for_each_set_bit(i, ic->wake_irqs, ngpio) {
+		intstat = msm_tlmm_get_intr_status(ic, i);
+		if (intstat) {
+			struct irq_desc *desc;
+			const char *name = "null";
+
+			irq = msm_tlmm_gp_to_irq(gc, i);
+			desc = irq_to_desc(irq);
+			if (desc == NULL)
+				name = "stray irq";
+			else if (desc->action && desc->action->name)
+				name = desc->action->name;
+#ifdef CONFIG_HTC_POWER_DEBUG
+                        pr_info("[WAKEUP] Resume caused by msmgpio-%d\n", i);
+#endif
+                        pr_warning("%s: %d triggered %s\n",
+                                        __func__, irq, name);
+#ifdef CONFIG_POWER_KEY_EID
+			if(!strcmp(name, "power_key"))
+				power_key_resume_handler(irq);
+#endif
+                }
+        }
+        spin_unlock_irqrestore(&tlmm_gp_lock, irq_flags);
+}
+
 static void msm_tlmm_gp_irq_resume(void)
 {
 	unsigned long irq_flags;
@@ -956,6 +1032,7 @@ static void msm_tlmm_gp_irq_resume(void)
 	struct msm_tlmm_irq_chip *ic = &msm_tlmm_gp_irq;
 	int num_irqs = ic->num_irqs;
 
+	msm_tlmm_gp_show_resume_irq();
 	spin_lock_irqsave(&ic->irq_lock, irq_flags);
 	for_each_set_bit(i, ic->wake_irqs, num_irqs)
 		msm_tlmm_set_intr_cfg_enable(ic, i, 0);

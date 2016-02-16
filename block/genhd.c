@@ -42,6 +42,7 @@ static void disk_alloc_events(struct gendisk *disk);
 static void disk_add_events(struct gendisk *disk);
 static void disk_del_events(struct gendisk *disk);
 static void disk_release_events(struct gendisk *disk);
+extern void add_emmc_part_entry(unsigned int dev_num, unsigned int part_size, char *name);
 
 /**
  * disk_get_part - get partition
@@ -565,8 +566,12 @@ exit:
 
 	/* announce possible partitions */
 	disk_part_iter_init(&piter, disk, 0);
-	while ((part = disk_part_iter_next(&piter)))
+	while ((part = disk_part_iter_next(&piter))) {
+		if (!strcmp(disk->disk_name, "mmcblk0") && part->info && part->info->volname[0])
+			add_emmc_part_entry(part->partno, (unsigned int)part->nr_sects,
+					part->info->volname);
 		kobject_uevent(&part_to_dev(part)->kobj, KOBJ_ADD);
+	}
 	disk_part_iter_exit(&piter);
 }
 
@@ -669,6 +674,55 @@ void del_gendisk(struct gendisk *disk)
 	device_del(disk_to_dev(disk));
 }
 EXPORT_SYMBOL(del_gendisk);
+
+void del_gendisk_async(struct gendisk *disk)
+{
+	struct disk_part_iter piter;
+	struct hd_struct *part;
+	struct block_device *bdev;
+
+	disk_del_events(disk);
+
+	/* invalidate stuff */
+	disk_part_iter_init(&piter, disk,
+			     DISK_PITER_INCL_EMPTY | DISK_PITER_REVERSE);
+	while ((part = disk_part_iter_next(&piter))) {
+		   bdev = bdget_disk(disk, part->partno);
+		   if (bdev) {
+		           __invalidate_device(bdev, true);
+		           bdput(bdev);
+		   }
+		   delete_partition(disk, part->partno);
+	}
+	disk_part_iter_exit(&piter);
+
+	bdev = bdget_disk(disk, 0);
+	if (bdev) {
+		   __invalidate_device(bdev, true);
+		   bdput(bdev);
+	}
+	blk_free_devt(disk_to_dev(disk)->devt);
+	set_capacity(disk, 0);
+	disk->flags &= ~GENHD_FL_UP;
+
+	sysfs_remove_link(&disk_to_dev(disk)->kobj, "bdi");
+	bdi_unregister(&disk->queue->backing_dev_info);
+	blk_unregister_queue(disk);
+	blk_unregister_region(disk_devt(disk), disk->minors);
+
+	part_stat_set_all(&disk->part0, 0);
+	disk->part0.stamp = 0;
+
+	kobject_put(disk->part0.holder_dir);
+	kobject_put(disk->slave_dir);
+	disk->driverfs_dev = NULL;
+	if (!sysfs_deprecated)
+		sysfs_remove_link(block_depr, dev_name(disk_to_dev(disk)));
+	pm_runtime_set_memalloc_noio(disk_to_dev(disk), false);
+	device_del(disk_to_dev(disk));
+	blk_free_devt(disk_to_dev(disk)->devt);
+}
+EXPORT_SYMBOL(del_gendisk_async);
 
 /**
  * get_gendisk - get partitioning information for a given device

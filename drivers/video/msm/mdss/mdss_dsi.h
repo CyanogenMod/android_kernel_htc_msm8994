@@ -285,10 +285,29 @@ struct panel_horizontal_idle {
 	int idle;
 };
 
+struct mdss_dsi_pwrctrl {
+	int (*dsi_regulator_init) (struct platform_device *pdev);
+	int (*dsi_regulator_deinit) (struct platform_device *pdev);
+	int (*dsi_power_on) (struct mdss_panel_data *pdata);
+	int (*dsi_power_off) (struct mdss_panel_data *pdata);
+	void (*dsi_panel_reset) (struct mdss_panel_data *pdata);
+	void (*bkl_config) (struct mdss_panel_data *pdata, int enable);
+	void (*incell_touch_on) (int on);
+	void (*notify_touch_cont_splash) (int enable);
+};
+
 enum {
 	DSI_CTRL_0,
 	DSI_CTRL_1,
 	DSI_CTRL_MAX,
+};
+
+enum BACKLIGHT_TO_BRIGHTNESS_HTC_V1 {
+	BRI_SETTING_MIN   = 30,
+	BRI_SETTING_DEF   = 142,
+	BRI_SETTING_HIGH  = 200,
+	BRI_SETTING_EXTRA = 230,
+	BRI_SETTING_MAX   = 255,
 };
 
 #define DSI_CTRL_LEFT		DSI_CTRL_0
@@ -431,6 +450,17 @@ struct mdss_dsi_ctrl_pdata {
 	struct mdss_util_intf *mdss_util;
 
 	bool dfps_status;	/* dynamic refresh status */
+
+	
+	void *dsi_pwrctrl_data;			
+	struct dsi_panel_cmds cabc_off_cmds;
+	struct dsi_panel_cmds cabc_ui_cmds;
+	struct dsi_panel_cmds cabc_video_cmds;
+	struct dsi_panel_cmds dimming_on_cmds;
+	struct dsi_panel_cmds sre_on_cmds;
+	struct dsi_panel_cmds sre_off_cmds;
+
+	u32 sre_ebi_value;
 };
 
 struct dsi_status_data {

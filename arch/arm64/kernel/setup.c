@@ -77,6 +77,9 @@ EXPORT_SYMBOL(cold_boot);
 char* (*arch_read_hardware_id)(void);
 EXPORT_SYMBOL(arch_read_hardware_id);
 
+int htc_print_cpu_version(void);
+EXPORT_SYMBOL_GPL(htc_print_cpu_version);
+
 #ifdef CONFIG_COMPAT
 #define COMPAT_ELF_HWCAP_DEFAULT	\
 				(COMPAT_HWCAP_HALF|COMPAT_HWCAP_THUMB|\
@@ -221,6 +224,12 @@ static void __init smp_build_mpidr_hash(void)
 	__flush_dcache_area(&mpidr_hash, sizeof(struct mpidr_hash));
 }
 #endif
+
+int htc_print_cpu_version(){
+	printk("CPU: %s [%08x] revision %d\n",
+		cpu_name, read_cpuid_id(), read_cpuid_id() & 15);
+	return read_cpuid_id() & 15;
+}
 
 static void __init setup_processor(void)
 {
@@ -476,6 +485,86 @@ static const char *hwcap_str[] = {
 	NULL
 };
 
+static int msm8994_read_fuse(void);
+u32 fuse_data;
+
+static const u32 vddcx_pvs_retention_data_v1[4] = {
+	 650000,
+	 400000,
+	 500000,
+	 550000
+};
+
+static const u32 vddcx_pvs_retention_data_v2[8] = {
+	 650000,
+	 400000,
+	 500000,
+	 450000,
+	 550000,
+	 600000,
+	 650000,
+	 700000
+};
+
+static const u32 vddmx_pvs_retention_data_v2[4] = {
+	 675000,
+	 625000,
+	 575000,
+	 725000
+};
+
+static int read_cx_fuse_setting_v1(void){
+	if(msm8994_read_fuse() == 0)
+		return ((fuse_data & (0x3 << 22)) >> 22);
+	else
+		return -ENOMEM;
+}
+
+static int read_cx_fuse_setting_v2(void){
+	if(msm8994_read_fuse() == 0)
+		return ((fuse_data & (0x1 << 26)) >> 24) | ((fuse_data & (0x3 << 22)) >> 22);
+	else
+		return -ENOMEM;
+}
+
+static int read_mx_fuse_setting_v2(void){
+	if(msm8994_read_fuse() == 0)
+		return ((fuse_data & (0x3 << 27)) >> 27);
+	else
+		return -ENOMEM;
+}
+
+static u32 Get_min_cx(void) {
+	int cpu_version = htc_print_cpu_version();
+	u32 lookup_val = 0;
+	int mapping_data;
+	if(cpu_version < 2) {
+		mapping_data = read_cx_fuse_setting_v1();
+		if(mapping_data >= 0)
+			lookup_val = vddcx_pvs_retention_data_v1[mapping_data];
+	}
+	else {
+		mapping_data = read_cx_fuse_setting_v2();
+		if(mapping_data >= 0)
+			lookup_val = vddcx_pvs_retention_data_v2[mapping_data];
+	}
+	return lookup_val;
+}
+
+static u32 Get_min_mx(void) {
+	int cpu_version = htc_print_cpu_version();
+	u32 lookup_val = 0;
+	int mapping_data;
+	if(cpu_version < 2) {
+		lookup_val = 0;
+	}
+	else {
+		mapping_data = read_mx_fuse_setting_v2();
+		if(mapping_data >= 0)
+			lookup_val = vddmx_pvs_retention_data_v2[mapping_data];
+	}
+	return lookup_val;
+}
 #ifdef CONFIG_COMPAT
 static const char *compat_hwcap_str[] = {
 	"swp",
@@ -538,6 +627,13 @@ static int c_show(struct seq_file *m, void *v)
 				if (elf_hwcap & (1 << j))
 					seq_printf(m, " %s", hwcap_str[j]);
 		}
+#ifdef CONFIG_ARMV7_COMPAT_CPUINFO
+		if (is_compat_task()) {
+			/* Print out the non-optional ARMv8 HW capabilities */
+			seq_printf(m, "wp half thumb fastmult vfp edsp neon vfpv3 tlsi ");
+			seq_printf(m, "vfpv4 idiva idivt ");
+		}
+#endif
 		seq_puts(m, "\n");
 
 		seq_printf(m, "CPU implementer\t: 0x%02x\n", (midr >> 24));
@@ -546,13 +642,8 @@ static int c_show(struct seq_file *m, void *v)
 		seq_printf(m, "CPU part\t: 0x%03x\n", ((midr >> 4) & 0xfff));
 		seq_printf(m, "CPU revision\t: %d\n\n", (midr & 0xf));
 	}
-#ifdef CONFIG_ARMV7_COMPAT_CPUINFO
-	if (is_compat_task()) {
-		/* Print out the non-optional ARMv8 HW capabilities */
-		seq_printf(m, "wp half thumb fastmult vfp edsp neon vfpv3 tlsi ");
-		seq_printf(m, "vfpv4 idiva idivt ");
-	}
-#endif
+	seq_printf(m, "min_vddcx\t: %d\n", Get_min_cx());
+	seq_printf(m, "min_vddmx\t: %d\n", Get_min_mx());
 
 	return 0;
 }
@@ -601,6 +692,7 @@ static int __init msm8994_check_tlbi_workaround(void)
 			return -ENOMEM;
 		major_rev  = SOC_MAJOR_REV((__raw_readl(addr)));
 		msm8994_req_tlbi_wa = (major_rev >= 2) ? 0 : 1;
+		iounmap(addr);
 	} else {
 		/* If the node does not exist disable the workaround */
 		msm8994_req_tlbi_wa = 0;
@@ -609,3 +701,20 @@ static int __init msm8994_check_tlbi_workaround(void)
 	return 0;
 }
 arch_initcall_sync(msm8994_check_tlbi_workaround);
+
+static int msm8994_read_fuse(void){
+	void __iomem *addr;
+	struct device_node *dn = of_find_compatible_node(NULL,
+						NULL, "qcom,cpufuse-8994");
+	if (dn) {
+		addr = of_iomap(dn, 0);
+		if (!addr)
+			return -ENOMEM;
+		fuse_data = readl_relaxed(addr);
+		iounmap(addr);
+	}
+	else {
+		return -ENOMEM;
+	}
+	return 0;
+}

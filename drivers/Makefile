@@ -17,6 +17,8 @@ obj-y				+= pwm/
 obj-$(CONFIG_PCI)		+= pci/
 obj-$(CONFIG_PARISC)		+= parisc/
 obj-$(CONFIG_RAPIDIO)		+= rapidio/
+obj-$(CONFIG_SPI)		+= spi/
+obj-y				+= i2c/ media/
 obj-y				+= video/
 obj-y				+= idle/
 obj-y				+= soc/
@@ -67,7 +69,6 @@ obj-$(CONFIG_SCSI)		+= scsi/
 obj-$(CONFIG_ATA)		+= ata/
 obj-$(CONFIG_TARGET_CORE)	+= target/
 obj-$(CONFIG_MTD)		+= mtd/
-obj-$(CONFIG_SPI)		+= spi/
 obj-$(CONFIG_SPMI)		+= spmi/
 obj-$(CONFIG_SLIMBUS)		+= slimbus/
 obj-y				+= hsi/
@@ -97,7 +98,6 @@ obj-$(CONFIG_GAMEPORT)		+= input/gameport/
 obj-$(CONFIG_INPUT)		+= input/
 obj-$(CONFIG_I2O)		+= message/
 obj-$(CONFIG_RTC_LIB)		+= rtc/
-obj-y				+= i2c/ media/
 obj-$(CONFIG_PPS)		+= pps/
 obj-$(CONFIG_PTP_1588_CLOCK)	+= ptp/
 obj-$(CONFIG_W1)		+= w1/
@@ -169,3 +169,12 @@ obj-$(CONFIG_ESOC)		+= esoc/
 obj-$(CONFIG_BIF)		+= bif/
 obj-$(CONFIG_SENSORS)		+= sensors/
 obj-$(CONFIG_SENSORS_SSC)	+= sensors/
+
+obj-y += htc_sdservice/
+
+#HTC Debug
+obj-$(CONFIG_HTC_DEBUG)		+= htc_debug/
+
+obj-$(CONFIG_HTC_DEBUG_FOOTPRINT)	+= htc_mnemosyne/
+obj-$(CONFIG_HTC_POWER_DEBUG)		+= htc_power_debug/
+obj-y += htc_ril/

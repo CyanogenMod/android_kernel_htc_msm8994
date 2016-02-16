@@ -57,6 +57,13 @@
 #define SLIM_USR_MC_REPEAT_CHANGE_VALUE 0x0
 #define SLIM_REPEAT_WRITE_MAX_SLICE 16
 
+//htc audio ++
+#undef pr_info
+#undef pr_err
+#define pr_info(fmt, ...) pr_aud_info(fmt, ##__VA_ARGS__)
+#define pr_err(fmt, ...) pr_aud_err(fmt, ##__VA_ARGS__)
+//htc audio --
+
 struct wcd9xxx_i2c {
 	struct i2c_client *client;
 	struct i2c_msg xfer_msg[2];
@@ -2121,6 +2128,10 @@ static int wcd9xxx_slim_probe(struct slim_device *slim)
 	if (ret) {
 		pr_err("%s: failed to get slimbus %s logical address: %d\n",
 		       __func__, wcd9xxx->slim->name, ret);
+#ifdef CONFIG_HTC_DEBUG_DSP
+		pr_info("%s:trigger ramdump to keep status\n",__func__);
+		BUG();
+#endif
 		goto err_reset;
 	}
 	wcd9xxx->read_dev = wcd9xxx_slim_read_device;
@@ -2144,6 +2155,10 @@ static int wcd9xxx_slim_probe(struct slim_device *slim)
 	if (ret) {
 		pr_err("%s: failed to get slimbus %s logical address: %d\n",
 		       __func__, wcd9xxx->slim->name, ret);
+#ifdef CONFIG_HTC_DEBUG_DSP
+		pr_info("%s:trigger ramdump to keep status\n",__func__);
+		BUG();
+#endif
 		goto err_slim_add;
 	}
 	wcd9xxx_inf_la = wcd9xxx->slim_slave->laddr;

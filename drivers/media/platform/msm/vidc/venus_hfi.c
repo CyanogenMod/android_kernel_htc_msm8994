@@ -2345,6 +2345,12 @@ static int venus_hfi_core_init(void *device)
 			goto err_core_init;
 		}
 
+                if (dev->inst == NULL) {
+                        dprintk(VIDC_ERR, "[Vidc_Mem] In %s: Get NULL inst\n", __func__);
+                } else {
+                        dev->hal_client->inst = dev->inst;
+                }
+                
 		dprintk(VIDC_DBG, "Dev_Virt: 0x%pa, Reg_Virt: 0x%p\n",
 			&dev->hal_data->firmware_base,
 			dev->hal_data->register_base);
@@ -3246,6 +3252,9 @@ static void venus_hfi_process_msg_event_notify(
 		HFI_EVENT_SYS_ERROR) {
 
 		venus_hfi_set_state(device, VENUS_STATE_DEINIT);
+               if (venus_hfi_halt_axi(device))
+                       dprintk(VIDC_WARN,
+                               "Failed to halt AXI after SYS_ERROR\n");
 
 		/* Once SYS_ERROR received from HW, it is safe to halt the AXI.
 		 * With SYS_ERROR, Venus FW may have crashed and HW might be
@@ -4031,7 +4040,7 @@ static int venus_hfi_load_fw(void *dev)
 			__func__, device);
 		return -EINVAL;
 	}
-
+	printk("msm_v4l2_vidc venus_fw load start \r\n");
 	trace_msm_v4l2_vidc_fw_load_start("msm_v4l2_vidc venus_fw load start");
 
 	rc = venus_hfi_vote_buses(device, device->bus_load.vote_data,
@@ -4091,6 +4100,7 @@ static int venus_hfi_load_fw(void *dev)
 	}
 
 	trace_msm_v4l2_vidc_fw_load_end("msm_v4l2_vidc venus_fw load end");
+	printk("msm_v4l2_vidc venus_fw load end \r\n");
 	return rc;
 fail_protect_mem:
 	device->power_enabled = false;
@@ -4107,6 +4117,7 @@ fail_enable_gdsc:
 	venus_hfi_unvote_buses(device);
 fail_vote_buses:
 	trace_msm_v4l2_vidc_fw_load_end("msm_v4l2_vidc venus_fw load end");
+	printk("msm_v4l2_vidc venus_fw load end \r\n");
 	return rc;
 }
 
@@ -4145,7 +4156,7 @@ static int venus_hfi_get_fw_info(void *dev, struct hal_fw_info *fw_info)
 	struct venus_hfi_device *device = dev;
 	u32 smem_block_size = 0;
 	u8 *smem_table_ptr;
-	char version[VENUS_VERSION_LENGTH];
+	char version[VENUS_VERSION_LENGTH] = "\0";
 	const u32 version_string_size = VENUS_VERSION_LENGTH;
 	const u32 smem_image_index_venus = 14 * 128;
 

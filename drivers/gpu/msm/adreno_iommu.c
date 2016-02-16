@@ -854,23 +854,13 @@ done:
 	return result;
 }
 
-/**
- * adreno_mmu_set_pt() - Change the pagetable of the current RB
- * @device: Pointer to device to which the rb belongs
- * @rb: The RB pointer on which pagetable is to be changed
- * @new_pt: The new pt the device will change to
- * @adreno_ctx: The context whose pagetable the ringbuffer should switch to,
- * NULL means default
- *
- * Returns 0 on success else error code.
- */
 int adreno_iommu_set_pt(struct adreno_ringbuffer *rb,
 			struct kgsl_pagetable *new_pt)
 {
 	struct kgsl_device *device = rb->device;
 	struct adreno_device *adreno_dev = ADRENO_DEVICE(device);
 	struct kgsl_pagetable *cur_pt = device->mmu.defaultpagetable;
-	int result;
+	int result = 0;
 	int cpu_path = 0;
 
 	if (rb->drawctxt_active)

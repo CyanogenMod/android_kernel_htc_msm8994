@@ -17,6 +17,8 @@
 #include <linux/backing-dev.h>
 #include "internal.h"
 
+#include <trace/events/mmcio.h>
+
 #define VALID_FLAGS (SYNC_FILE_RANGE_WAIT_BEFORE|SYNC_FILE_RANGE_WRITE| \
 			SYNC_FILE_RANGE_WAIT_AFTER)
 
@@ -102,6 +104,7 @@ static void fdatawait_one_bdev(struct block_device *bdev, void *arg)
 SYSCALL_DEFINE0(sync)
 {
 	int nowait = 0, wait = 1;
+	trace_sys_sync(0);
 
 	wakeup_flusher_threads(0, WB_REASON_SYNC);
 	iterate_supers(sync_inodes_one_sb, NULL);
@@ -111,6 +114,7 @@ SYSCALL_DEFINE0(sync)
 	iterate_bdevs(fdatawait_one_bdev, NULL);
 	if (unlikely(laptop_mode))
 		laptop_sync_completion();
+	trace_sys_sync_done(0);
 	return 0;
 }
 
@@ -164,6 +168,15 @@ SYSCALL_DEFINE1(syncfs, int, fd)
 	return ret;
 }
 
+extern int cancel_fsync;
+static int async_fsync(struct file *file)
+{
+	struct inode *inode = file->f_mapping->host;
+	struct super_block *sb = inode->i_sb;
+
+	return (sb->fsync_flags & FLAG_ASYNC_FSYNC) && cancel_fsync;
+}
+
 /**
  * vfs_fsync_range - helper to sync a range of data & metadata to disk
  * @file:		file to sync
@@ -177,9 +190,18 @@ SYSCALL_DEFINE1(syncfs, int, fd)
  */
 int vfs_fsync_range(struct file *file, loff_t start, loff_t end, int datasync)
 {
+	int err;
+
 	if (!file->f_op || !file->f_op->fsync)
 		return -EINVAL;
-	return file->f_op->fsync(file, start, end, datasync);
+
+	if (async_fsync(file))
+		return 0;
+
+	trace_vfs_fsync(file);
+	err = file->f_op->fsync(file, start, end, datasync);
+	trace_vfs_fsync_done(file);
+	return err;
 }
 EXPORT_SYMBOL(vfs_fsync_range);
 

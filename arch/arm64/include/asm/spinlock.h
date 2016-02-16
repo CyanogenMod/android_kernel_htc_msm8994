@@ -50,8 +50,12 @@ static inline void arch_spin_lock(arch_spinlock_t *lock)
 	 * No: spin on the owner. Send a local event to avoid missing an
 	 * unlock before the exclusive load.
 	 */
+#ifndef CONFIG_HTC_WFE_DISABLE
 "	sevl\n"
 "2:	wfe\n"
+#else
+"2:\n"
+#endif
 "	ldaxrh	%w2, %4\n"
 "	eor	%w1, %w2, %w0, lsr #16\n"
 "	cbnz	%w1, 2b\n"
@@ -127,8 +131,12 @@ static inline void arch_write_lock(arch_rwlock_t *rw)
 	unsigned int tmp;
 
 	asm volatile(
+#ifndef CONFIG_HTC_WFE_DISABLE
 	"	sevl\n"
 	"1:	wfe\n"
+#else
+	"1:\n"
+#endif
 	"2:	ldaxr	%w0, %1\n"
 	"	cbnz	%w0, 1b\n"
 	"	stxr	%w0, %w2, %1\n"
@@ -186,8 +194,12 @@ static inline void arch_read_lock(arch_rwlock_t *rw)
 	unsigned int tmp, tmp2;
 
 	asm volatile(
+#ifndef CONFIG_HTC_WFE_DISABLE
 	"	sevl\n"
 	"1:	wfe\n"
+#else
+	"1:\n"
+#endif
 	"2:	ldaxr	%w0, %2\n"
 	"	add	%w0, %w0, #1\n"
 	"	tbnz	%w0, #31, 1b\n"

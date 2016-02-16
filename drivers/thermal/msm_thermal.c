@@ -45,7 +45,9 @@
 #include <linux/notifier.h>
 #include <linux/reboot.h>
 #include <linux/suspend.h>
+#include <linux/htc_flags.h>
 #include <soc/qcom/msm-core.h>
+#include <linux/delay.h>
 #include <linux/cpumask.h>
 
 #define CREATE_TRACE_POINTS
@@ -103,6 +105,7 @@ static int ocr_rail_cnt;
 static int limit_idx;
 static int limit_idx_low;
 static int limit_idx_high;
+static int lc_limit_idx_low = 5;
 static int max_tsens_num;
 static struct cpufreq_frequency_table *table;
 static uint32_t usefreq;
@@ -1298,8 +1301,16 @@ static void do_cluster_freq_ctrl(long temp)
 				, _cpu
 				, cluster_ptr->freq_table[freq_idx].frequency
 				, temp);
-			cpus[_cpu].limited_max_freq =
-				cluster_ptr->freq_table[freq_idx].frequency;
+			if (_cpu < 4 && freq_idx < 5) {
+				cpus[_cpu].limited_max_freq =
+					cluster_ptr->freq_table[lc_limit_idx_low].frequency;
+			pr_info("Set _cpu%d max back to %u\n"
+			, _cpu
+			, cluster_ptr->freq_table[lc_limit_idx_low].frequency);
+			}
+			else
+				cpus[_cpu].limited_max_freq =
+					cluster_ptr->freq_table[freq_idx].frequency;
 		}
 	}
 	if (_cpu != -1)
@@ -2321,6 +2332,12 @@ static int do_therm_reset(void)
 			continue;
 		}
 
+		if (thresh[MSM_THERM_RESET].thresh_list[i].sensor_id == 6 ||
+			thresh[MSM_THERM_RESET].thresh_list[i].sensor_id == 13 ||
+			thresh[MSM_THERM_RESET].thresh_list[i].sensor_id == 14 ||
+			thresh[MSM_THERM_RESET].thresh_list[i].sensor_id == 15)
+			continue;
+
 		if (temp >= msm_thermal_info.therm_reset_temp_degC)
 			msm_thermal_bite(
 			thresh[MSM_THERM_RESET].thresh_list[i].sensor_id, temp);
@@ -2344,13 +2361,33 @@ static void therm_reset_notify(struct therm_threshold *thresh_data)
 
 	switch (thresh_data->trip_triggered) {
 	case THERMAL_TRIP_CONFIGURABLE_HI:
+		mdelay(50);
 		ret = therm_get_temp(thresh_data->sensor_id,
 				thresh_data->id_type, &temp);
-		if (ret)
+		if (ret) {
 			pr_err("Unable to read TSENS sensor:%d. err:%d\n",
 				thresh_data->sensor_id, ret);
-		msm_thermal_bite(tsens_id_map[thresh_data->sensor_id],
+			break;
+		}
+
+		if (tsens_id_map[thresh_data->sensor_id] < 0 || tsens_id_map[thresh_data->sensor_id] > max_tsens_num) {
+			pr_err("Invalid tsens id %d\n", tsens_id_map[thresh_data->sensor_id]);
+			break;
+		}
+
+		if (tsens_id_map[thresh_data->sensor_id] == 6 ||
+			tsens_id_map[thresh_data->sensor_id] == 13 ||
+			tsens_id_map[thresh_data->sensor_id] == 14 ||
+			tsens_id_map[thresh_data->sensor_id] == 15) {
+			pr_info("ignore BC %d thermal reset\n", tsens_id_map[thresh_data->sensor_id]);
+			break;
+		}
+
+                if (temp >= msm_thermal_info.therm_reset_temp_degC)
+			msm_thermal_bite(tsens_id_map[thresh_data->sensor_id],
 					temp);
+		else
+			pr_err("tsens%d temp is %ld, ignore thermal reset\n", tsens_id_map[thresh_data->sensor_id], temp);
 		break;
 	case THERMAL_TRIP_CONFIGURABLE_LOW:
 		break;
@@ -2866,6 +2903,14 @@ static int do_psm(void)
 exit:
 	mutex_unlock(&psm_mutex);
 	return ret;
+}
+
+static void lower_thermal_threshold(int threshold){
+    msm_thermal_info.limit_temp_degC-=threshold;
+    msm_thermal_info.core_limit_temp_degC-=threshold;
+    msm_thermal_info.hotplug_temp_degC-=threshold;
+    pr_info("limit temp = %d, core limit temp = %d, hotplug limit temp= %d\n",
+    msm_thermal_info.limit_temp_degC, msm_thermal_info.core_limit_temp_degC, msm_thermal_info.hotplug_temp_degC);
 }
 
 static void do_freq_control(long temp)
@@ -4532,6 +4577,11 @@ int msm_thermal_init(struct msm_thermal_data *pdata)
 		return -EINVAL;
 	}
 
+	pr_info("limit temp = %d, core limit temp = %d, hotplug limit temp= %d\n",
+	msm_thermal_info.limit_temp_degC, msm_thermal_info.core_limit_temp_degC, msm_thermal_info.hotplug_temp_degC);
+	if(get_kernel_flag() & KERNEL_FLAG_KEEP_CHARG_ON)
+	    lower_thermal_threshold(15);
+
 	enabled = 1;
 	polling_enabled = 1;
 	ret = cpufreq_register_notifier(&msm_thermal_cpufreq_notifier,
@@ -5899,6 +5949,12 @@ static int msm_thermal_dev_exit(struct platform_device *inp_dev)
 		thresh = NULL;
 	}
 	return 0;
+}
+
+void set_ktm_freq_limit(uint32_t freq_limit)
+{
+	if (freq_limit > 0)
+		msm_thermal_info.freq_limit = freq_limit;
 }
 
 static struct of_device_id msm_thermal_match_table[] = {

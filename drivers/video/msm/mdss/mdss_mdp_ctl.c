@@ -2162,7 +2162,7 @@ int mdss_mdp_ctl_reconfig(struct mdss_mdp_ctl *ctl,
 		struct mdss_panel_data *pdata)
 {
 	void *tmp;
-	int ret;
+	int ret = 0;
 
 	/*
 	 * Switch first to prevent deleting important data in the case

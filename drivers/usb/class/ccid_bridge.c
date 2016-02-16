@@ -498,6 +498,7 @@ ccid_bridge_ioctl(struct file *fp, unsigned int cmd, unsigned long arg)
 		}
 		ret = usb_autopm_get_interface(ccid->intf);
 		if (ret < 0) {
+			kfree(buf);
 			pr_debug("fail to get autopm with %d", ret);
 			break;
 		}

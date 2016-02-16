@@ -536,8 +536,13 @@ static uint64_t get_node_ib(struct msm_bus_node_device_type *bus_dev)
 	return max_ib;
 }
 
+#ifdef CONFIG_HTC_DEBUG_MSMBUS
+static int update_path(int src, int dest, uint64_t req_ib, uint64_t req_bw,
+			uint64_t cur_ib, uint64_t cur_bw, int src_idx, int ctx, int cl)
+#else
 static int update_path(int src, int dest, uint64_t req_ib, uint64_t req_bw,
 			uint64_t cur_ib, uint64_t cur_bw, int src_idx, int ctx)
+#endif
 {
 	struct device *src_dev = NULL;
 	struct device *next_dev = NULL;
@@ -629,13 +634,18 @@ static int update_path(int src, int dest, uint64_t req_ib, uint64_t req_bw,
 		msm_bus_apply_rules(&apply_list, false);
 	}
 
+#ifdef CONFIG_HTC_DEBUG_MSMBUS
+	msm_bus_commit_data(dirty_nodes, ctx, num_dirty, cl);
+#else
 	msm_bus_commit_data(dirty_nodes, ctx, num_dirty);
+#endif
 
 	if (rules_registered) {
 		msm_bus_apply_rules(&apply_list, true);
 		del_inp_list(&input_list);
 		del_op_list(&apply_list);
 	}
+
 exit_update_path:
 	return ret;
 }
@@ -655,8 +665,14 @@ static int remove_path(int src, int dst, uint64_t cur_ib, uint64_t cur_ab,
 	 * this cient on all paths
 	 */
 
+#ifdef CONFIG_HTC_DEBUG_MSMBUS
+	ret = update_path(src, dst, 0, 0, cur_ib, cur_ab, src_idx,
+							active_only, 0);
+#else
 	ret = update_path(src, dst, 0, 0, cur_ib, cur_ab, src_idx,
 							active_only);
+#endif
+
 	if (ret) {
 		MSM_BUS_ERR("%s: Error zeroing out path ctx %d",
 					__func__, ACTIVE_CTX);
@@ -898,6 +914,14 @@ static uint32_t register_client_adhoc(struct msm_bus_scale_pdata *pdata)
 					handle);
 	MSM_BUS_DBG("%s:Client handle %d %s", __func__, handle,
 						client->pdata->name);
+
+#ifdef CONFIG_HTC_DEBUG_MSMBUS
+	if(handle >= HTC_MAX_NOC_CLIENT) {
+		pr_err("[MSMBUS] too many client handles. Out of range.\n");
+		goto exit_register_client;
+	}
+	strncpy(htc_noc_client_name[handle], client->pdata->name, HTC_MAX_NOC_NAME);
+#endif
 exit_register_client:
 	rt_mutex_unlock(&msm_bus_adhoc_lock);
 	return handle;
@@ -970,8 +994,13 @@ static int update_request_adhoc(uint32_t cl, unsigned int index)
 					curr_bw, curr_clk);
 		}
 
+#ifdef CONFIG_HTC_DEBUG_MSMBUS
+		ret = update_path(src, dest, req_clk, req_bw,
+				curr_clk, curr_bw, lnode, pdata->active_only, cl);
+#else
 		ret = update_path(src, dest, req_clk, req_bw,
 				curr_clk, curr_bw, lnode, pdata->active_only);
+#endif
 
 		if (ret) {
 			MSM_BUS_ERR("%s: Update path failed! %d ctx %d\n",

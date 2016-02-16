@@ -588,6 +588,11 @@ struct tsens_tm_device {
 
 struct tsens_tm_device *tmdev;
 
+#ifdef CONFIG_HTC_POWER_DEBUG
+static struct workqueue_struct *monitor_tsense_wq = NULL;
+struct delayed_work monitor_tsens_status_worker;
+static void monitor_tsens_status(struct work_struct *work);
+#endif
 
 int tsens_is_ready()
 {
@@ -684,7 +689,7 @@ static int tsens_tz_degc_to_code(int degc, int idx)
 	return code;
 }
 
-static void msm_tsens_get_temp(int sensor_hw_num, unsigned long *temp)
+static void msm_tsens_get_temp(int sensor_hw_num, long *temp)
 {
 	unsigned int code;
 	void __iomem *sensor_addr;
@@ -757,7 +762,7 @@ static void msm_tsens_get_temp(int sensor_hw_num, unsigned long *temp)
 }
 
 static int tsens_tz_get_temp(struct thermal_zone_device *thermal,
-			     unsigned long *temp)
+			     long *temp)
 {
 	struct tsens_tm_device_sensor *tm_sensor = thermal->devdata;
 	uint32_t idx = 0;
@@ -777,7 +782,7 @@ static int tsens_tz_get_temp(struct thermal_zone_device *thermal,
 	return 0;
 }
 
-int tsens_get_temp(struct tsens_device *device, unsigned long *temp)
+int tsens_get_temp(struct tsens_device *device, long *temp)
 {
 	if (tsens_is_ready() <= 0) {
 		pr_debug("TSENS early init not done\n");
@@ -890,7 +895,7 @@ static int tsens_tz_activate_trip_type(struct thermal_zone_device *thermal,
 }
 
 static int tsens_tz_get_trip_temp(struct thermal_zone_device *thermal,
-				   int trip, unsigned long *temp)
+				   int trip, long *temp)
 {
 	struct tsens_tm_device_sensor *tm_sensor = thermal->devdata;
 	unsigned int reg;
@@ -993,6 +998,30 @@ static struct thermal_zone_device_ops tsens_thermal_zone_ops = {
 	.notify = tsens_tz_notify,
 };
 
+#ifdef CONFIG_HTC_POWER_DEBUG
+#define MESSAGE_SIZE 100
+
+static void monitor_tsens_status(struct work_struct *work)
+{
+	unsigned int i, cntl;
+	long temp = 0;
+	char message[MESSAGE_SIZE];
+
+	cntl = readl_relaxed(TSENS_CTRL_ADDR(tmdev->tsens_addr));
+	scnprintf(message, MESSAGE_SIZE, "Cntl[0x%08X]", cntl);
+	printk("[THERMAL] %s\n", message);
+	cntl >>= TSENS_SENSOR0_SHIFT;
+
+	for (i = 0; i <= tmdev->tsens_num_sensor; i++) {
+		msm_tsens_get_temp(i, &temp);
+		printk("[THERMAL] Sensor %d = %ld degC\n", i, temp);
+	}
+	if (monitor_tsense_wq) {
+		queue_delayed_work(monitor_tsense_wq, &monitor_tsens_status_worker, msecs_to_jiffies(60000));
+	}
+}
+#endif
+
 static irqreturn_t tsens_irq_thread(int irq, void *data)
 {
 	struct tsens_tm_device *tm = data;
@@ -1031,7 +1060,7 @@ static irqreturn_t tsens_irq_thread(int irq, void *data)
 			lower_thr = true;
 		}
 		if (upper_thr || lower_thr) {
-			unsigned long temp;
+			long temp;
 			enum thermal_trip_type trip =
 					THERMAL_TRIP_CONFIGURABLE_LOW;
 
@@ -3315,6 +3344,18 @@ static int tsens_tm_probe(struct platform_device *pdev)
 	tmdev->is_ready = true;
 
 	platform_set_drvdata(pdev, tmdev);
+
+#ifdef CONFIG_HTC_POWER_DEBUG
+        if (monitor_tsense_wq == NULL) {
+                /* Create private workqueue... */
+                monitor_tsense_wq = create_workqueue("monitor_tsense_wq");
+		printk(KERN_INFO "Create monitor tsense workqueue(0x%p)...\n", monitor_tsense_wq);
+        }
+        if (monitor_tsense_wq) {
+                INIT_DELAYED_WORK(&monitor_tsens_status_worker, monitor_tsens_status);
+                queue_delayed_work(monitor_tsense_wq, &monitor_tsens_status_worker, msecs_to_jiffies(0));
+        }
+#endif
 
 	return 0;
 fail:

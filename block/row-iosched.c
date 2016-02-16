@@ -70,6 +70,7 @@ struct row_queue_params {
 	bool idling_enabled;
 	int quantum;
 	bool is_urgent;
+	unsigned int expire;
 };
 
 /*
@@ -86,13 +87,13 @@ struct row_queue_params {
  */
 static const struct row_queue_params row_queues_def[] = {
 /* idling_enabled, quantum, is_urgent */
-	{true, 10, true},	/* ROWQ_PRIO_HIGH_READ */
-	{false, 1, false},	/* ROWQ_PRIO_HIGH_SWRITE */
-	{true, 100, true},	/* ROWQ_PRIO_REG_READ */
-	{false, 1, false},	/* ROWQ_PRIO_REG_SWRITE */
-	{false, 1, false},	/* ROWQ_PRIO_REG_WRITE */
-	{false, 1, false},	/* ROWQ_PRIO_LOW_READ */
-	{false, 1, false}	/* ROWQ_PRIO_LOW_SWRITE */
+	{true, 10, true, 0},	/* ROWQ_PRIO_HIGH_READ */
+	{false, 1, false, 0},	/* ROWQ_PRIO_HIGH_SWRITE */
+	{true, 100, true, 0},	/* ROWQ_PRIO_REG_READ */
+	{false, 1, false, 3 * HZ},	/* ROWQ_PRIO_REG_SWRITE */
+	{false, 1, false, 3 * HZ},	/* ROWQ_PRIO_REG_WRITE */
+	{false, 1, false, 0},	/* ROWQ_PRIO_LOW_READ */
+	{false, 1, false, 3 * HZ}	/* ROWQ_PRIO_LOW_SWRITE */
 };
 
 /* Default values for idling on read queues (in msec) */
@@ -136,6 +137,9 @@ struct row_queue {
 
 	/* used only for READ queues */
 	struct rowq_idling_data	idle_data;
+
+	/* used for debug */
+	unsigned int dispatch_cnt;
 };
 
 /**
@@ -206,6 +210,7 @@ struct row_data {
 	struct starvation_data		low_prio_starvation;
 
 	unsigned int			cycle_flags;
+	unsigned int last_update_jiffies;
 };
 
 #define RQ_ROWQ(rq) ((struct row_queue *) ((rq)->elv.priv[0]))
@@ -244,6 +249,50 @@ static inline void __maybe_unused row_dump_queues_stat(struct row_data *rd)
 			"queue%d: dispatched= %d, nr_req=%d", i,
 			rd->row_queues[i].nr_dispatched,
 			rd->row_queues[i].nr_req);
+}
+
+/* To print ROW scheduler debug message */
+#define ROW_DUMP_REQ_STAT_MSECS            4500
+static inline void __maybe_unused row_dump_reg_and_low_stat(struct row_data *rd)
+{
+	int i;
+	unsigned int total_dispatch_cnt = 0;
+	bool print_statistics = false;
+	unsigned int diff;
+
+	for (i = ROWQ_PRIO_REG_SWRITE; i <= ROWQ_PRIO_REG_WRITE; i++) {
+		if (!list_empty(&rd->row_queues[i].fifo)) {
+			struct request *check_req = list_entry_rq(rd->row_queues[i].fifo.next);
+			unsigned long check_jiffies = ((unsigned long) (check_req)->csd.list.next);
+
+			if (time_after(jiffies,
+			    check_jiffies + msecs_to_jiffies(ROW_DUMP_REQ_STAT_MSECS))) {
+				printk("ROW scheduler: request(pid:%d)"
+				    " stays in queue[%d][nr_reqs:%d] for %ums\n",
+				    check_req->pid, i, rd->row_queues[i].nr_req,
+				    jiffies_to_msecs(jiffies - check_jiffies));
+				print_statistics = true;
+			}
+		}
+	}
+
+	if (!print_statistics)
+		return;
+
+	diff = jiffies_to_msecs(jiffies - rd->last_update_jiffies);
+	if (diff < 10 * 1000)
+		return;
+
+	printk("ROW scheduler: dispatched request statistics:");
+
+	for (i = 0; i < ROWQ_MAX_PRIO; i++) {
+		printk(" Q[%d]: %u;", i, rd->row_queues[i].dispatch_cnt);
+		total_dispatch_cnt += rd->row_queues[i].dispatch_cnt;
+		rd->row_queues[i].dispatch_cnt = 0;
+	}
+	printk("\n%u requests dispatched in %umsec\n",
+			total_dispatch_cnt, diff);
+	rd->last_update_jiffies = jiffies;
 }
 
 /******************** Static helper functions ***********************/
@@ -686,11 +735,18 @@ static int row_get_next_queue(struct request_queue *q, struct row_data *rd,
 	int i = start_idx;
 	bool restart = true;
 	int ret = -EIO;
+	bool print_debug_log = false;
 
 	do {
 		if (list_empty(&rd->row_queues[i].fifo) ||
 		    rd->row_queues[i].nr_dispatched >=
 		    rd->row_queues[i].disp_quantum) {
+			/* Check if needs to print debug log */
+			if ((i == ROWQ_PRIO_HIGH_READ || i == ROWQ_PRIO_REG_READ)
+			    && rd->row_queues[i].nr_dispatched >=
+			    rd->row_queues[i].disp_quantum)
+				print_debug_log = true;
+
 			i++;
 			if (i == end_idx && restart) {
 				/* Restart cycle for this priority class */
@@ -703,6 +759,48 @@ static int row_get_next_queue(struct request_queue *q, struct row_data *rd,
 			break;
 		}
 	} while (i < end_idx);
+
+	/* Print debug log if needs */
+	if (print_debug_log)
+		row_dump_reg_and_low_stat(rd);
+
+#define EXPIRE_REQUEST_THRESHOLD       20
+	/* Try to modify dispatch quantum while request in queue is over
+	   expired time, and waiting requests number is over threshold.
+	   Only modify regular class. The default quantum of ROWQ_PRIO_REG_READ
+	   is 100 and it's slightly too much. */
+
+	if (ret == ROWQ_PRIO_REG_READ) {
+		struct request *check_req;
+		bool reset_quantum = false;
+
+		for (i = ret + 1; i < end_idx; i++) {
+			if (!row_queues_def[i].expire)
+				continue;
+
+			if (list_empty(&rd->row_queues[i].fifo)) {
+				reset_quantum = true;
+				continue;
+			}
+
+			check_req = list_entry_rq(rd->row_queues[i].fifo.next);
+
+			if (time_after(jiffies,
+			    ((unsigned long) (check_req)->csd.list.next)
+			    + row_queues_def[i].expire) &&
+			    rd->row_queues[i].nr_req > EXPIRE_REQUEST_THRESHOLD) {
+				rd->row_queues[ret].disp_quantum =
+					row_queues_def[ret].quantum / 2;
+				reset_quantum = false;
+				break;
+			} else
+				reset_quantum = true;
+		}
+
+		if (reset_quantum)
+			rd->row_queues[ret].disp_quantum =
+				row_queues_def[ret].quantum;
+	}
 
 	return ret;
 }

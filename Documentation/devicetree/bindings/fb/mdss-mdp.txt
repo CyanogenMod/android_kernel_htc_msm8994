@@ -406,6 +406,11 @@ Optional properties:
 				regs-dump entries in the same order as they
 				are defined.
 
+
+- htc,fbmem-heap-remapping: A boolean property that indicates ION fbmem heap
+                            was reserved and can be used for remapping by fb
+                            device memory.
+
 Fudge Factors:			Fudge factors are used to boost demand for
 				resources like bus bandswidth, clk rate etc. to
 				overcome system inefficiencies and avoid any

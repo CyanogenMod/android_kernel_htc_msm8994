@@ -145,7 +145,7 @@ enum msm_spi_state {
 
 /* We don't allow transactions larger than 4K-64 or 64K-64 due to
    mx_input/output_cnt register size */
-#define SPI_MAX_TRANSFERS             QSD_REG(0xFC0) QUP_REG(0xFC0)
+#define SPI_MAX_TRANSFERS             QSD_REG(0x6000) QUP_REG(0x6000)
 #define SPI_MAX_LEN                   (SPI_MAX_TRANSFERS * dd->bytes_per_word)
 
 #define SPI_NUM_CHIPSELECTS           4

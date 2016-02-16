@@ -180,6 +180,14 @@ send_unreach(struct net *net, struct sk_buff *skb_in, unsigned char code,
 		skb_in->dev = net->loopback_dev;
 
 	icmpv6_send(skb_in, ICMPV6_DEST_UNREACH, code, 0);
+
+#ifdef CONFIG_HTC_NETWORK_MODIFY
+	if(skb_in->sk && skb_in->sk->sk_state == TCP_TIME_WAIT){
+		pr_warn("[NET]%s: ip6t_REJECT: ignore force socket error when sk state is in TCP_TIME_WAIT.\n", __func__);
+		return;
+	}
+#endif
+
 #ifdef CONFIG_IP6_NF_TARGET_REJECT_SKERR
 	if (skb_in->sk) {
 		icmpv6_err_convert(ICMPV6_DEST_UNREACH, code,

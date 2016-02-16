@@ -21,7 +21,7 @@
 #include <linux/spmi.h>
 #include <linux/module.h>
 #include <linux/pm_runtime.h>
-
+#include <linux/htc_flags.h>
 #include "spmi-dbgfs.h"
 
 struct spmii_boardinfo {
@@ -776,6 +776,295 @@ int spmi_driver_register(struct spmi_driver *drv)
 }
 EXPORT_SYMBOL_GPL(spmi_driver_register);
 
+#ifdef CONFIG_HTC_POWER_DEBUG
+#define MAX_REG_PER_TRANSACTION	(8)
+
+#define PM8994_PON_REVISION2			0x801
+#define PM8994_PON_PON_REASON1			0x808
+#define PM8994_PON_WARM_RESET_REASON1		0x80A
+#define PM8994_PON_WARM_RESET_REASON2		0x80B
+#define PM8994_PON_POFF_REASON1		0x80C
+#define PM8994_PON_POFF_REASON2		0x80D
+#define PM8994_PON_SOFT_RESET_REASON1		0x80E
+#define PM8994_PON_SOFT_RESET_REASON2		0x80F
+
+ 
+#define PMI8994_PON_REVISION2			0x20801
+#define PMI8994_PON_PON_REASON1		0x20808
+#define PMI8994_PON_WARM_RESET_REASON1		0x2080A
+#define PMI8994_PON_WARM_RESET_REASON2		0x2080B
+#define PMI8994_PON_POFF_REASON1		0x2080C
+#define PMI8994_PON_POFF_REASON2		0x2080D
+#define PMI8994_PON_SOFT_RESET_REASON1		0x2080E
+#define PMI8994_PON_SOFT_RESET_REASON2		0x2080F
+
+#define PMIC_VERSION		0x103
+
+
+enum {
+        HARD_RESET_TRIGGERED_BIT,
+        SMPL_TRIGGERED_BIT,
+        RTC_TRIGGERED_BIT,
+        DC_CHG_TRIGGERED_BIT,
+        USB_CHG_TRIGGERED_BIT,
+        PON1_TRIGGERED_BIT,
+        CBLPWR_N_TRIGGERED_BIT,
+        KPDPWR_N_TRIGGERED_BIT,
+        PON_BIT_MAX,
+} pon_reason_bit;
+
+enum {
+	SOFT_TRIGGERED_BIT,
+	PS_HOLD_TRIGGERED_BIT,
+	PMIC_WD_TRIGGERED_BIT,
+	GP1_TRIGGERED_BIT,
+	GP2_TRIGGERED_BIT,
+	KPDPWR_AND_RESIN_TRIGGERED_BIT,
+	RESIN_N_TRIGGERED_BIT,
+	KPDPWR_TRIGGERED_BIT,
+	WARM_REASON1_BIT_MAX,
+} warm_soft_reset_poff_reason1_bit;
+
+enum {
+	AFP_TRIGGERED_BIT = 4,
+	WARM_REASON2_BIT_MAX,
+} warm_soft_reset_reason2_bit;
+
+enum {
+	CHARGER_TRIGGERED_BIT = 3,
+	POFF_AFP_TRIGGERED_BIT,
+	UVLO_TRIGGERED_BIT,
+	OTST3_TRIGGERED_BIT,
+	STAGE3_TRIGGERED_BIT,
+	POFF_REASON2_BIT_MAX,
+} poff_reason2_bit;
+
+char *pon_reason[PON_BIT_MAX] = {
+	"Hard Reset",
+	"SMPL",
+	"RTC",
+	"DC Charger",
+	"USB Charger",
+	"Pon1",
+	"CBL_PWR1",
+	"Keypad Power"
+  };
+
+char *warm_reset_reason1[WARM_REASON1_BIT_MAX] = {
+	"Software",
+	"PS Hold",
+	"PMIC Watchdog",
+	"Keypad Reset1",
+	"Keypad Reset2",
+	"Kpdpwr + Resin",
+	"Resin",
+	"Keypad Power"
+  };
+
+char *warm_reset_reason2[WARM_REASON2_BIT_MAX] = {
+	"AFP",
+  };
+
+char *poff_reason2[POFF_REASON2_BIT_MAX] = {
+	"Charger",
+	"AFP",
+	"UVLO",
+	"OTST3",
+	"Stage3"
+  };
+
+void htc_print_reset_reason(int type, uint8_t value)
+{
+	int bit_idx = 0;
+	int start_bit = 0;
+	int end_bit = 0;
+	char **reason_desc = NULL;
+
+	switch (type) {
+	case PM8994_PON_PON_REASON1:
+	case PMI8994_PON_PON_REASON1:
+		start_bit = HARD_RESET_TRIGGERED_BIT;
+		end_bit = PON_BIT_MAX;
+		reason_desc = pon_reason;
+		break;
+	case PM8994_PON_WARM_RESET_REASON1:
+	case PMI8994_PON_WARM_RESET_REASON1:
+	case PM8994_PON_SOFT_RESET_REASON1:
+	case PMI8994_PON_SOFT_RESET_REASON1:
+	case PM8994_PON_POFF_REASON1:
+	case PMI8994_PON_POFF_REASON1:
+		start_bit = SOFT_TRIGGERED_BIT;
+		end_bit = WARM_REASON1_BIT_MAX;
+		reason_desc = warm_reset_reason1;
+		break;
+	case PM8994_PON_WARM_RESET_REASON2:
+	case PMI8994_PON_WARM_RESET_REASON2:
+	case PM8994_PON_SOFT_RESET_REASON2:
+	case PMI8994_PON_SOFT_RESET_REASON2:
+		start_bit = AFP_TRIGGERED_BIT;
+		end_bit = WARM_REASON2_BIT_MAX;
+		reason_desc = warm_reset_reason2;
+		break;
+	case PM8994_PON_POFF_REASON2:
+	case PMI8994_PON_POFF_REASON2:
+		start_bit = CHARGER_TRIGGERED_BIT;
+		end_bit = POFF_REASON2_BIT_MAX;
+		reason_desc = poff_reason2;
+		break;
+	default:
+		break;
+	}
+	for (bit_idx = start_bit; bit_idx < end_bit; bit_idx++) {
+		if (value & (1 << bit_idx)) {
+			printk(KERN_INFO "\t%s, (0x%x)\n", reason_desc[bit_idx - start_bit], value);
+		}
+	}
+}
+
+int htc_spmi_read_data(struct spmi_controller *ctrl, uint8_t *buf, int offset, int cnt)
+{
+	int ret = 0;
+	int len;
+	uint8_t sid;
+	uint16_t addr;
+
+	while (cnt > 0) {
+		sid = (offset >> 16) & 0xF;
+		addr = offset & 0xFFFF;
+		len = min(cnt, MAX_REG_PER_TRANSACTION);
+
+		ret = spmi_ext_register_readl(ctrl, sid, addr, buf, len);
+		if (ret < 0) {
+			pr_err("SPMI read failed, err = %d\n", ret);
+			goto done;
+		}
+
+		cnt -= len;
+		buf += len;
+		offset += len;
+	}
+
+done:
+	return ret;
+}
+
+uint8_t pm8994_reason_1 = 0xFF;
+uint8_t pmi8994_reason_1 = 0xFF;
+uint8_t pm8994_warm_reset_reason_1 = 0xFF;
+uint8_t pmi8994_warm_reset_reason_1 = 0xFF;
+uint8_t pm8994_warm_reset_reason_2 = 0xFF;
+uint8_t pmi8994_warm_reset_reason_2 = 0xFF;
+uint8_t pm8994_soft_reset_reason_1 = 0xFF;
+uint8_t pmi8994_soft_reset_reason_1 = 0xFF;
+uint8_t pm8994_soft_reset_reason_2 = 0xFF;
+uint8_t pmi8994_soft_reset_reason_2 = 0xFF;
+uint8_t pm8994_poff_reason_1 = 0xFF;
+uint8_t pmi8994_poff_reason_1 = 0xFF;
+uint8_t pm8994_poff_reason_2 = 0xFF;
+uint8_t pmi8994_poff_reason_2 = 0xFF;
+uint8_t pmic_version = 0xFF;
+
+void htc_get_pmic_version(struct spmi_controller *ctrl)
+{
+	if (pmic_version == 0xFF)
+		htc_spmi_read_data(ctrl, &pmic_version, PMIC_VERSION, 1);
+
+}
+void htc_get_pon_boot_reason(struct spmi_controller *ctrl)
+{
+	
+	if (pm8994_reason_1 == 0xFF)
+		htc_spmi_read_data(ctrl, &pm8994_reason_1, PM8994_PON_PON_REASON1, 1);
+
+	if (pmi8994_reason_1 == 0xFF)
+		htc_spmi_read_data(ctrl, &pmi8994_reason_1, PMI8994_PON_PON_REASON1, 1);
+
+	
+	if (pm8994_warm_reset_reason_1 == 0xFF)
+		htc_spmi_read_data(ctrl, &pm8994_warm_reset_reason_1, PM8994_PON_WARM_RESET_REASON1, 1);
+
+	if (pmi8994_warm_reset_reason_1 == 0xFF)
+		htc_spmi_read_data(ctrl, &pmi8994_warm_reset_reason_1, PMI8994_PON_WARM_RESET_REASON1, 1);
+
+	if (pm8994_warm_reset_reason_2 == 0xFF)
+		htc_spmi_read_data(ctrl, &pm8994_warm_reset_reason_2, PM8994_PON_WARM_RESET_REASON2, 1);
+
+	if (pmi8994_warm_reset_reason_2 == 0xFF)
+		htc_spmi_read_data(ctrl, &pmi8994_warm_reset_reason_2, PMI8994_PON_WARM_RESET_REASON2, 1);
+
+
+	
+	if (pm8994_soft_reset_reason_1 == 0xFF)
+		htc_spmi_read_data(ctrl, &pm8994_soft_reset_reason_1, PM8994_PON_SOFT_RESET_REASON1, 1);
+
+	if (pmi8994_soft_reset_reason_1 == 0xFF)
+		htc_spmi_read_data(ctrl, &pmi8994_soft_reset_reason_1, PMI8994_PON_SOFT_RESET_REASON1, 1);
+
+
+	if (pm8994_soft_reset_reason_2 == 0xFF)
+		htc_spmi_read_data(ctrl, &pm8994_soft_reset_reason_2, PM8994_PON_SOFT_RESET_REASON2, 1);
+
+	if (pmi8994_soft_reset_reason_2 == 0xFF)
+		htc_spmi_read_data(ctrl, &pmi8994_soft_reset_reason_2, PMI8994_PON_SOFT_RESET_REASON2, 1);
+
+
+	
+	if (pm8994_poff_reason_1 == 0xFF)
+		htc_spmi_read_data(ctrl, &pm8994_poff_reason_1, PM8994_PON_POFF_REASON1, 1);
+
+	if (pmi8994_poff_reason_1 == 0xFF)
+		htc_spmi_read_data(ctrl, &pmi8994_poff_reason_1, PMI8994_PON_POFF_REASON1, 1);
+
+	if (pm8994_poff_reason_2 == 0xFF)
+		htc_spmi_read_data(ctrl, &pm8994_poff_reason_2, PM8994_PON_POFF_REASON2, 1);
+
+	if (pmi8994_poff_reason_2 == 0xFF)
+		htc_spmi_read_data(ctrl, &pmi8994_poff_reason_2, PMI8994_PON_POFF_REASON2, 1);
+}
+
+int htc_print_pmic_version(void)
+{
+        printk(KERN_INFO "PMIC version is %d \n", pmic_version);
+	return pmic_version;
+}
+
+void htc_print_pon_boot_reason(void)
+{
+	
+	printk(KERN_INFO "PM8994 PON_PON_REASON:\n");
+	htc_print_reset_reason(PM8994_PON_PON_REASON1, pm8994_reason_1);
+	printk(KERN_INFO "PMI8994 PON_PON_REASON:\n");
+	htc_print_reset_reason(PMI8994_PON_PON_REASON1, pmi8994_reason_1);
+
+	
+	printk(KERN_INFO "PM8994 PON_WARM_RESET_REASON:\n");
+	htc_print_reset_reason(PM8994_PON_WARM_RESET_REASON1, pm8994_warm_reset_reason_1);
+	htc_print_reset_reason(PM8994_PON_WARM_RESET_REASON2, pm8994_warm_reset_reason_2);
+	printk(KERN_INFO "PMI8994 PON_WARM_RESET_REASON:\n");
+	htc_print_reset_reason(PMI8994_PON_WARM_RESET_REASON1, pmi8994_warm_reset_reason_1);
+	htc_print_reset_reason(PMI8994_PON_WARM_RESET_REASON2, pmi8994_warm_reset_reason_2);
+
+	
+	printk(KERN_INFO "PM8994 PON_SOFT_RESET_REASON:\n");
+	htc_print_reset_reason(PM8994_PON_SOFT_RESET_REASON1, pm8994_soft_reset_reason_1);
+	htc_print_reset_reason(PM8994_PON_SOFT_RESET_REASON2, pm8994_soft_reset_reason_2);
+	printk(KERN_INFO "PMI8994 PON_SOFT_RESET_REASON:\n");
+	htc_print_reset_reason(PMI8994_PON_SOFT_RESET_REASON1, pmi8994_soft_reset_reason_1);
+	htc_print_reset_reason(PMI8994_PON_SOFT_RESET_REASON2, pmi8994_soft_reset_reason_2);
+
+	
+	printk(KERN_INFO "PM8994 PON_POFF_REASON:\n");
+	htc_print_reset_reason(PM8994_PON_POFF_REASON1, pm8994_poff_reason_1);
+	htc_print_reset_reason(PM8994_PON_POFF_REASON2, pm8994_poff_reason_2);
+	printk(KERN_INFO "PMI8994 PON_POFF_REASON:\n");
+	htc_print_reset_reason(PMI8994_PON_POFF_REASON1, pmi8994_poff_reason_1);
+	htc_print_reset_reason(PMI8994_PON_POFF_REASON2, pmi8994_poff_reason_2);
+}
+
+EXPORT_SYMBOL_GPL(htc_print_pmic_version);
+EXPORT_SYMBOL_GPL(htc_print_pon_boot_reason);
+#endif
+
 static int spmi_register_controller(struct spmi_controller *ctrl)
 {
 	int ret = 0;
@@ -796,7 +1085,19 @@ static int spmi_register_controller(struct spmi_controller *ctrl)
 	dev_dbg(&ctrl->dev, "Bus spmi-%d registered: dev:0x%p\n",
 					ctrl->nr, &ctrl->dev);
 
-	spmi_dfs_add_controller(ctrl);
+	
+	if (get_tamper_sf() == 0)
+		spmi_dfs_add_controller(ctrl);
+
+
+#ifdef CONFIG_HTC_POWER_DEBUG
+	
+	htc_get_pon_boot_reason(ctrl);
+	htc_print_pon_boot_reason();
+	htc_get_pmic_version(ctrl);
+	htc_print_pmic_version();
+#endif
+
 	return 0;
 
 exit:

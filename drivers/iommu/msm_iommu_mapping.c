@@ -431,6 +431,8 @@ static int __msm_map_iommu_common(
 
 		if (IS_ERR(iommu_meta)) {
 			mutex_unlock(&msm_iommu_map_mutex);
+			pr_err("%s: fail to create meta\n", __func__);
+
 			ret = PTR_ERR(iommu_meta);
 			goto out;
 		}

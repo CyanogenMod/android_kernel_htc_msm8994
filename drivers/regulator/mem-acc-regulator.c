@@ -31,7 +31,6 @@
 
 #define BYTES_PER_FUSE_ROW		8
 
-/* mem-acc config flags */
 #define MEM_ACC_SKIP_L1_CONFIG		BIT(0)
 #define MEM_ACC_OVERRIDE_CONFIG		BIT(1)
 
@@ -73,7 +72,7 @@ struct mem_acc_regulator {
 	phys_addr_t		mem_acc_type_addr[MEM_ACC_TYPE_MAX];
 	u32			*mem_acc_type_data;
 
-	/* eFuse parameters */
+	
 	phys_addr_t		efuse_addr;
 	void __iomem		*efuse_base;
 };
@@ -154,10 +153,6 @@ static int mem_acc_fuse_is_setting_expected(
 static inline u32 apc_to_acc_corner(struct mem_acc_regulator *mem_acc_vreg,
 								int corner)
 {
-	/*
-	 * corner_acc_map maps the corner from index 0 and  APC corner value
-	 * starts from the value 1
-	 */
 	return mem_acc_vreg->corner_acc_map[corner - 1];
 }
 
@@ -166,10 +161,6 @@ static void __update_acc_sel(struct mem_acc_regulator *mem_acc_vreg,
 {
 	u32 acc_data, acc_data_old, i, bit, acc_corner;
 
-	/*
-	 * Do not configure the L1 ACC corner if the the corresponding flag is
-	 * set.
-	 */
 	if ((mem_type == MEMORY_L1)
 			&& (mem_acc_vreg->flags & MEM_ACC_SKIP_L1_CONFIG))
 		return;
@@ -248,7 +239,7 @@ static int mem_acc_regulator_set_voltage(struct regulator_dev *rdev,
 	if (corner == mem_acc_vreg->corner)
 		return 0;
 
-	/* go up or down one level at a time */
+	
 	mutex_lock(&mem_acc_memory_mutex);
 	if (corner > mem_acc_vreg->corner) {
 		for (i = mem_acc_vreg->corner + 1; i <= corner; i++) {
@@ -552,10 +543,10 @@ static int override_mem_acc_custom_data(struct platform_device *pdev,
 		return 0;
 	}
 
-	/* Free old custom data */
+	
 	devm_kfree(&pdev->dev, mem_acc_vreg->acc_custom_data[mem_type]);
 
-	/* Populate override custom data */
+	
 	rc = populate_acc_data(mem_acc_vreg, custom_apc_data_str,
 				&mem_acc_vreg->acc_custom_data[mem_type], &len);
 	if (rc) {
@@ -661,7 +652,7 @@ static int mem_acc_init(struct platform_device *pdev,
 
 	pr_debug("num_corners = %d\n", mem_acc_vreg->num_corners);
 
-	/* Check if at least one valid mem-acc config. is specified */
+	
 	for (i = 0; i < MEMORY_MAX; i++) {
 		if (mem_acc_vreg->mem_acc_supported[i])
 			break;
@@ -710,10 +701,10 @@ static int mem_acc_init(struct platform_device *pdev,
 	if (mem_acc_vreg->flags & MEM_ACC_OVERRIDE_CONFIG) {
 		if (of_find_property(mem_acc_vreg->dev->of_node,
 				"qcom,override-corner-acc-map", NULL)) {
-			/* Free old corner-acc-map */
+			
 			devm_kfree(&pdev->dev, mem_acc_vreg->corner_acc_map);
 
-			/* Populate override corner acc map */
+			
 			rc = populate_acc_data(mem_acc_vreg,
 						"qcom,override-corner-acc-map",
 						&mem_acc_vreg->corner_acc_map,

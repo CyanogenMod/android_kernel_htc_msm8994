@@ -162,6 +162,14 @@
 #define CPR_REGULATOR_DRIVER_NAME	"qcom,cpr-regulator"
 
 /**
+ * HTC POWER DEBUG. Backup APC0/APC1 turbo init/min/max for debugging.
+ */
+#ifdef CONFIG_HTC_POWER_DEBUG_RAILWAYS
+#include <htc_power_debug/htc_railways.h>
+htc_railways_info apc_railways_info[HTC_RAILWAYS_MAX];
+#endif
+
+/**
  * enum vdd_mx_vmin_method - Method to determine vmin for vdd-mx
  * %VDD_MX_VMIN_APC:			Equal to APC voltage
  * %VDD_MX_VMIN_APC_CORNER_CEILING:	Equal to PVS corner ceiling voltage
@@ -628,6 +636,19 @@ static void cpr_corner_switch(struct cpr_regulator *cpr_vreg, int corner)
 	cpr_corner_restore(cpr_vreg, corner);
 }
 
+#ifdef CONFIG_HTC_POWER_DEBUG_RAILWAYS
+int htc_get_apc_index(const char* apc_name)
+{
+	int rc = -1;
+	if(!strncmp(apc_name, "apc0", 4)) {
+		rc = HTC_RAILWAYS_APC0;
+	} else if (!strncmp(apc_name, "apc1", 4)) {
+		rc = HTC_RAILWAYS_APC1;
+	}
+	return rc;
+}
+#endif
+
 static int cpr_apc_set(struct cpr_regulator *cpr_vreg, u32 new_volt)
 {
 	int max_volt, rc;
@@ -637,6 +658,28 @@ static int cpr_apc_set(struct cpr_regulator *cpr_vreg, u32 new_volt)
 	if (rc)
 		cpr_err(cpr_vreg, "set: vdd_apc = %d uV: rc=%d\n",
 			new_volt, rc);
+#ifdef CONFIG_HTC_POWER_DEBUG_RAILWAYS
+	else {
+		int idx = -1;
+		if(cpr_vreg->corner == cpr_vreg->num_corners) {
+			idx = htc_get_apc_index(cpr_vreg->rdesc.name);
+
+			if(idx == HTC_RAILWAYS_APC0 || idx == HTC_RAILWAYS_APC1) {
+				if(new_volt > apc_railways_info[idx].volt_max) {
+					if(new_volt > max_volt) {
+						apc_railways_info[idx].volt_max = max_volt;
+					} else {
+						apc_railways_info[idx].volt_max = new_volt;
+					}
+				}
+				if (new_volt < railways_info[idx].volt_min) {
+					apc_railways_info[idx].volt_min = new_volt;
+				}
+			}
+		}
+	}
+#endif
+
 	return rc;
 }
 
@@ -3245,6 +3288,18 @@ static int cpr_init_cpr_voltages(struct cpr_regulator *cpr_vreg,
 
 	for (i = CPR_CORNER_MIN; i <= cpr_vreg->num_corners; i++)
 		cpr_vreg->last_volt[i] = cpr_vreg->open_loop_volt[i];
+
+#ifdef CONFIG_HTC_POWER_DEBUG_RAILWAYS
+	{
+		int idx = htc_get_apc_index(cpr_vreg->rdesc.name);
+		if(idx == HTC_RAILWAYS_APC0 || idx == HTC_RAILWAYS_APC1) {
+			apc_railways_info[idx].volt_init = cpr_vreg->last_volt[cpr_vreg->num_corners];
+			apc_railways_info[idx].volt_max = apc_railways_info[idx].volt_min = apc_railways_info[idx].volt_init;
+		} else {
+			pr_err("%s: invalid railways_info index: %d\n", __func__, idx);
+		}
+	}
+#endif
 
 	return 0;
 }

@@ -25,6 +25,18 @@
 #include <linux/posix-timers.h>
 #include <linux/workqueue.h>
 #include <linux/freezer.h>
+#include <linux/module.h>
+
+#define OFFALARM_SIZE    (10)
+#define OFFALARM_SNOOZE_SIZE    (10)
+
+static int offalarm_size = OFFALARM_SIZE;
+static int offalarm_snooze_size = OFFALARM_SNOOZE_SIZE;
+
+static int offalarm[OFFALARM_SIZE];
+static int offalarm_snooze[OFFALARM_SNOOZE_SIZE];
+module_param_array_named(offalarm, offalarm, uint, &offalarm_size, S_IRUGO | S_IWUSR);
+module_param_array_named(offalarm_snooze, offalarm_snooze, uint, &offalarm_snooze_size, S_IRUGO | S_IWUSR);
 
 #define ALARM_DELTA 120
 
@@ -64,6 +76,7 @@ void set_power_on_alarm(long secs, bool enable)
 	long rtc_secs, alarm_time, alarm_delta;
 	struct rtc_time rtc_time;
 	struct rtc_wkalrm alarm;
+	pr_info("set_power_on_alarm: secs = %ld enable = %d\n",secs, enable);
 
 	rc = mutex_lock_interruptible(&power_on_alarm_lock);
 	if (rc != 0)
@@ -86,6 +99,7 @@ void set_power_on_alarm(long secs, bool enable)
 	rtc_tm_to_time(&rtc_time, &rtc_secs);
 	alarm_delta = wall_time.tv_sec - rtc_secs;
 	alarm_time = power_on_alarm - alarm_delta;
+	pr_info("set_power_on_alarm: alarm_time = %ld\n",alarm_time);
 
 	/*
 	 *Substract ALARM_DELTA from actual alarm time
@@ -124,6 +138,57 @@ static void alarmtimer_triggered_func(void *p)
 static struct rtc_task alarmtimer_rtc_task = {
 	.func = alarmtimer_triggered_func
 };
+
+
+static int find_offmode_alarm(void)
+{
+        struct timespec rtc_now;
+        int i;
+        int nearest_alarm = 0;
+        int nearest_alarm_snooze = 0;
+
+        getnstimeofday(&rtc_now);
+		pr_info("find_offmode_alarm: offalarm_size=%d  rtc_now.tv_sec= %ld\n", offalarm_size, rtc_now.tv_sec);
+        for (i = 0; i < offalarm_size; i++) {
+			pr_info("find_offmode_alarm: offalarm[%d]=%d \n", i,offalarm[i]);
+                if (offalarm[i] > rtc_now.tv_sec) {
+                        if (nearest_alarm == 0)
+                                nearest_alarm = offalarm[i];
+                        else if (offalarm[i] < nearest_alarm)
+                                nearest_alarm = offalarm[i];
+                }
+        }
+        for (i = 0; i < offalarm_snooze_size; i++) {
+                if (offalarm_snooze[i] > rtc_now.tv_sec) {
+                        if (nearest_alarm_snooze == 0)
+                                nearest_alarm_snooze = offalarm_snooze[i];
+                        else if (offalarm_snooze[i] < nearest_alarm_snooze)
+                                nearest_alarm_snooze = offalarm_snooze[i];
+                }
+        }
+        if((nearest_alarm == 0 || nearest_alarm_snooze <= nearest_alarm) && nearest_alarm_snooze != 0)
+                return nearest_alarm_snooze;
+        else
+                return nearest_alarm;
+}
+
+static void alarm_shutdown(struct platform_device *pdev)
+{
+        int offmode_alarm;
+        struct rtc_wkalrm rtc_alarm;
+
+        offmode_alarm = find_offmode_alarm();
+		pr_info("alarm_shutdown: offmode_alarm = %d \n",offmode_alarm);
+        if (offmode_alarm > 0) {
+                rtc_time_to_tm(offmode_alarm, &rtc_alarm.time);
+				pr_info("alarm_shutdown: h::m:s == %d::%d::%d, d/m/y = %d/%d/%d\r\n",
+	rtc_alarm.time.tm_hour, rtc_alarm.time.tm_min, rtc_alarm.time.tm_sec,
+	rtc_alarm.time.tm_mday, rtc_alarm.time.tm_mon, rtc_alarm.time.tm_year);
+                rtc_alarm.enabled = 1;
+                rtc_set_alarm(rtcdev, &rtc_alarm);
+        }
+}
+
 /**
  * alarmtimer_get_rtcdev - Return selected rtcdevice
  *
@@ -899,6 +964,7 @@ static const struct dev_pm_ops alarmtimer_pm_ops = {
 };
 
 static struct platform_driver alarmtimer_driver = {
+	.shutdown = alarm_shutdown,
 	.driver = {
 		.name = "alarmtimer",
 		.pm = &alarmtimer_pm_ops,

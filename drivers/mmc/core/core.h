@@ -14,6 +14,8 @@
 #include <linux/delay.h>
 
 #define MMC_CMD_RETRIES        3
+#define MMC_WAKELOCK_TIMEOUT 1
+#define MMC_DETECT_RETRIES	5
 
 struct mmc_bus_ops {
 	int (*awake)(struct mmc_host *);
@@ -26,6 +28,7 @@ struct mmc_bus_ops {
 	int (*power_restore)(struct mmc_host *);
 	int (*alive)(struct mmc_host *);
 	int (*change_bus_speed)(struct mmc_host *, unsigned long *);
+	int (*reinit)(struct mmc_host *);
 	int (*shutdown)(struct mmc_host *);
 };
 
@@ -64,6 +67,8 @@ static inline void mmc_delay(unsigned int ms)
 }
 
 void mmc_rescan(struct work_struct *work);
+void mmc_enable_detection(struct work_struct *work);
+void mmc_stats(struct work_struct *work);
 void mmc_start_host(struct mmc_host *host);
 void mmc_stop_host(struct mmc_host *host);
 
@@ -73,10 +78,8 @@ int mmc_attach_mmc(struct mmc_host *host);
 int mmc_attach_sd(struct mmc_host *host);
 int mmc_attach_sdio(struct mmc_host *host);
 
-/* Module parameters */
 extern bool use_spi_crc;
 
-/* Debugfs information for hosts and cards */
 void mmc_add_host_debugfs(struct mmc_host *host);
 void mmc_remove_host_debugfs(struct mmc_host *host);
 

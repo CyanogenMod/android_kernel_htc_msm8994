@@ -48,6 +48,7 @@
 #include <asm/ptrace.h>
 #include <asm/irq_regs.h>
 
+atomic_t em_remount = ATOMIC_INIT(0);
 /* Whether we react on sysrq keys or just ignore them */
 static int __read_mostly sysrq_enabled = SYSRQ_DEFAULT_ENABLE;
 static bool __read_mostly sysrq_always_enabled;
@@ -181,6 +182,7 @@ static struct sysrq_key_op sysrq_show_timers_op = {
 
 static void sysrq_handle_mountro(int key)
 {
+	atomic_set(&em_remount, 1);
 	emergency_remount();
 }
 static struct sysrq_key_op sysrq_mountro_op = {
@@ -283,6 +285,8 @@ static struct sysrq_key_op sysrq_showstate_op = {
 static void sysrq_handle_showstate_blocked(int key)
 {
 	show_state_filter(TASK_UNINTERRUPTIBLE);
+	pr_info("### Show All Tasks in System Server ###\n");
+	show_thread_group_state_filter("system_server", 0);
 }
 static struct sysrq_key_op sysrq_showstate_blocked_op = {
 	.handler	= sysrq_handle_showstate_blocked,
@@ -519,6 +523,8 @@ void __handle_sysrq(int key, bool check_mask)
 	 */
 	orig_log_level = console_loglevel;
 	console_loglevel = 7;
+	printk(KERN_INFO "%s (%d:%d) triggered SysRq\n",
+			current->comm, current->tgid, current->pid);
 	printk(KERN_INFO "SysRq : ");
 
         op_p = __sysrq_get_key_op(key);

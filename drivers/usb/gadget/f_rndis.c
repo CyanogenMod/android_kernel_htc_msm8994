@@ -645,7 +645,6 @@ static int rndis_set_alt(struct usb_function *f, unsigned intf, unsigned alt)
 	struct usb_composite_dev *cdev = f->config->cdev;
 
 	/* we know alt == 0 */
-
 	if (intf == rndis->ctrl_id) {
 		if (rndis->notify->driver_data) {
 			VDBG(cdev, "reset rndis control %d\n", intf);

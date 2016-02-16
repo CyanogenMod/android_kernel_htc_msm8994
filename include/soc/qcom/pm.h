@@ -169,4 +169,9 @@ static inline void msm_pm_l2_add_stat(uint32_t id, int64_t t) {}
 
 void msm_pm_set_cpr_ops(struct msm_pm_cpr_ops *ops);
 extern dma_addr_t msm_pc_debug_counters_phys;
+
+#ifdef CONFIG_HTC_POWER_DEBUG
+int print_gpio_buffer(struct seq_file *m);
+int free_gpio_buffer(void);
+#endif
 #endif  /* __ARCH_ARM_MACH_MSM_PM_H */

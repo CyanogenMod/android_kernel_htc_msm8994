@@ -124,7 +124,9 @@ struct eth_dev {
 
 	bool			zlp;
 	u8			host_mac[ETH_ALEN];
-
+/*++ 2014/12/02, USB Team, PCN00052 ++*/
+	int             miMaxMtu;
+/*-- 2014/12/02, USB Team, PCN00052 --*/
 	/* stats */
 	unsigned long		tx_throttle;
 	unsigned long		rx_throttle;
@@ -226,6 +228,10 @@ module_param(u_ether_rx_pending_thld, uint, S_IRUGO | S_IWUSR);
 	xprintk(dev , KERN_INFO , fmt , ## args)
 
 /*-------------------------------------------------------------------------*/
+/*++ 2014/12/02, USB Team, PCN00052 ++*/
+static struct eth_dev *the_dev;
+/*-- 2014/12/02, USB Team, PCN00052 --*/
+
 
 /* NETWORK DRIVER HOOKUP (to the layer above this driver) */
 
@@ -234,12 +240,21 @@ static int ueth_change_mtu(struct net_device *net, int new_mtu)
 	struct eth_dev	*dev = netdev_priv(net);
 	unsigned long	flags;
 	int		status = 0;
+/*++ 2014/12/02, USB Team, PCN00052 ++*/
+	int     iMaxMtuSet = ETH_FRAME_LEN;
 
+	if (the_dev) {
+        if (the_dev->miMaxMtu == ETH_FRAME_LEN_MAX - ETH_HLEN)
+            iMaxMtuSet = ETH_FRAME_LEN_MAX - ETH_HLEN;
+	}
+/*-- 2014/12/02, USB Team, PCN00052 --*/
 	/* don't change MTU on "live" link (peer won't know) */
 	spin_lock_irqsave(&dev->lock, flags);
 	if (dev->port_usb)
 		status = -EBUSY;
-	else if (new_mtu <= ETH_HLEN || new_mtu > ETH_FRAME_LEN)
+/*++ 2014/12/02, USB Team, PCN00052 ++*/
+	else if (new_mtu <= ETH_HLEN || new_mtu > iMaxMtuSet)
+/*-- 2014/12/02, USB Team, PCN00052 --*/
 		status = -ERANGE;
 	else
 		net->mtu = new_mtu;
@@ -431,7 +446,10 @@ static void rx_complete(struct usb_ep *ep, struct usb_request *req)
 		DBG(dev, "rx %s reset\n", ep->name);
 		defer_kevent(dev, WORK_RX_MEMORY);
 quiesce:
-		dev_kfree_skb_any(skb);
+/*++ 2014/12/02, USB Team, PCN00052 ++*/
+		if (skb)
+/*-- 2014/12/02, USB Team, PCN00052 --*/
+			dev_kfree_skb_any(skb);
 		goto clean;
 
 	/* data overrun */
@@ -628,15 +646,25 @@ static void process_rx_w(struct work_struct *work)
 	struct eth_dev	*dev = container_of(work, struct eth_dev, rx_work);
 	struct sk_buff	*skb;
 	int		status = 0;
+/*++ 2014/12/02, USB Team, PCN00052 ++*/
+	unsigned int uiCurMtu = 0;
+/*-- 2014/12/02, USB Team, PCN00052 --*/
 
 	if (!dev->port_usb)
 		return;
 
 	set_wake_up_idle(true);
+/*++ 2014/12/02, USB Team, PCN00052 ++*/
+	uiCurMtu = dev->net->mtu + ETH_HLEN;
+	if ((uiCurMtu <= ETH_HLEN) || (uiCurMtu > ETH_FRAME_LEN_MAX))
+	    uiCurMtu = ETH_FRAME_LEN;
+/*-- 2014/12/02, USB Team, PCN00052 --*/
 	while ((skb = skb_dequeue(&dev->rx_frames))) {
 		if (status < 0
 				|| ETH_HLEN > skb->len
-				|| (skb->len > ETH_FRAME_LEN &&
+/*++ 2014/12/02, USB Team, PCN00052 ++*/
+				|| (skb->len > uiCurMtu &&
+/*-- 2014/12/02, USB Team, PCN00052 --*/
 				test_bit(RMNET_MODE_LLP_ETH, &dev->flags))) {
 			dev->net->stats.rx_errors++;
 			dev->net->stats.rx_length_errors++;
@@ -974,7 +1002,8 @@ static void process_tx_w(struct work_struct *w)
 			return;
 		}
 
-		ret = usb_ep_queue(in, req, GFP_KERNEL);
+		if (in)
+			ret = usb_ep_queue(in, req, GFP_KERNEL);
 		spin_lock_irqsave(&dev->req_lock, flags);
 		switch (ret) {
 		default:
@@ -1007,14 +1036,24 @@ static netdev_tx_t eth_start_xmit(struct sk_buff *skb,
 					struct net_device *net)
 {
 	struct eth_dev		*dev = netdev_priv(net);
-	int			length = skb->len;
+/*++ 2014/12/02, USB Team, PCN00052 ++*/
+	int			length;
+/*-- 2014/12/02, USB Team, PCN00052 --*/
 	int			retval;
 	struct usb_request	*req = NULL;
 	unsigned long		flags;
 	struct usb_ep		*in = NULL;
 	u16			cdc_filter = 0;
 	bool			multi_pkt_xfer = false;
+/*++ 2014/12/02, USB Team, PCN00052 ++*/
+	if ((!skb) || (IS_ERR(skb)))
+		return NETDEV_TX_OK;
 
+	if ((!net) || (IS_ERR(net)))
+		return NETDEV_TX_OK;
+
+	length = skb->len;
+/*-- 2014/12/02, USB Team, PCN00052 --*/
 	spin_lock_irqsave(&dev->lock, flags);
 	if (dev->port_usb) {
 		in = dev->port_usb->in_ep;
@@ -1598,7 +1637,17 @@ struct eth_dev *gether_setup_name(struct usb_gadget *g, u8 ethaddr[ETH_ALEN],
 	struct eth_dev		*dev;
 	struct net_device	*net;
 	int			status;
-
+/*++ 2014/12/02, USB Team, PCN00052 ++*/
+	if (the_dev) {
+		memcpy(ethaddr, the_dev->host_mac, ETH_ALEN);
+        if (g) {
+            the_dev->miMaxMtu = g->miMaxMtu;
+            if (the_dev->miMaxMtu == ETH_FRAME_LEN_MAX - ETH_HLEN)
+                the_dev->net->mtu = ETH_FRAME_LEN_MAX - ETH_HLEN;
+        }
+		return 0;
+	}
+/*-- 2014/12/02, USB Team, PCN00052 --*/
 	net = alloc_etherdev(sizeof *dev);
 	if (!net)
 		return ERR_PTR(-ENOMEM);
@@ -1652,6 +1701,14 @@ struct eth_dev *gether_setup_name(struct usb_gadget *g, u8 ethaddr[ETH_ALEN],
 		INFO(dev, "MAC %pM\n", net->dev_addr);
 		INFO(dev, "HOST MAC %pM\n", dev->host_mac);
 
+		the_dev = dev;
+/*++ 2014/12/02, USB Team, PCN00052 ++*/
+		if (g) {
+			the_dev->miMaxMtu = g->miMaxMtu;
+			if (the_dev->miMaxMtu == ETH_FRAME_LEN_MAX - ETH_HLEN)
+				the_dev->net->mtu = ETH_FRAME_LEN_MAX - ETH_HLEN;
+		}
+/*-- 2014/12/02, USB Team, PCN00052 --*/
 		/* two kinds of host-initiated state changes:
 		 *  - iff DATA transfer is active, carrier is "on"
 		 *  - tx queueing enabled if open *and* carrier is "on"
@@ -1694,7 +1751,18 @@ void gether_cleanup(struct eth_dev *dev)
 	unregister_netdev(dev->net);
 	flush_work(&dev->work);
 	free_netdev(dev->net);
+/*++ 2014/12/02, USB Team, PCN00052 ++*/
+	the_dev = NULL;
+/*-- 2014/12/02, USB Team, PCN00052 --*/
 }
+
+/*++ 2014/12/02, USB Team, PCN00052 ++*/
+int gether_change_mtu(int new_mtu)
+{
+	struct eth_dev *dev = the_dev;
+	return ueth_change_mtu(dev->net, new_mtu);
+}
+/*-- 2014/12/02, USB Team, PCN00052 --*/
 
 void gether_update_dl_max_xfer_size(struct gether *link, uint32_t s)
 {

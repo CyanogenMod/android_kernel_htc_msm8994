@@ -71,4 +71,9 @@ static inline int clock_debug_register(struct clk_lookup *t, size_t s)
 static inline void clock_debug_print_enabled(void) { return; }
 #endif
 
+#ifdef CONFIG_HTC_POWER_DEBUG
+void clock_blocked_print(void);
+int clock_blocked_register(struct clk_lookup *t, size_t s);
+#endif
+
 #endif

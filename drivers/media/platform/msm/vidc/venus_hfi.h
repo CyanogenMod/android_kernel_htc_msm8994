@@ -203,6 +203,13 @@ struct venus_hfi_device {
 	struct msm_vidc_platform_resources *res;
 	enum venus_hfi_state state;
 	struct hfi_packetization_ops *pkt_ops;
+        /* HTC_START: ION debug mechanism enhancement
+         * Add struct msm_vidc_inst here is to get the instance, then
+         * we can use the pointer to recognize the ION buffer which
+         * allocated on venus side is belong to same video instance
+         */
+        struct msm_vidc_inst *inst;
+        /* HTC_END */
 };
 
 void venus_hfi_delete_device(void *device);

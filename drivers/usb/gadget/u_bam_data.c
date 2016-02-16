@@ -725,6 +725,11 @@ static void bam2bam_free_rx_skb_idle_list(struct bam_data_port *port)
 
 	while (d->rx_skb_idle.qlen > 0) {
 		skb = __skb_dequeue(&d->rx_skb_idle);
+		if (!skb) {
+			pr_err("%s(): skb is NULL.\n", __func__);
+			return;
+		}
+
 		dma_addr = gbam_get_dma_from_skb(skb);
 
 		if (gadget && dma_addr != DMA_ERROR_CODE) {

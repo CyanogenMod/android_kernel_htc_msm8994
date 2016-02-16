@@ -2274,6 +2274,11 @@ int msm_mmsscc_8992_probe(struct platform_device *pdev)
 	struct clk *tmp;
 	struct regulator *reg;
 
+	if (!pdev) {
+		pr_err("8992 mmss probe fails\n");
+		return -ENODEV;
+	}
+
 	res = platform_get_resource_byname(pdev, IORESOURCE_MEM, "cc_base");
 	if (!res) {
 		dev_err(&pdev->dev, "Unable to retrieve register base.\n");

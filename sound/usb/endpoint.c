@@ -206,9 +206,6 @@ static void prepare_outbound_urb(struct snd_usb_endpoint *ep,
 			for (i = 0; i < ctx->packets; ++i) {
 				int counts;
 
-				if (ctx->packet_size[i])
-					counts = ctx->packet_size[i];
-				else
 					counts = snd_usb_endpoint_next_packet_size(ep);
 
 				urb->iso_frame_desc[i].offset = offs * ep->stride;
@@ -693,7 +690,7 @@ static int data_ep_set_params(struct snd_usb_endpoint *ep,
 		if (!u->urb->transfer_buffer)
 			goto out_of_memory;
 		u->urb->pipe = ep->pipe;
-		u->urb->transfer_flags = URB_NO_TRANSFER_DMA_MAP;
+		u->urb->transfer_flags = URB_ISO_ASAP |URB_NO_TRANSFER_DMA_MAP;
 		u->urb->interval = 1 << ep->datainterval;
 		u->urb->context = u;
 		u->urb->complete = snd_complete_urb;
@@ -732,7 +729,7 @@ static int sync_ep_set_params(struct snd_usb_endpoint *ep,
 		u->urb->transfer_dma = ep->sync_dma + i * 4;
 		u->urb->transfer_buffer_length = 4;
 		u->urb->pipe = ep->pipe;
-		u->urb->transfer_flags = URB_NO_TRANSFER_DMA_MAP;
+		u->urb->transfer_flags = URB_ISO_ASAP | URB_NO_TRANSFER_DMA_MAP;
 		u->urb->number_of_packets = 1;
 		u->urb->interval = 1 << ep->syncinterval;
 		u->urb->context = u;

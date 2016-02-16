@@ -57,5 +57,8 @@ struct mtp_event {
  * with a 12 byte MTP data packet header at the beginning.
  */
 #define MTP_SEND_FILE_WITH_HEADER  _IOW('M', 4, struct mtp_file_range)
+/*++ 2014/11/20, USB Team, PCN00042 ++*/
+#define MTP_THREAD_SUPPORTED       _IOW('M', 64, int)
+/*-- 2014/11/20, USB Team, PCN00042 --*/
 
 #endif /* _UAPI_LINUX_USB_F_MTP_H */

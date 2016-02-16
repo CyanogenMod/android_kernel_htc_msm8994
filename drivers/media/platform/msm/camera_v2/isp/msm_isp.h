@@ -1,4 +1,4 @@
-/* Copyright (c) 2013-2015, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2013-2014, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -43,7 +43,6 @@
 #define MAX_NUM_COMPOSITE_MASK 4
 #define MAX_NUM_STATS_COMP_MASK 2
 #define MAX_INIT_FRAME_DROP 31
-#define MAX_REG_UPDATE_THRESHOLD 10
 #define ISP_Q2 (1 << 2)
 
 #define VFE_PING_FLAG 0xFFFFFFFF
@@ -51,12 +50,10 @@
 
 #define VFE_MAX_CFG_TIMEOUT 3000
 #define VFE_CLK_INFO_MAX 16
-#define STATS_COMP_BIT_MASK 0x1FF
+#define STATS_COMP_BIT_MASK 0xFF0000
 
-#define MSM_ISP_MIN_AB 100000000
-#define MSM_ISP_MIN_IB 120000000
-
-#define MAX_VFE 2
+#define MSM_ISP_MIN_AB 300000000
+#define MSM_ISP_MIN_IB 450000000
 
 struct vfe_device;
 struct msm_vfe_axi_stream;
@@ -74,7 +71,6 @@ enum msm_isp_pack_fmt {
 	DPCM8,
 	PLAIN8,
 	PLAIN16,
-	DPCM10,
 	MAX_ISP_PACK_FMT,
 };
 
@@ -86,11 +82,11 @@ enum msm_isp_camif_update_state {
 };
 
 struct msm_isp_timestamp {
-	/*Monotonic clock for v4l2 buffer*/
+	
 	struct timeval buf_time;
-	/*Monotonic clock for VT */
+	
 	struct timeval vt_time;
-	/*Wall clock for userspace event*/
+	
 	struct timeval event_time;
 };
 
@@ -119,14 +115,14 @@ struct msm_vfe_irq_ops {
 };
 
 struct msm_vfe_axi_ops {
-	void (*reload_wm)(struct vfe_device *vfe_dev, void __iomem *vfe_base,
+	void (*reload_wm) (struct vfe_device *vfe_dev,
 		uint32_t reload_mask);
 	void (*enable_wm) (struct vfe_device *vfe_dev,
 		uint8_t wm_idx, uint8_t enable);
 	int32_t (*cfg_io_format) (struct vfe_device *vfe_dev,
 		enum msm_vfe_axi_stream_src stream_src,
 		uint32_t io_format);
-	void (*cfg_framedrop)(void __iomem *vfe_base,
+	void (*cfg_framedrop) (struct vfe_device *vfe_dev,
 		struct msm_vfe_axi_stream *stream_info,
 		uint32_t framedrop_pattern, uint32_t framedrop_period);
 	void (*clear_framedrop) (struct vfe_device *vfe_dev,
@@ -154,9 +150,7 @@ struct msm_vfe_axi_ops {
 
 	void (*cfg_ub) (struct vfe_device *vfe_dev);
 
-	void (*read_wm_ping_pong_addr)(struct vfe_device *vfe_dev);
-
-	void (*update_ping_pong_addr)(void __iomem *vfe_base,
+	void (*update_ping_pong_addr) (struct vfe_device *vfe_dev,
 		uint8_t wm_idx, uint32_t pingpong_status, dma_addr_t paddr);
 
 	uint32_t (*get_wm_mask) (uint32_t irq_status0, uint32_t irq_status1);
@@ -198,7 +192,6 @@ struct msm_vfe_core_ops {
 		uint32_t *irq1_mask);
 	void (*get_rdi_wm_mask)(struct vfe_device *vfe_dev,
 		uint32_t *rdi_wm_mask);
-	bool (*is_module_cfg_lock_needed)(uint32_t reg_offset);
 };
 struct msm_vfe_stats_ops {
 	int (*get_stats_idx) (enum msm_isp_stats_type stats_type);
@@ -209,8 +202,7 @@ struct msm_vfe_stats_ops {
 	void (*clear_framedrop) (struct vfe_device *vfe_dev,
 		struct msm_vfe_stats_stream *stream_info);
 	void (*cfg_comp_mask) (struct vfe_device *vfe_dev,
-		uint32_t stats_mask, uint8_t comp_index,
-		uint8_t enable);
+		uint32_t stats_mask, uint8_t enable);
 	void (*cfg_wm_irq_mask) (struct vfe_device *vfe_dev,
 		struct msm_vfe_stats_stream *stream_info);
 	void (*clear_wm_irq_mask) (struct vfe_device *vfe_dev,
@@ -226,7 +218,7 @@ struct msm_vfe_stats_ops {
 	void (*enable_module) (struct vfe_device *vfe_dev,
 		uint32_t stats_mask, uint8_t enable);
 
-	void (*update_ping_pong_addr)(void __iomem *vfe_base,
+	void (*update_ping_pong_addr) (struct vfe_device *vfe_dev,
 		struct msm_vfe_stats_stream *stream_info,
 		uint32_t pingpong_status, dma_addr_t paddr);
 
@@ -248,7 +240,7 @@ struct msm_vfe_ops {
 
 struct msm_vfe_hardware_info {
 	int num_iommu_ctx;
-	/* secure iommu ctx nums */
+	
 	int num_iommu_secure_ctx;
 	int vfe_clk_idx;
 	struct msm_vfe_ops vfe_ops;
@@ -315,7 +307,7 @@ struct msm_vfe_axi_stream {
 	enum msm_vfe_axi_stream_src stream_src;
 	uint8_t num_planes;
 	uint8_t wm[MAX_PLANES_PER_STREAM];
-	uint32_t output_format;/*Planar/RAW/Misc*/
+	uint32_t output_format;
 	struct msm_vfe_axi_plane_cfg plane_cfg[MAX_PLANES_PER_STREAM];
 	uint8_t comp_mask_index;
 	struct msm_isp_buffer *buf[2];
@@ -336,31 +328,26 @@ struct msm_vfe_axi_stream {
 	enum msm_vfe_frame_skip_pattern frame_skip_pattern;
 	uint32_t framedrop_period;
 	uint32_t framedrop_pattern;
-	uint32_t prev_framedrop_period;
-	uint32_t prev_framedrop_pattern;
-	uint32_t framedrop_altern_cnt;
-	uint32_t num_burst_capture;/*number of frame to capture*/
+	uint32_t num_burst_capture;
 	uint32_t init_frame_drop;
-	uint32_t burst_frame_count;/*number of sof before burst stop*/
+	uint32_t burst_frame_count;
 	uint8_t framedrop_update;
 	spinlock_t lock;
 
-	/*Bandwidth calculation info*/
+	
 	uint32_t max_width;
-	/*Based on format plane size in Q2. e.g NV12 = 1.5*/
+	
 	uint32_t format_factor;
 	uint32_t bandwidth;
 
-	/*Run time update variables*/
+	
 	uint32_t runtime_init_frame_drop;
-	uint32_t runtime_burst_frame_count;/*number of sof before burst stop*/
+	uint32_t runtime_burst_frame_count;
 	uint32_t runtime_num_burst_capture;
 	uint8_t  runtime_framedrop_update;
 	uint8_t  runtime_framedrop_update_burst;
 	uint32_t runtime_output_format;
 	enum msm_stream_memory_input_t  memory_input;
-	struct msm_isp_sw_framskip sw_skip;
-	uint8_t sw_ping_pong_bit;
 };
 
 struct msm_vfe_axi_composite_info {
@@ -370,18 +357,14 @@ struct msm_vfe_axi_composite_info {
 
 struct msm_vfe_src_info {
 	uint32_t frame_id;
-	uint32_t camif_sof_frame_id;
-	uint32_t reg_update_frame_id;
 	uint8_t active;
 	uint8_t pix_stream_count;
 	uint8_t raw_stream_count;
 	enum msm_vfe_inputmux input_mux;
 	uint32_t width;
 	long pixel_clock;
-	uint32_t input_format;/*V4L2 pix format with bayer pattern*/
+	uint32_t input_format;
 	uint32_t last_updt_frm_id;
-	uint32_t sof_counter_step;
-	struct timeval time_stamp;
 };
 
 struct msm_vfe_fetch_engine_info {
@@ -400,10 +383,11 @@ enum msm_wm_ub_cfg_type {
 
 struct msm_vfe_axi_shared_data {
 	struct msm_vfe_axi_hardware_info *hw_info;
-	struct msm_vfe_axi_stream stream_info[VFE_AXI_SRC_MAX];
+	struct msm_vfe_axi_stream stream_info[MAX_NUM_STREAM];
 	uint32_t free_wm[MAX_NUM_WM];
 	uint32_t wm_image_size[MAX_NUM_WM];
 	enum msm_wm_ub_cfg_type wm_ub_cfg_policy;
+	uint8_t reg_update_requested;
 	uint8_t num_used_wm;
 	uint8_t num_active_stream;
 	uint8_t num_rdi_stream;
@@ -448,7 +432,6 @@ struct msm_vfe_stats_stream {
 	uint32_t framedrop_period;
 	uint32_t irq_subsample_pattern;
 	uint32_t init_stats_frame_drop;
-	struct msm_isp_sw_framskip sw_skip;
 
 	uint32_t buffer_offset;
 	struct msm_isp_buffer *buf[2];
@@ -489,11 +472,10 @@ struct msm_vfe_error_info {
 	uint32_t error_mask1;
 	uint32_t violation_status;
 	uint32_t camif_status;
-	uint8_t stream_framedrop_count[MAX_NUM_STREAM];
-	uint8_t stats_framedrop_count[MSM_ISP_STATS_MAX];
+	uint32_t stream_framedrop_count[MAX_NUM_STREAM];
+	uint32_t stats_framedrop_count[MSM_ISP_STATS_MAX];
 	uint32_t info_dump_frame_count;
 	uint32_t error_count;
-	uint32_t framedrop_flag;
 };
 
 struct msm_isp_statistics {
@@ -569,14 +551,6 @@ struct msm_vfe_hw_init_parms {
 	const char *settings;
 };
 
-struct dual_vfe_resource {
-	void __iomem *vfe_base[MAX_VFE];
-	uint32_t reg_update_mask[MAX_VFE];
-	struct msm_vfe_stats_shared_data *stats_data[MAX_VFE];
-	struct msm_vfe_axi_shared_data *axi_data[MAX_VFE];
-	uint32_t wm_reload_mask[MAX_VFE];
-};
-
 struct vfe_device {
 	struct platform_device *pdev;
 	struct msm_sd_subdev subdev;
@@ -589,7 +563,7 @@ struct vfe_device {
 	void __iomem *vfe_vbif_base;
 
 	struct device *iommu_ctx[MAX_IOMMU_CTX];
-	/*Add secure context banks*/
+	
 	struct device *iommu_secure_ctx[MAX_IOMMU_CTX];
 
 	struct regulator *fs_vfe;
@@ -608,9 +582,8 @@ struct vfe_device {
 
 	atomic_t irq_cnt;
 	uint8_t taskletq_idx;
-	spinlock_t tasklet_lock;
-	spinlock_t shared_data_lock;
-	spinlock_t reg_update_lock;
+	spinlock_t  tasklet_lock;
+	spinlock_t  shared_data_lock;
 	struct list_head tasklet_q;
 	struct tasklet_struct vfe_tasklet;
 	struct msm_vfe_tasklet_queue_cmd
@@ -635,10 +608,6 @@ struct vfe_device {
 	struct msm_isp_ub_info *ub_info;
 	uint32_t vfe_ub_policy;
 	uint8_t reset_pending;
-	uint8_t reg_update_requested;
-	uint8_t reg_updated;
-	struct dual_vfe_resource *dual_vfe_res;
-	uint32_t is_split;
 };
 
 #endif

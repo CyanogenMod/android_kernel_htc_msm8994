@@ -1858,6 +1858,8 @@ static int _wake(struct kgsl_device *device)
 		if (status) {
 			kgsl_pwrctrl_request_state(device, KGSL_STATE_NONE);
 			KGSL_DRV_ERR(device, "start failed %d\n", status);
+			
+			dump_stack();
 			break;
 		}
 		/* fall through */
@@ -1953,7 +1955,7 @@ _nap(struct kgsl_device *device)
 {
 	switch (device->state) {
 	case KGSL_STATE_ACTIVE:
-		if (!device->ftbl->is_hw_collapsible(device)) {
+		if (!device->ftbl->isidle(device)) {
 			kgsl_pwrctrl_request_state(device, KGSL_STATE_NONE);
 			return -EBUSY;
 		}
@@ -1987,7 +1989,7 @@ _sleep(struct kgsl_device *device)
 {
 	switch (device->state) {
 	case KGSL_STATE_ACTIVE:
-		if (!device->ftbl->is_hw_collapsible(device)) {
+		if (!device->ftbl->isidle(device)) {
 			kgsl_pwrctrl_request_state(device, KGSL_STATE_NONE);
 			return -EBUSY;
 		}
@@ -2020,7 +2022,7 @@ _slumber(struct kgsl_device *device)
 	int status = 0;
 	switch (device->state) {
 	case KGSL_STATE_ACTIVE:
-		if (!device->ftbl->is_hw_collapsible(device)) {
+		if (!device->ftbl->isidle(device)) {
 			kgsl_pwrctrl_request_state(device, KGSL_STATE_NONE);
 			return -EBUSY;
 		}
@@ -2079,16 +2081,22 @@ int _suspend(struct kgsl_device *device)
 	device->ftbl->drain(device);
 	/* wait for active count so device can be put in slumber */
 	ret = kgsl_active_count_wait(device, 0);
-	if (ret)
+	if (ret) {
+		KGSL_DRV_ERR(device, "Failed to get kgsl active count.\n");
 		goto err;
+	}
 
 	ret = device->ftbl->idle(device);
-	if (ret)
+	if (ret) {
+		KGSL_DRV_ERR(device, "Failed to set device idle.\n");
 		goto err;
+	}
 
 	ret = _slumber(device);
-	if (ret)
+	if (ret) {
+		KGSL_DRV_ERR(device, "Failed to put device in slumber mode.\n");
 		goto err;
+	}
 
 	kgsl_pwrctrl_set_state(device, KGSL_STATE_SUSPEND);
 	return ret;

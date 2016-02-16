@@ -7311,6 +7311,7 @@ struct afe_param_id_clip_bank_sel {
 #define Q6AFE_LPASS_OSR_CLK_DISABLE		     0x0
 
 /* Supported Bit clock values */
+#define Q6AFE_LPASS_IBIT_CLK_12_P288_MHZ	0xBB8000
 #define Q6AFE_LPASS_IBIT_CLK_8_P192_MHZ		0x7D0000
 #define Q6AFE_LPASS_IBIT_CLK_6_P144_MHZ		0x5DC000
 #define Q6AFE_LPASS_IBIT_CLK_4_P096_MHZ		0x3E8000
@@ -7601,7 +7602,8 @@ struct afe_port_cmd_set_aanc_acdb_table {
 } __packed;
 
 /* Dolby DAP topology */
-#define DOLBY_ADM_COPP_TOPOLOGY_ID	0x0001033B
+#define DOLBY_ADM_COPP_TOPOLOGY_ID     0x0001033B
+/* htc audio: for Dolby in speaker path, we need this for Dolby certification */
 #define DS2_ADM_COPP_TOPOLOGY_ID	0x1301033B
 
 /* RMS value from DSP */
@@ -7639,6 +7641,28 @@ struct afe_svc_cmd_set_clip_bank_selection {
 #define US_PROX_FORMAT_V4       0x0001273B
 #define US_RAW_SYNC_FORMAT      0x0001272F
 #define US_GES_SYNC_FORMAT      0x00012730
+
+//htc audio ++
+#define AFE_MODULE_AUDIO_SPHERE         0x00020001
+#define AFE_MODULE_AUDIO_LIMITER        0x1000002A
+#define AFE_MODULE_SPEAKER_REVERSE      0x10000030
+
+#define AFE_PARAM_ID_AUDIO_SPHERE_EN    0x00020002
+#define AFE_PARAM_ID_AUDIO_SPHERE_ST    0x00020003
+#define AFE_PARAM_ID_AUDIO_LIMITER_EN   0x1000002C
+#define AFE_PARAM_ID_SPEAKER_REVERSE_EN 0x10000032
+
+#define AFE_COPP_ID_AUDIO_SPHERE        0x10020001
+
+#define HTC_COPP_TOPOLOGY				0x10000001
+#define HTC_POPP_TOPOLOGY				0x10000002
+
+struct asm_params {
+	struct apr_hdr	hdr;
+	struct asm_stream_cmd_set_pp_params_v2 param;
+	struct asm_stream_param_data_v2 data;
+} __packed;
+//htc audio --
 
 #define AFE_MODULE_GROUP_DEVICE	0x00010254
 #define AFE_PARAM_ID_GROUP_DEVICE_CFG	0x00010255

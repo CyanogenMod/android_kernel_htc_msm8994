@@ -92,6 +92,38 @@ static enum transport_type str_to_xport(const char *name)
 	return USB_GADGET_XPORT_UNDEF;
 }
 
+/*++ 2014/11/14, USB Team, PCN00048 ++*/
+enum fserial_func_type {
+    USB_FSER_FUNC_NONE,
+    USB_FSER_FUNC_SERIAL,
+    USB_FSER_FUNC_MODEM,
+    USB_FSER_FUNC_MODEM_MDM,
+    USB_FSER_FUNC_ACM,
+    USB_FSER_FUNC_AUTOBOT,
+};
+
+static __maybe_unused enum fserial_func_type serial_str_to_func_type(const char *name)
+{
+	if (!name)
+		return USB_FSER_FUNC_NONE;
+
+	if (!strncasecmp("modem", name, XPORT_STR_LEN))
+		return USB_FSER_FUNC_MODEM;
+	if (!strncasecmp("serial", name, XPORT_STR_LEN))
+		return USB_FSER_FUNC_SERIAL;
+	if (!strncasecmp("autobot", name, XPORT_STR_LEN))
+		return USB_FSER_FUNC_AUTOBOT;
+	if (!strncasecmp("modem_mdm", name, XPORT_STR_LEN))
+		return USB_FSER_FUNC_MODEM_MDM;
+	if (!strncasecmp("acm", name, XPORT_STR_LEN))
+		return USB_FSER_FUNC_ACM;
+	if (!strncasecmp("", name, XPORT_STR_LEN))
+		return USB_FSER_FUNC_NONE;
+
+	return USB_FSER_FUNC_NONE;
+}
+/*-- 2014/11/14, USB Team, PCN00048 --*/
+
 enum gadget_type {
 	USB_GADGET_SERIAL,
 	USB_GADGET_RMNET,

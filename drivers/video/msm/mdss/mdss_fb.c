@@ -28,6 +28,7 @@
 #include <linux/ioport.h>
 #include <linux/kernel.h>
 #include <linux/memory.h>
+#include <linux/minifb.h>
 #include <linux/mm.h>
 #include <linux/module.h>
 #include <linux/moduleparam.h>
@@ -51,6 +52,7 @@
 #include <linux/msm_iommu_domains.h>
 
 #include "mdss_fb.h"
+#include "mdss_htc_util.h"
 #include "mdss_mdp_splash_logo.h"
 #define CREATE_TRACE_POINTS
 #include "mdss_debug.h"
@@ -241,11 +243,38 @@ static int mdss_fb_notify_update(struct msm_fb_data_type *mfd,
 
 static int lcd_backlight_registered;
 
+static enum led_brightness mdss_fb_get_bl_brightness(struct led_classdev *led_cdev)
+{
+	struct msm_fb_data_type *mfd = dev_get_drvdata(led_cdev->dev->parent);
+	int brt_lvl = mfd->bl_level;
+
+	brt_lvl = htc_backlight_transfer_bl_brightness(brt_lvl, mfd->panel_info, false);
+	if (brt_lvl < 0) {
+		MDSS_BRIGHT_TO_BL(brt_lvl, mfd->bl_level, MDSS_MAX_BL_BRIGHTNESS,
+							mfd->panel_info->bl_max);
+	}
+	return brt_lvl;
+}
+
+static enum led_brightness mdss_fb_get_bl_nits(struct led_classdev *led_cdev)
+{
+	struct msm_fb_data_type *mfd = dev_get_drvdata(led_cdev->dev->parent);
+	int nits_lvl;
+
+	nits_lvl = htc_backlight_bl_to_nits(mfd->bl_level, mfd->panel_info);
+
+	if (nits_lvl < 0) {
+		pr_err("Not define nits table for BL 2.0 \n");
+		return 0;
+	}
+	return nits_lvl;
+}
+
 static void mdss_fb_set_bl_brightness(struct led_classdev *led_cdev,
 				      enum led_brightness value)
 {
 	struct msm_fb_data_type *mfd = dev_get_drvdata(led_cdev->dev->parent);
-	int bl_lvl;
+	int bl_lvl = value;
 
 	if (mfd->boot_notification_led) {
 		led_trigger_event(mfd->boot_notification_led, 0);
@@ -257,8 +286,37 @@ static void mdss_fb_set_bl_brightness(struct led_classdev *led_cdev,
 
 	/* This maps android backlight level 0 to 255 into
 	   driver backlight level 0 to bl_max with rounding */
-	MDSS_BRIGHT_TO_BL(bl_lvl, value, mfd->panel_info->bl_max,
-				mfd->panel_info->brightness_max);
+	bl_lvl = htc_backlight_transfer_bl_brightness(value, mfd->panel_info, true);
+	if (bl_lvl < 0) {
+		MDSS_BRIGHT_TO_BL(bl_lvl, value, mfd->panel_info->bl_max,
+							MDSS_MAX_BL_BRIGHTNESS);
+	}
+
+	if (!bl_lvl && value)
+		bl_lvl = 1;
+
+	if (!IS_CALIB_MODE_BL(mfd) && (!mfd->ext_bl_ctrl || !value ||
+							!mfd->bl_level)) {
+		mutex_lock(&mfd->bl_lock);
+		mdss_fb_set_backlight(mfd, bl_lvl);
+		mutex_unlock(&mfd->bl_lock);
+	}
+}
+
+static void mdss_fb_set_bl_nits(struct led_classdev *led_cdev,
+				      enum led_brightness value)
+{
+	struct msm_fb_data_type *mfd = dev_get_drvdata(led_cdev->dev->parent);
+	int bl_lvl = value;
+
+	if (value > mfd->panel_info->nits_bl_table.max_nits)
+		value = mfd->panel_info->nits_bl_table.max_nits;
+
+	bl_lvl = htc_backlight_nits_to_bl(value, mfd->panel_info);
+	if (bl_lvl < 0) {
+		pr_err("Not define nits table for BL 2.0 \n");
+		return;
+	}
 
 	if (!bl_lvl && value)
 		bl_lvl = 1;
@@ -275,7 +333,14 @@ static struct led_classdev backlight_led = {
 	.name           = "lcd-backlight",
 	.brightness     = MDSS_MAX_BL_BRIGHTNESS,
 	.brightness_set = mdss_fb_set_bl_brightness,
+	.brightness_get = mdss_fb_get_bl_brightness,
 	.max_brightness = MDSS_MAX_BL_BRIGHTNESS,
+};
+
+static struct led_classdev backlight_led_nits = {
+	.name           = "lcd-backlight-nits",
+	.brightness_set = mdss_fb_set_bl_nits,
+	.brightness_get = mdss_fb_get_bl_nits,
 };
 
 static ssize_t mdss_fb_get_type(struct device *dev,
@@ -1000,6 +1065,16 @@ static int mdss_fb_probe(struct platform_device *pdev)
 			pr_err("led_classdev_register failed\n");
 		else
 			lcd_backlight_registered = 1;
+
+		
+		htc_register_attrs(&backlight_led.dev->kobj, mfd);
+		htc_debugfs_init(mfd);
+
+		
+		backlight_led_nits.max_brightness  = mfd->panel_info->nits_bl_table.max_nits;
+
+		if (led_classdev_register(&pdev->dev, &backlight_led_nits))
+			pr_err("led_classdev_register nits failed\n");
 	}
 
 	mdss_fb_init_panel_modes(mfd, pdata);
@@ -1080,6 +1155,7 @@ static int mdss_fb_remove(struct platform_device *pdev)
 	if (lcd_backlight_registered) {
 		lcd_backlight_registered = 0;
 		led_classdev_unregister(&backlight_led);
+		led_classdev_unregister(&backlight_led_nits);
 	}
 
 	return 0;
@@ -1771,7 +1847,7 @@ void mdss_fb_free_fb_ion_memory(struct msm_fb_data_type *mfd)
 int mdss_fb_alloc_fb_ion_memory(struct msm_fb_data_type *mfd, size_t fb_size)
 {
 	unsigned long buf_size;
-	int rc;
+	int rc = -EINVAL;
 	void *vaddr;
 
 	if (!mfd) {
@@ -1789,12 +1865,22 @@ int mdss_fb_alloc_fb_ion_memory(struct msm_fb_data_type *mfd, size_t fb_size)
 
 	pr_debug("size for mmap = %zu\n", fb_size);
 	mfd->fb_ion_handle = ion_alloc(mfd->fb_ion_client, fb_size, SZ_4K,
-			ION_HEAP(ION_SYSTEM_HEAP_ID), 0);
+			ION_HEAP(ION_FBMEM_2_HEAP_ID), 0);
 	if (IS_ERR_OR_NULL(mfd->fb_ion_handle)) {
-		pr_err("unable to alloc fbmem from ion - %ld\n",
+		pr_warn("unable to alloc fbmem from ion FB heap- %ld\n",
 				PTR_ERR(mfd->fb_ion_handle));
-		return PTR_ERR(mfd->fb_ion_handle);
+		
+		mfd->fb_ion_handle = ion_alloc(mfd->fb_ion_client, fb_size, SZ_4K,
+			ION_HEAP(ION_SYSTEM_HEAP_ID), 0);
+		if (IS_ERR_OR_NULL(mfd->fb_ion_handle)) {
+			pr_err("unable to alloc fbmem from ion system heap- %ld\n",
+                                PTR_ERR(mfd->fb_ion_handle));
+			return PTR_ERR(mfd->fb_ion_handle);
+		}
 	}
+
+	pr_info("%s: fbmem heap ion_alloc is successful, size = %zu\n",
+			__func__, fb_size);
 
 	if (mfd->mdp.fb_mem_get_iommu_domain) {
 		rc = ion_map_iommu(mfd->fb_ion_client, mfd->fb_ion_handle,
@@ -1838,6 +1924,8 @@ fb_mmap_failed:
 	return rc;
 }
 
+#define USE_FB_ION_HEAP
+
 /**
  * mdss_fb_fbmem_ion_mmap() -  Custom fb  mmap() function for MSM driver.
  *
@@ -1856,12 +1944,14 @@ static int mdss_fb_fbmem_ion_mmap(struct fb_info *info,
 	int rc = 0;
 	size_t req_size, fb_size;
 	struct msm_fb_data_type *mfd = (struct msm_fb_data_type *)info->par;
+#ifndef USE_FB_ION_HEAP
 	struct sg_table *table;
 	unsigned long addr = vma->vm_start;
 	unsigned long offset = vma->vm_pgoff * PAGE_SIZE;
 	struct scatterlist *sg;
 	unsigned int i;
 	struct page *page;
+#endif
 
 	if (!mfd || !mfd->pdev || !mfd->pdev->dev.of_node) {
 		pr_err("Invalid device node\n");
@@ -1882,7 +1972,16 @@ static int mdss_fb_fbmem_ion_mmap(struct fb_info *info,
 			return rc;
 		}
 	}
-
+#ifdef USE_FB_ION_HEAP
+	if (mfd->fbmem_buf->ops->mmap) {
+		rc = mfd->fbmem_buf->ops->mmap(mfd->fbmem_buf, vma);
+		if (rc < 0)
+			pr_err("%s: fb ion_mmap failed!\n", __func__);
+		else
+			pr_debug("%s: fb ion_mmap successfully!\n", __func__);
+		return rc;
+	}
+#else
 	table = ion_sg_table(mfd->fb_ion_client, mfd->fb_ion_handle);
 	if (IS_ERR(table)) {
 		pr_err("Unable to get sg_table from ion:%ld\n", PTR_ERR(table));
@@ -1935,7 +2034,7 @@ static int mdss_fb_fbmem_ion_mmap(struct fb_info *info,
 		mdss_fb_free_fb_ion_memory(mfd);
 		return -ENOMEM;
 	}
-
+#endif
 	return rc;
 }
 
@@ -2266,6 +2365,10 @@ static int mdss_fb_register(struct msm_fb_data_type *mfd)
 	var->yres_virtual = panel_info->yres * mfd->fb_page;
 	var->bits_per_pixel = bpp * 8;	/* FrameBuffer color depth */
 
+	
+	if (panel_info->camera_blk || panel_info->camera_dua_blk) {
+		htc_register_camera_bkl(panel_info->camera_blk, panel_info->camera_dua_blk);
+	}
 	/*
 	 * Populate smem length here for uspace to get the
 	 * Framebuffer size when FBIO_FSCREENINFO ioctl is
@@ -3144,8 +3247,15 @@ static int __mdss_fb_perform_commit(struct msm_fb_data_type *mfd)
 	}
 
 skip_commit:
-	if (!ret)
+	if (!ret) {
+		if (mfd->panel_info->pdest == DISPLAY_1) {
+			bool skip_cabc_check = false;
+			skip_cabc_check = htc_set_sre(mfd);	
+			htc_set_cabc(mfd, skip_cabc_check);	
+			htc_set_limit_brightness(mfd);		
+		}
 		mdss_fb_update_backlight(mfd);
+	}
 
 	if (IS_ERR_VALUE(ret) || !sync_pt_data->flushed) {
 		mdss_fb_release_kickoff(mfd);
@@ -3316,7 +3426,7 @@ static int mdss_fb_check_var(struct fb_var_screeninfo *var,
 static int mdss_fb_videomode_switch(struct msm_fb_data_type *mfd,
 		const struct fb_videomode *mode)
 {
-	int ret;
+	int ret = 0;
 	struct mdss_panel_data *pdata, *tmp;
 	struct mdss_panel_timing *timing;
 
@@ -4015,6 +4125,19 @@ int mdss_fb_do_ioctl(struct fb_info *info, unsigned int cmd,
 		}
 
 		ret = mdss_fb_mode_switch(mfd, dsi_mode);
+		break;
+
+	case MSMFB_USBFB_INIT:
+		ret = minifb_ioctl_handler(MINIFB_INIT, argp);
+		break;
+	case MSMFB_USBFB_TERMINATE:
+		ret = minifb_ioctl_handler(MINIFB_TERMINATE, argp);
+		break;
+	case MSMFB_USBFB_QUEUE_BUFFER:
+		ret = minifb_ioctl_handler(MINIFB_QUEUE_BUFFER, argp);
+		break;
+	case MSMFB_USBFB_DEQUEUE_BUFFER:
+		ret = minifb_ioctl_handler(MINIFB_DEQUEUE_BUFFER, argp);
 		break;
 
 	default:

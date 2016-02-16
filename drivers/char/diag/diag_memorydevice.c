@@ -173,7 +173,9 @@ int diag_md_write(int id, unsigned char *buf, int len, int ctx)
 		if (driver->client_map[i].pid != driver->logging_process_id)
 			continue;
 		found = 1;
-		driver->data_ready[i] |= USER_SPACE_DATA_TYPE;
+/*++ 2014/10/22, USB Team, PCN00022 ++*/
+		driver->data_ready[i] |= USERMODE_DIAGFWD;
+/*-- 2014/10/22, USB Team, PCN00022--*/
 		pr_debug("diag: wake up logging process\n");
 		wake_up_interruptible(&driver->wait_q);
 	}
@@ -200,7 +202,7 @@ int diag_md_copy_to_user(char __user *buf, int *pret)
 		ch = &diag_md[i];
 		for (j = 0; j < ch->num_tbl_entries && !err; j++) {
 			entry = &ch->tbl[j];
-			if (entry->len <= 0)
+			if (!entry || entry->len <= 0 || entry->buf == NULL)
 				continue;
 			/*
 			 * If the data is from remote processor, copy the remote

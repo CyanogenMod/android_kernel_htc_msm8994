@@ -1,4 +1,4 @@
-/* Copyright (c) 2014 - 2015, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2014, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -18,7 +18,6 @@
 #include "msm_cci.h"
 
 DEFINE_MSM_MUTEX(msm_ois_mutex);
-/*#define MSM_OIS_DEBUG*/
 #undef CDBG
 #ifdef MSM_OIS_DEBUG
 #define CDBG(fmt, args...) pr_err(fmt, ##args)
@@ -155,7 +154,7 @@ static int32_t msm_ois_power_down(struct msm_ois_ctrl_t *o_ctrl)
 {
 	int32_t rc = 0;
 	CDBG("Enter\n");
-	if (o_ctrl->ois_state != OIS_DISABLE_STATE) {
+	if (o_ctrl->ois_state != OIS_POWER_DOWN) {
 
 		rc = msm_ois_vreg_control(o_ctrl, 0);
 		if (rc < 0) {
@@ -164,7 +163,7 @@ static int32_t msm_ois_power_down(struct msm_ois_ctrl_t *o_ctrl)
 		}
 
 		o_ctrl->i2c_tbl_index = 0;
-		o_ctrl->ois_state = OIS_OPS_INACTIVE;
+		o_ctrl->ois_state = OIS_POWER_DOWN;
 	}
 	CDBG("Exit\n");
 	return rc;
@@ -186,7 +185,6 @@ static int msm_ois_init(struct msm_ois_ctrl_t *o_ctrl)
 		if (rc < 0)
 			pr_err("cci_init failed\n");
 	}
-	o_ctrl->ois_state = OIS_OPS_ACTIVE;
 	CDBG("Exit\n");
 	return rc;
 }
@@ -385,20 +383,17 @@ static int msm_ois_close(struct v4l2_subdev *sd,
 	struct msm_ois_ctrl_t *o_ctrl =  v4l2_get_subdevdata(sd);
 	CDBG("Enter\n");
 	if (!o_ctrl || !o_ctrl->i2c_client.i2c_func_tbl) {
-		/* check to make sure that init happens before release */
+		
 		pr_err("failed\n");
 		return -EINVAL;
 	}
-	mutex_lock(o_ctrl->ois_mutex);
-	if (o_ctrl->ois_device_type == MSM_CAMERA_PLATFORM_DEVICE &&
-		o_ctrl->ois_state != OIS_DISABLE_STATE) {
+	if (o_ctrl->ois_device_type == MSM_CAMERA_PLATFORM_DEVICE) {
 		rc = o_ctrl->i2c_client.i2c_func_tbl->i2c_util(
 			&o_ctrl->i2c_client, MSM_CCI_RELEASE);
 		if (rc < 0)
 			pr_err("cci_init failed\n");
 	}
-	o_ctrl->ois_state = OIS_DISABLE_STATE;
-	mutex_unlock(o_ctrl->ois_mutex);
+
 	CDBG("Exit\n");
 	return rc;
 }
@@ -410,7 +405,6 @@ static const struct v4l2_subdev_internal_ops msm_ois_internal_ops = {
 static long msm_ois_subdev_ioctl(struct v4l2_subdev *sd,
 			unsigned int cmd, void *arg)
 {
-	int rc;
 	struct msm_ois_ctrl_t *o_ctrl = v4l2_get_subdevdata(sd);
 	void __user *argp = (void __user *)arg;
 	CDBG("Enter\n");
@@ -425,11 +419,6 @@ static long msm_ois_subdev_ioctl(struct v4l2_subdev *sd,
 			pr_err("o_ctrl->i2c_client.i2c_func_tbl NULL\n");
 			return -EINVAL;
 		} else {
-			rc = msm_ois_power_down(o_ctrl);
-			if (rc < 0) {
-				pr_err("%s:%d OIS Power down failed\n",
-					__func__, __LINE__);
-			}
 			return msm_ois_close(sd, NULL);
 		}
 	default:
@@ -448,13 +437,29 @@ static int32_t msm_ois_power_up(struct msm_ois_ctrl_t *o_ctrl)
 		return rc;
 	}
 
-	o_ctrl->ois_state = OIS_ENABLE_STATE;
+	o_ctrl->ois_state = OIS_POWER_UP;
+	CDBG("Exit\n");
+	return rc;
+}
+
+static int32_t msm_ois_power(struct v4l2_subdev *sd, int on)
+{
+	int rc = 0;
+	struct msm_ois_ctrl_t *o_ctrl = v4l2_get_subdevdata(sd);
+	CDBG("Enter\n");
+	mutex_lock(o_ctrl->ois_mutex);
+	if (on)
+		rc = msm_ois_power_up(o_ctrl);
+	else
+		rc = msm_ois_power_down(o_ctrl);
+	mutex_unlock(o_ctrl->ois_mutex);
 	CDBG("Exit\n");
 	return rc;
 }
 
 static struct v4l2_subdev_core_ops msm_ois_subdev_core_ops = {
 	.ioctl = msm_ois_subdev_ioctl,
+	.s_power = msm_ois_power,
 };
 
 static struct v4l2_subdev_ops msm_ois_subdev_ops = {
@@ -475,7 +480,8 @@ static int32_t msm_ois_i2c_probe(struct i2c_client *client,
 
 	if (client == NULL) {
 		pr_err("msm_ois_i2c_probe: client is null\n");
-		return -EINVAL;
+		rc = -EINVAL;
+		goto probe_failure;
 	}
 
 	ois_ctrl_t = kzalloc(sizeof(struct msm_ois_ctrl_t),
@@ -487,7 +493,6 @@ static int32_t msm_ois_i2c_probe(struct i2c_client *client,
 
 	if (!i2c_check_functionality(client->adapter, I2C_FUNC_I2C)) {
 		pr_err("i2c_check_functionality failed\n");
-		rc = -EINVAL;
 		goto probe_failure;
 	}
 
@@ -498,22 +503,22 @@ static int32_t msm_ois_i2c_probe(struct i2c_client *client,
 	CDBG("cell-index %d, rc %d\n", ois_ctrl_t->subdev_id, rc);
 	if (rc < 0) {
 		pr_err("failed rc %d\n", rc);
-		goto probe_failure;
+		return rc;
 	}
 
 	ois_ctrl_t->i2c_driver = &msm_ois_i2c_driver;
 	ois_ctrl_t->i2c_client.client = client;
-	/* Set device type as I2C */
+	
 	ois_ctrl_t->ois_device_type = MSM_CAMERA_I2C_DEVICE;
 	ois_ctrl_t->i2c_client.i2c_func_tbl = &msm_sensor_qup_func_tbl;
 	ois_ctrl_t->ois_v4l2_subdev_ops = &msm_ois_subdev_ops;
 	ois_ctrl_t->ois_mutex = &msm_ois_mutex;
 
-	/* Assign name for sub device */
+	
 	snprintf(ois_ctrl_t->msm_sd.sd.name, sizeof(ois_ctrl_t->msm_sd.sd.name),
 		"%s", ois_ctrl_t->i2c_driver->driver.name);
 
-	/* Initialize sub device */
+	
 	v4l2_i2c_subdev_init(&ois_ctrl_t->msm_sd.sd,
 		ois_ctrl_t->i2c_client.client,
 		ois_ctrl_t->ois_v4l2_subdev_ops);
@@ -525,12 +530,11 @@ static int32_t msm_ois_i2c_probe(struct i2c_client *client,
 	ois_ctrl_t->msm_sd.sd.entity.group_id = MSM_CAMERA_SUBDEV_OIS;
 	ois_ctrl_t->msm_sd.close_seq = MSM_SD_CLOSE_2ND_CATEGORY | 0x2;
 	msm_sd_register(&ois_ctrl_t->msm_sd);
-	ois_ctrl_t->ois_state = OIS_DISABLE_STATE;
+	ois_ctrl_t->ois_state = OIS_POWER_DOWN;
 	pr_info("msm_ois_i2c_probe: succeeded\n");
 	CDBG("Exit\n");
 
 probe_failure:
-	kfree(ois_ctrl_t);
 	return rc;
 }
 
@@ -636,7 +640,7 @@ static int32_t msm_ois_platform_probe(struct platform_device *pdev)
 	rc = of_property_read_u32((&pdev->dev)->of_node, "qcom,cci-master",
 		&msm_ois_t->cci_master);
 	CDBG("qcom,cci-master %d, rc %d\n", msm_ois_t->cci_master, rc);
-	if (rc < 0 || msm_ois_t->cci_master >= MASTER_MAX) {
+	if (rc < 0) {
 		kfree(msm_ois_t);
 		pr_err("failed rc %d\n", rc);
 		return rc;
@@ -657,9 +661,9 @@ static int32_t msm_ois_platform_probe(struct platform_device *pdev)
 	msm_ois_t->ois_v4l2_subdev_ops = &msm_ois_subdev_ops;
 	msm_ois_t->ois_mutex = &msm_ois_mutex;
 
-	/* Set platform device handle */
+	
 	msm_ois_t->pdev = pdev;
-	/* Set device type as platform device */
+	
 	msm_ois_t->ois_device_type = MSM_CAMERA_PLATFORM_DEVICE;
 	msm_ois_t->i2c_client.i2c_func_tbl = &msm_sensor_cci_func_tbl;
 	msm_ois_t->i2c_client.cci_client = kzalloc(sizeof(
@@ -673,7 +677,7 @@ static int32_t msm_ois_platform_probe(struct platform_device *pdev)
 
 	cci_client = msm_ois_t->i2c_client.cci_client;
 	cci_client->cci_subdev = msm_cci_get_subdev();
-	cci_client->cci_i2c_master = msm_ois_t->cci_master;
+	cci_client->cci_i2c_master = MASTER_MAX;
 	v4l2_subdev_init(&msm_ois_t->msm_sd.sd,
 		msm_ois_t->ois_v4l2_subdev_ops);
 	v4l2_set_subdevdata(&msm_ois_t->msm_sd.sd, msm_ois_t);
@@ -686,7 +690,7 @@ static int32_t msm_ois_platform_probe(struct platform_device *pdev)
 	msm_ois_t->msm_sd.sd.entity.group_id = MSM_CAMERA_SUBDEV_OIS;
 	msm_ois_t->msm_sd.close_seq = MSM_SD_CLOSE_2ND_CATEGORY | 0x2;
 	msm_sd_register(&msm_ois_t->msm_sd);
-	msm_ois_t->ois_state = OIS_DISABLE_STATE;
+	msm_ois_t->ois_state = OIS_POWER_DOWN;
 	msm_ois_v4l2_subdev_fops = v4l2_subdev_fops;
 #ifdef CONFIG_COMPAT
 	msm_ois_v4l2_subdev_fops.compat_ioctl32 =

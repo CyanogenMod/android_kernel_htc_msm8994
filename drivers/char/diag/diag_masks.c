@@ -25,6 +25,10 @@
 
 #define DIAG_SET_FEATURE_MASK(x) (feature_bytes[(x)/8] |= (1 << (x & 0x7)))
 
+/*++ 2014/11/25, USB Team, PCN00050 ++*/
+extern int diag_rb_enable;
+/*-- 2014/11/25, USB Team, PCN00050 --*/
+
 struct diag_mask_info msg_mask;
 struct diag_mask_info msg_bt_mask;
 struct diag_mask_info log_mask;
@@ -595,10 +599,20 @@ static int diag_cmd_set_msg_mask(unsigned char *src_buf, int src_len,
 		mask_size = dest_len - write_len;
 	memcpy(dest_buf + write_len, src_buf + header_len, mask_size);
 	write_len += mask_size;
+/*++ 2014/11/25, USB Team, PCN00050 ++*/
 	for (i = 0; i < NUM_SMD_CONTROL_CHANNELS; i++) {
+		if (i == MODEM_DATA && (diag_rb_enable & DQ_FILTER_MASK)) {
+			printk("diag(%d): Filter Modem mask\n", __LINE__);
+			continue;
+		}
+		if (i == MODEM_DATA && (diag_rb_enable & WCNSS_FILTER_MASK)) {
+			printk("diag(%d): Filter Modem mask\n", __LINE__);
+			continue;
+		}
 		diag_send_msg_mask_update(&driver->smd_cntl[i],
 					  req->ssid_first, req->ssid_last);
 	}
+/*-- 2014/11/25, USB Team, PCN00050 --*/
 end:
 	return write_len;
 }
@@ -644,10 +658,20 @@ static int diag_cmd_set_all_msg_mask(unsigned char *src_buf, int src_len,
 	memcpy(dest_buf, &rsp, header_len);
 	write_len += header_len;
 
+/*++ 2014/11/25, USB Team, PCN00050 ++*/
 	for (i = 0; i < NUM_SMD_CONTROL_CHANNELS; i++) {
+		if (i == MODEM_DATA && (diag_rb_enable & DQ_FILTER_MASK)) {
+			printk("diag(%d): Filter Modem mask\n", __LINE__);
+			continue;
+		}
+		if (i == MODEM_DATA && (diag_rb_enable & WCNSS_FILTER_MASK)) {
+			printk("diag(%d): Filter Modem mask\n", __LINE__);
+			continue;
+		}
 		diag_send_msg_mask_update(&driver->smd_cntl[i], ALL_SSID,
 					  ALL_SSID);
 	}
+/*-- 2014/11/25, USB Team, PCN00050 --*/
 
 	return write_len;
 }
@@ -730,8 +754,19 @@ static int diag_cmd_update_event_mask(unsigned char *src_buf, int src_len,
 	memcpy(dest_buf + write_len, event_mask.ptr, mask_len);
 	write_len += mask_len;
 
-	for (i = 0; i < NUM_SMD_CONTROL_CHANNELS; i++)
+/*++ 2014/11/25, USB Team, PCN00050 ++*/
+	for (i = 0; i < NUM_SMD_CONTROL_CHANNELS; i++) {
+		if (i == MODEM_DATA && (diag_rb_enable & DQ_FILTER_MASK)) {
+			printk("diag(%d): Filter Modem mask\n", __LINE__);
+			continue;
+		}
+		if (i == MODEM_DATA && (diag_rb_enable & WCNSS_FILTER_MASK)) {
+			printk("diag(%d): Filter Modem mask\n", __LINE__);
+			continue;
+		}
 		diag_send_event_mask_update(&driver->smd_cntl[i]);
+	}
+/*-- 2014/11/25, USB Team, PCN00050 --*/
 
 	return write_len;
 }
@@ -768,8 +803,19 @@ static int diag_cmd_toggle_events(unsigned char *src_buf, int src_len,
 	 */
 	header.cmd_code = DIAG_CMD_EVENT_TOGGLE;
 	header.padding = 0;
-	for (i = 0; i < NUM_SMD_CONTROL_CHANNELS; i++)
+/*++ 2014/11/25, USB Team, PCN00050 ++*/
+	for (i = 0; i < NUM_SMD_CONTROL_CHANNELS; i++) {
+		if (i == MODEM_DATA && (diag_rb_enable & DQ_FILTER_MASK)) {
+			printk("diag(%d): Filter Modem mask\n", __LINE__);
+			continue;
+		}
+		if (i == MODEM_DATA && (diag_rb_enable & WCNSS_FILTER_MASK)) {
+			printk("diag(%d): Filter Modem mask\n", __LINE__);
+			continue;
+		}
 		diag_send_event_mask_update(&driver->smd_cntl[i]);
+	}
+/*-- 2014/11/25, USB Team, PCN00050 --*/
 	memcpy(dest_buf, &header, sizeof(header));
 	write_len += sizeof(header);
 
@@ -979,8 +1025,19 @@ static int diag_cmd_set_log_mask(unsigned char *src_buf, int src_len,
 	memcpy(dest_buf + write_len, src_buf + read_len, payload_len);
 	write_len += payload_len;
 
-	for (i = 0; i < NUM_SMD_CONTROL_CHANNELS; i++)
+/*++ 2014/11/25, USB Team, PCN00050 ++*/
+	for (i = 0; i < NUM_SMD_CONTROL_CHANNELS; i++) {
+		if (i == MODEM_DATA && (diag_rb_enable & DQ_FILTER_MASK)) {
+			printk("diag(%d): Filter Modem mask\n", __LINE__);
+			continue;
+		}
+		if (i == MODEM_DATA && (diag_rb_enable & WCNSS_FILTER_MASK)) {
+			printk("diag(%d): Filter Modem mask\n", __LINE__);
+			continue;
+		}
 		diag_send_log_mask_update(&driver->smd_cntl[i], req->equip_id);
+	}
+/*-- 2014/11/25, USB Team, PCN00050 --*/
 end:
 	return write_len;
 }
@@ -1018,8 +1075,19 @@ static int diag_cmd_disable_log_mask(unsigned char *src_buf, int src_len,
 	header.status = LOG_STATUS_SUCCESS;
 	memcpy(dest_buf, &header, sizeof(struct diag_log_config_rsp_t));
 	write_len += sizeof(struct diag_log_config_rsp_t);
-	for (i = 0; i < NUM_SMD_CONTROL_CHANNELS; i++)
+/*++ 2014/11/25, USB Team, PCN00050 ++*/
+	for (i = 0; i < NUM_SMD_CONTROL_CHANNELS; i++) {
+		if (i == MODEM_DATA && (diag_rb_enable & DQ_FILTER_MASK)) {
+			printk("diag(%d): Filter Modem mask\n", __LINE__);
+			continue;
+		}
+		if (i == MODEM_DATA && (diag_rb_enable & WCNSS_FILTER_MASK)) {
+			printk("diag(%d): Filter Modem mask\n", __LINE__);
+			continue;
+		}
 		diag_send_log_mask_update(&driver->smd_cntl[i], ALL_EQUIP_ID);
+	}
+/*-- 2014/11/25, USB Team, PCN00050 --*/
 
 	return write_len;
 }

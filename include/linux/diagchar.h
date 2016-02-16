@@ -25,12 +25,25 @@
 #define DCI_EVENT_MASKS_TYPE	0x00000200
 #define DCI_PKT_TYPE		0x00000400
 
+/*++ 2014/09/18, USB Team, PCN00002 ++*/
+/* We always use 64 for the logging mode: UART/QXDM2SD,
+ * however, to not conflict with QCT definition, we shift
+ * the USERMODE_DIAGFWD to 2048
+*/
+#define USERMODE_DIAGFWD       2048
+#define USERMODE_DIAGFWD_LEGACY        64
+/*-- 2014/09/18, USB Team, PCN00002 --*/
+
 #define USB_MODE			1
 #define MEMORY_DEVICE_MODE		2
 #define NO_LOGGING_MODE			3
 #define UART_MODE			4
 #define SOCKET_MODE			5
 #define CALLBACK_MODE			6
+/*++ 2015/01/08, USB Team, PCN00065 ++*/
+// if logging mode number increased, LOGGING_MODE_MAX need to change to max number.
+#define LOGGING_MODE_MAX		CALLBACK_MODE
+/*-- 2015/01/08, USB Team, PCN00065 --*/
 
 /* different values that go in for diag_data_type */
 
@@ -61,6 +74,10 @@
 #define DIAG_IOCTL_GET_REAL_TIME	34
 #define DIAG_IOCTL_PERIPHERAL_BUF_CONFIG	35
 #define DIAG_IOCTL_PERIPHERAL_BUF_DRAIN		36
+/*++ 2014/09/18, USB Team, PCN00002 ++*/
+/* HTC: process request non-blocking IO */
+#define DIAG_IOCTL_NONBLOCKING_TIMEOUT 64
+/*-- 2014/09/18, USB Team, PCN00002 --*/
 
 /* PC Tools IDs */
 #define APQ8060_TOOLS_ID	4062

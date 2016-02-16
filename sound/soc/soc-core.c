@@ -60,12 +60,7 @@ static LIST_HEAD(platform_list);
 static LIST_HEAD(codec_list);
 static LIST_HEAD(component_list);
 
-/*
- * This is a timeout to do a DAPM powerdown after a stream is closed().
- * It can be used to eliminate pops between different playback streams, e.g.
- * between two audio tracks.
- */
-static int pmdown_time = 5000;
+static int pmdown_time;
 module_param(pmdown_time, int, 0);
 MODULE_PARM_DESC(pmdown_time, "DAPM stream powerdown time (msecs)");
 
@@ -2300,6 +2295,7 @@ static int snd_soc_add_controls(struct snd_card *card, struct device *dev,
 		const struct snd_kcontrol_new *control = &controls[i];
 		err = snd_ctl_add(card, snd_soc_cnew(control, data,
 						     control->name, prefix));
+		dev_dbg(dev, "ASoC: add %s\n",control->name);  
 		if (err < 0) {
 			dev_err(dev, "ASoC: Failed to add %s: %d\n",
 				control->name, err);
@@ -2412,8 +2408,11 @@ int snd_soc_info_enum_double(struct snd_kcontrol *kcontrol,
 
 	if (uinfo->value.enumerated.item > e->max - 1)
 		uinfo->value.enumerated.item = e->max - 1;
-	strcpy(uinfo->value.enumerated.name,
-		e->texts[uinfo->value.enumerated.item]);
+	
+	strlcpy(uinfo->value.enumerated.name,
+		e->texts[uinfo->value.enumerated.item],
+		sizeof(uinfo->value.enumerated.name));
+	
 	return 0;
 }
 EXPORT_SYMBOL_GPL(snd_soc_info_enum_double);
@@ -2572,8 +2571,11 @@ int snd_soc_info_enum_ext(struct snd_kcontrol *kcontrol,
 
 	if (uinfo->value.enumerated.item > e->max - 1)
 		uinfo->value.enumerated.item = e->max - 1;
-	strcpy(uinfo->value.enumerated.name,
-		e->texts[uinfo->value.enumerated.item]);
+	
+	strlcpy(uinfo->value.enumerated.name,
+		e->texts[uinfo->value.enumerated.item],
+		sizeof(uinfo->value.enumerated.name));
+	
 	return 0;
 }
 EXPORT_SYMBOL_GPL(snd_soc_info_enum_ext);

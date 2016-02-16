@@ -190,4 +190,12 @@ source "drivers/soc/Kconfig"
 
 source "drivers/firmware/Kconfig"
 
+source "drivers/htc_debug/stability/Kconfig"
+
+source "drivers/htc_mnemosyne/Kconfig"
+
+source "drivers/htc_power_debug/Kconfig"
+
+source "drivers/htc_ril/Kconfig"
+
 endmenu

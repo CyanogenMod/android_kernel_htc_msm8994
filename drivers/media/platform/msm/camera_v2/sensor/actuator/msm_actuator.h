@@ -1,4 +1,4 @@
-/* Copyright (c) 2011-2015, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2011-2014, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -26,15 +26,12 @@
 	static struct mutex mutexname = __MUTEX_INITIALIZER(mutexname)
 
 #define	MSM_ACTUATOT_MAX_VREGS (10)
-#define	ACTUATOR_MAX_POLL_COUNT 10
 
 struct msm_actuator_ctrl_t;
 
 enum msm_actuator_state_t {
-	ACT_ENABLE_STATE,
-	ACT_OPS_ACTIVE,
-	ACT_OPS_INACTIVE,
-	ACT_DISABLE_STATE,
+	ACTUATOR_POWER_UP,
+	ACTUATOR_POWER_DOWN,
 };
 
 struct msm_actuator_func_tbl {
@@ -98,6 +95,7 @@ struct msm_actuator_ctrl_t {
 	uint16_t pwd_step;
 	uint16_t initial_code;
 	struct msm_camera_i2c_reg_array *i2c_reg_tbl;
+	struct msm_actuator_af_OTP_info_t af_OTP_info;
 	uint16_t i2c_tbl_index;
 	enum cci_i2c_master_t cci_master;
 	uint32_t subdev_id;
@@ -105,6 +103,10 @@ struct msm_actuator_ctrl_t {
 	struct msm_actuator_vreg vreg_cfg;
 	struct park_lens_data_t park_lens;
 	uint32_t max_code_size;
+	
+	enum actuator_I2C_func_select act_i2c_select;
+	uint8_t enable_focus_step_log;
+	
 };
 
 #endif

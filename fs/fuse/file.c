@@ -18,6 +18,7 @@
 #include <linux/swap.h>
 #include <linux/aio.h>
 #include <linux/falloc.h>
+#include <trace/events/mmcio.h>
 
 static const struct file_operations fuse_direct_io_file_operations;
 
@@ -1225,6 +1226,7 @@ static ssize_t fuse_perform_write(struct file *file,
 	return res > 0 ? res : err;
 }
 
+extern void collect_io_stats(size_t rw_bytes, int type);
 static ssize_t fuse_file_aio_write(struct kiocb *iocb, const struct iovec *iov,
 				   unsigned long nr_segs, loff_t pos)
 {
@@ -1251,6 +1253,7 @@ static ssize_t fuse_file_aio_write(struct kiocb *iocb, const struct iovec *iov,
 
 	BUG_ON(iocb->ki_pos != pos);
 
+	trace_fuse_file_write(iocb->ki_filp->f_path.dentry, iocb->ki_left);
 	ocount = 0;
 	err = generic_segment_checks(iov, &nr_segs, &ocount, VERIFY_READ);
 	if (err)
@@ -1277,6 +1280,7 @@ static ssize_t fuse_file_aio_write(struct kiocb *iocb, const struct iovec *iov,
 	if (err)
 		goto out;
 
+	collect_io_stats(count, WRITE);
 	if (ff && ff->rw_lower_file) {
 		/* Use iocb->ki_pos instead of pos to handle the cases of files
 		 * that are opened with O_APPEND. For example if multiple

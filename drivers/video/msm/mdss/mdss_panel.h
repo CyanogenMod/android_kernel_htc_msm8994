@@ -412,6 +412,19 @@ struct mdss_mdp_pp_tear_check {
 	u32 refx100;
 };
 
+struct htc_backlight1_table {
+	int size;
+	u16 *brt_data;
+	u16 *bl_data;
+};
+
+struct htc_backlight2_table {
+	int size;
+	int scale;
+	int max_nits;
+	u16 *data;
+};
+
 struct mdss_panel_info {
 	u32 xres;
 	u32 yres;
@@ -488,6 +501,24 @@ struct mdss_panel_info {
 	struct mipi_panel_info mipi;
 	struct lvds_panel_info lvds;
 	struct edp_panel_info edp;
+
+	
+	uint8_t htc_panel_id;
+	int camera_blk;
+	int camera_dua_blk;
+	int first_power_on;
+	u32 mdss_pp_hue;
+	u32 skip_frame;
+
+	uint32_t pcc_r;
+	uint32_t pcc_g;
+	uint32_t pcc_b;
+
+	struct htc_backlight1_table brt_bl_table;
+	struct htc_backlight2_table nits_bl_table;
+
+	bool even_roi;
+	bool skip_first_pinctl;
 
 	/* debugfs structure for the panel */
 	struct mdss_panel_debugfs_info *debugfs_info;

@@ -348,7 +348,7 @@ static int msm_iommu_sec_ptbl_init(void)
 		unsigned int spare;
 	} pinit = {0};
 	int psize[2] = {0, 0};
-	unsigned int spare;
+	unsigned int spare = 0;
 	int ret, ptbl_ret = 0;
 	int version;
 	/* Use a dummy device for dma_alloc_attrs allocation */

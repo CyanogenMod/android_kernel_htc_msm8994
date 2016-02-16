@@ -3259,17 +3259,23 @@ int mdss_mdp_wait_for_xin_halt(u32 xin_id, bool is_vbif_nrt)
 	struct mdss_data_type *mdata = mdss_mdp_get_mdata();
 	u32 idle_mask = BIT(xin_id);
 	int rc;
+	int retries = 0;
 
 	vbif_base = is_vbif_nrt ? mdata->vbif_nrt_io.base :
 				mdata->vbif_io.base;
 
+l_timeout:
+
 	rc = readl_poll_timeout(vbif_base + MMSS_VBIF_XIN_HALT_CTRL1,
 		status, (status & idle_mask),
 		1000, XIN_HALT_TIMEOUT_US);
-	if (rc == -ETIMEDOUT) {
+
+	if ((rc == -ETIMEDOUT && retries++ >= XIN_HALT_RETRY)) {
 		pr_err("VBIF client %d not halting. TIMEDOUT.\n",
 			xin_id);
 		MDSS_XLOG_TOUT_HANDLER("mdp", "vbif", "mdp_dbg_bus", "panic");
+	} else if (rc == -ETIMEDOUT) {
+		goto l_timeout;
 	} else {
 		pr_debug("VBIF client %d is halted\n", xin_id);
 	}

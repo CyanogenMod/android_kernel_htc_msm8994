@@ -20,6 +20,7 @@
 
 #include <mach/msm_iomap.h>
 #include <mach/gpiomux.h>
+#include <mach/gpio.h>
 #include "gpio-msm-common.h"
 
 /* Bits of interest in the GPIO_IN_OUT register.
@@ -165,6 +166,27 @@ void __msm_gpio_set_intr_cfg_enable(unsigned gpio, unsigned val)
 	__raw_writel_no_log(cfg, GPIO_INTR_CFG(gpio));
 }
 
+#if defined(CONFIG_HTC_POWER_DEBUG) && defined(CONFIG_PINCTRL_MSM_TLMM_V3)
+void __msm_gpio_get_dump_info(unsigned gpio, struct  msm_gpio_dump_info *data)
+{
+        unsigned flags;
+
+        flags = __raw_readl(GPIO_CONFIG(gpio));
+        data->pull = flags & 0x3;
+        data->func_sel = (flags >> 2) & 0xf;
+        data->drv = (flags >> 6) & 0x7;
+        data->dir = (flags >> 9) & 0x1;
+
+        if (data->dir)
+                data->value = (__raw_readl(GPIO_IN_OUT(gpio)) >> 1) & 0x1;
+        else {
+                data->value = __raw_readl(GPIO_IN_OUT(gpio)) & 0x1;
+                data->int_en = __raw_readl(GPIO_INTR_CFG(gpio)) & 0x1;
+                if (data->int_en)
+                        data->int_owner = (__raw_readl(GPIO_INTR_CFG(gpio)) >> 5) & 0x7;
+        }
+}
+#endif
 unsigned  __msm_gpio_get_intr_cfg_enable(unsigned gpio)
 {
 	return __msm_gpio_get_intr_config(gpio) & INTR_ENABLE;

@@ -36,6 +36,7 @@
 #include <linux/posix_acl.h>
 #include <linux/hash.h>
 #include <asm/uaccess.h>
+#include <trace/events/mmcio.h>
 
 #include "internal.h"
 #include "mount.h"
@@ -3400,9 +3401,11 @@ SYSCALL_DEFINE1(rmdir, const char __user *, pathname)
 	return do_rmdir(AT_FDCWD, pathname);
 }
 
+extern atomic_t em_remount;
 int vfs_unlink(struct inode *dir, struct dentry *dentry)
 {
 	int error = may_delete(dir, dentry, 0);
+	struct super_block *sb = dentry->d_sb;
 
 	if (error)
 		return error;
@@ -3410,6 +3413,12 @@ int vfs_unlink(struct inode *dir, struct dentry *dentry)
 	if (!dir->i_op->unlink)
 		return -EPERM;
 
+	trace_vfs_unlink(dentry, dentry->d_inode->i_size);
+	if (atomic_read(&em_remount) && sb && (sb->s_flags & MS_EMERGENCY_RO)) {
+		printk_ratelimited(KERN_WARNING "VFS reject: %s pid:%d(%s)(parent:%d/%s) file %s\n", __func__,
+				current->pid, current->comm, current->parent->pid, current->parent->comm, dentry->d_name.name);
+		return -EROFS;
+	}
 	mutex_lock(&dentry->d_inode->i_mutex);
 	if (d_mountpoint(dentry))
 		error = -EBUSY;
@@ -3423,6 +3432,7 @@ int vfs_unlink(struct inode *dir, struct dentry *dentry)
 	}
 	mutex_unlock(&dentry->d_inode->i_mutex);
 
+	trace_vfs_unlink_done(dentry);
 	/* We don't d_delete() NFS sillyrenamed files--they still exist. */
 	if (!error && !(dentry->d_flags & DCACHE_NFSFS_RENAMED)) {
 		fsnotify_link_count(dentry->d_inode);
@@ -3805,6 +3815,7 @@ int vfs_rename(struct inode *old_dir, struct dentry *old_dentry,
 	int error;
 	int is_dir = S_ISDIR(old_dentry->d_inode->i_mode);
 	const unsigned char *old_name;
+	struct super_block *sb = old_dentry->d_sb;
 
 	if (old_dentry->d_inode == new_dentry->d_inode)
  		return 0;
@@ -3823,6 +3834,12 @@ int vfs_rename(struct inode *old_dir, struct dentry *old_dentry,
 	if (!old_dir->i_op->rename)
 		return -EPERM;
 
+	if (atomic_read(&em_remount) && sb && (sb->s_flags & MS_EMERGENCY_RO)) {
+		printk_ratelimited(KERN_WARNING "VFS reject: %s pid:%d(%s)(parent:%d/%s) old_file %s new_file %s\n",
+				__func__, current->pid, current->comm, current->parent->pid, current->parent->comm,
+				old_dentry->d_name.name, new_dentry->d_name.name);
+		return -EROFS;
+	}
 	old_name = fsnotify_oldname_init(old_dentry->d_name.name);
 
 	if (is_dir)

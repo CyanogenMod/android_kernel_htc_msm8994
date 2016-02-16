@@ -906,6 +906,8 @@ int mdss_mdp_overlay_pipe_setup(struct msm_fb_data_type *mfd,
 	}
 	pipe->bg_color = req->bg_color;
 
+	pipe->color_space = req->color_space;
+
 	if (pipe->type == MDSS_MDP_PIPE_TYPE_CURSOR)
 		goto cursor_done;
 

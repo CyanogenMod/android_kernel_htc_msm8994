@@ -142,6 +142,7 @@ print_task(struct seq_file *m, struct rq *rq, struct task_struct *p)
 #endif
 
 	SEQ_printf(m, "\n");
+	if (!m) show_stack(p, NULL);
 }
 
 static void print_rq(struct seq_file *m, struct rq *rq, int rq_cpu)

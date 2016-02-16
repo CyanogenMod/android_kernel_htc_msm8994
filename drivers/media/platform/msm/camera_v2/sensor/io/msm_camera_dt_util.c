@@ -17,13 +17,12 @@
 
 #define CAM_SENSOR_PINCTRL_STATE_SLEEP "cam_suspend"
 #define CAM_SENSOR_PINCTRL_STATE_DEFAULT "cam_default"
-/*#define CONFIG_MSM_CAMERA_DT_DEBUG*/
-
-#define VALIDATE_VOLTAGE(min, max, config_val) ((config_val) && \
-	(config_val >= min) && (config_val <= max))
 
 #undef CDBG
 #define CDBG(fmt, args...) pr_debug(fmt, ##args)
+
+static int gpio_859_index = 0; 
+static int gpio_863_index = 0; 
 
 int msm_camera_fill_vreg_params(struct camera_vreg_t *cam_vreg,
 	int num_vreg, struct msm_sensor_power_setting *power_setting,
@@ -32,14 +31,14 @@ int msm_camera_fill_vreg_params(struct camera_vreg_t *cam_vreg,
 	uint16_t i = 0;
 	int      j = 0;
 
-	/* Validate input parameters */
+	
 	if (!cam_vreg || !power_setting) {
 		pr_err("%s:%d failed: cam_vreg %p power_setting %p", __func__,
 			__LINE__,  cam_vreg, power_setting);
 		return -EINVAL;
 	}
 
-	/* Validate size of num_vreg */
+	
 	if (num_vreg <= 0) {
 		pr_err("failed: num_vreg %d", num_vreg);
 		return -EINVAL;
@@ -56,14 +55,6 @@ int msm_camera_fill_vreg_params(struct camera_vreg_t *cam_vreg,
 					pr_err("%s:%d i %d j %d cam_vdig\n",
 						__func__, __LINE__, i, j);
 					power_setting[i].seq_val = j;
-					if (VALIDATE_VOLTAGE(
-						cam_vreg[j].min_voltage,
-						cam_vreg[j].max_voltage,
-						power_setting[i].config_val)) {
-						cam_vreg[j].min_voltage =
-						cam_vreg[j].max_voltage =
-						power_setting[i].config_val;
-					}
 					break;
 				}
 			}
@@ -75,14 +66,6 @@ int msm_camera_fill_vreg_params(struct camera_vreg_t *cam_vreg,
 					pr_err("%s:%d i %d j %d cam_vio\n",
 						__func__, __LINE__, i, j);
 					power_setting[i].seq_val = j;
-					if (VALIDATE_VOLTAGE(
-						cam_vreg[j].min_voltage,
-						cam_vreg[j].max_voltage,
-						power_setting[i].config_val)) {
-						cam_vreg[j].min_voltage =
-						cam_vreg[j].max_voltage =
-						power_setting[i].config_val;
-					}
 					break;
 				}
 			}
@@ -94,14 +77,6 @@ int msm_camera_fill_vreg_params(struct camera_vreg_t *cam_vreg,
 					pr_err("%s:%d i %d j %d cam_vana\n",
 						__func__, __LINE__, i, j);
 					power_setting[i].seq_val = j;
-					if (VALIDATE_VOLTAGE(
-						cam_vreg[j].min_voltage,
-						cam_vreg[j].max_voltage,
-						power_setting[i].config_val)) {
-						cam_vreg[j].min_voltage =
-						cam_vreg[j].max_voltage =
-						power_setting[i].config_val;
-					}
 					break;
 				}
 			}
@@ -113,14 +88,6 @@ int msm_camera_fill_vreg_params(struct camera_vreg_t *cam_vreg,
 					pr_err("%s:%d i %d j %d cam_vaf\n",
 						__func__, __LINE__, i, j);
 					power_setting[i].seq_val = j;
-					if (VALIDATE_VOLTAGE(
-						cam_vreg[j].min_voltage,
-						cam_vreg[j].max_voltage,
-						power_setting[i].config_val)) {
-						cam_vreg[j].min_voltage =
-						cam_vreg[j].max_voltage =
-						power_setting[i].config_val;
-					}
 					break;
 				}
 			}
@@ -133,14 +100,6 @@ int msm_camera_fill_vreg_params(struct camera_vreg_t *cam_vreg,
 					pr_err("%s:%d i %d j %d cam_vcustom1\n",
 						__func__, __LINE__, i, j);
 					power_setting[i].seq_val = j;
-					if (VALIDATE_VOLTAGE(
-						cam_vreg[j].min_voltage,
-						cam_vreg[j].max_voltage,
-						power_setting[i].config_val)) {
-						cam_vreg[j].min_voltage =
-						cam_vreg[j].max_voltage =
-						power_setting[i].config_val;
-					}
 					break;
 				}
 			}
@@ -153,14 +112,6 @@ int msm_camera_fill_vreg_params(struct camera_vreg_t *cam_vreg,
 					pr_err("%s:%d i %d j %d cam_vcustom2\n",
 						__func__, __LINE__, i, j);
 					power_setting[i].seq_val = j;
-					if (VALIDATE_VOLTAGE(
-						cam_vreg[j].min_voltage,
-						cam_vreg[j].max_voltage,
-						power_setting[i].config_val)) {
-						cam_vreg[j].min_voltage =
-						cam_vreg[j].max_voltage =
-						power_setting[i].config_val;
-					}
 					break;
 				}
 			}
@@ -192,7 +143,7 @@ int msm_sensor_get_sub_module_index(struct device_node *of_node,
 	}
 	for (i = 0; i < SUB_MODULE_MAX; i++) {
 		sensor_info->subdev_id[i] = -1;
-		/* Subdev expose additional interface for same sub module*/
+		
 		sensor_info->subdev_intf[i] = -1;
 	}
 
@@ -1150,6 +1101,21 @@ int msm_camera_get_dt_vreg_data(struct device_node *of_node,
 		goto ERROR1;
 	}
 
+	
+	#if 0
+	rc = of_property_read_u32_array(of_node, "qcom,cam-vreg-type",
+		vreg_array, count);
+	if (rc < 0) {
+		pr_err("%s failed %d\n", __func__, __LINE__);
+		goto ERROR2;
+	}
+	for (i = 0; i < count; i++) {
+		vreg[i].type = vreg_array[i];
+		CDBG("%s cam_vreg[%d].type = %d\n", __func__, i,
+			vreg[i].type);
+	}
+	#endif
+	
 	for (i = 0; i < count; i++)
 		vreg[i].type = VREG_TYPE_DEFAULT;
 
@@ -1205,6 +1171,20 @@ int msm_camera_get_dt_vreg_data(struct device_node *of_node,
 		CDBG("%s cam_vreg[%d].op_mode = %d\n", __func__, i,
 			vreg[i].op_mode);
 	}
+
+	
+	rc = of_property_read_u32_array(of_node, "qcom,cam-vreg-gpios-index",
+		vreg_array, count);
+	if (rc < 0) {
+		pr_err("%s failed %d\n", __func__, __LINE__);
+		goto ERROR2;
+	}
+	for (i = 0; i < count; i++) {
+		vreg[i].gpios_index = vreg_array[i];
+		CDBG("%s cam_vreg[%d].gpios_index = %d\n", __func__, i,
+			vreg[i].gpios_index);
+	}
+	
 
 	kfree(vreg_array);
 	return rc;
@@ -1272,6 +1252,9 @@ int msm_camera_power_up(struct msm_camera_power_ctrl_t *ctrl,
 {
 	int rc = 0, index = 0, no_gpio = 0, ret = 0;
 	struct msm_sensor_power_setting *power_setting = NULL;
+	
+	struct camera_vreg_t *cam_vreg;
+	
 
 	CDBG("%s:%d\n", __func__, __LINE__);
 	if (!ctrl || !sensor_i2c_client) {
@@ -1359,6 +1342,35 @@ int msm_camera_power_up(struct msm_camera_power_ctrl_t *ctrl,
 					SENSOR_GPIO_MAX);
 				goto power_up_failed;
 			}
+#if 1
+			
+			cam_vreg = &ctrl->cam_vreg[power_setting->seq_val];
+			if (cam_vreg->type == VREG_TYPE_GPIO) {
+				unsigned cam_vreg_gpio;
+				cam_vreg_gpio = ctrl->gpio_conf->cam_gpio_req_tbl[cam_vreg->gpios_index].gpio;
+				
+				if (cam_vreg_gpio == 859)
+				{
+				    gpio_859_index ++;
+				}
+				else if (cam_vreg_gpio == 863)
+				{
+				    gpio_863_index ++;
+				}
+				
+				gpio_direction_output(cam_vreg_gpio, power_setting->config_val);
+			} else if (power_setting->seq_val < ctrl->num_vreg){
+				msm_camera_config_single_vreg(ctrl->dev,
+				    cam_vreg,
+				    (struct regulator **)&power_setting->data[0],
+				    1);
+			} else {
+				pr_err("ERR:%s: %d usr_idx:%d dts_idx:%d\n",
+				    __func__, __LINE__,
+				    power_setting->seq_val, ctrl->num_vreg);
+			}
+			
+#else
 			if (power_setting->seq_val < ctrl->num_vreg)
 				msm_camera_config_single_vreg(ctrl->dev,
 					&ctrl->cam_vreg
@@ -1370,6 +1382,7 @@ int msm_camera_power_up(struct msm_camera_power_ctrl_t *ctrl,
 				pr_err("ERR:%s: %d usr_idx:%d dts_idx:%d\n",
 					__func__, __LINE__,
 					power_setting->seq_val, ctrl->num_vreg);
+#endif
 			break;
 		case SENSOR_I2C_MUX:
 			if (ctrl->i2c_conf && ctrl->i2c_conf->use_i2c_mux)
@@ -1420,11 +1433,56 @@ power_up_failed:
 			if (!ctrl->gpio_conf->gpio_num_info->valid
 				[power_setting->seq_val])
 				continue;
-			gpio_set_value_cansleep(
-				ctrl->gpio_conf->gpio_num_info->gpio_num
-				[power_setting->seq_val], GPIOF_OUT_INIT_LOW);
+			
+			if(power_setting->config_val == GPIO_OUT_HIGH)
+				gpio_set_value_cansleep(
+					ctrl->gpio_conf->gpio_num_info->gpio_num
+					[power_setting->seq_val], GPIOF_OUT_INIT_LOW);
+			else
+				gpio_set_value_cansleep(
+					ctrl->gpio_conf->gpio_num_info->gpio_num
+					[power_setting->seq_val], GPIOF_OUT_INIT_HIGH);
+			
 			break;
 		case SENSOR_VREG:
+#if 1 
+			
+			cam_vreg = &ctrl->cam_vreg[power_setting->seq_val];
+			if (cam_vreg->type == VREG_TYPE_GPIO) {
+				unsigned cam_vreg_gpio;
+				cam_vreg_gpio = ctrl->gpio_conf->cam_gpio_req_tbl[cam_vreg->gpios_index].gpio;
+				
+				if (cam_vreg_gpio == 859)
+				{
+				    gpio_859_index --;
+				    if (gpio_859_index == 0)
+				    {
+				        gpio_direction_output(cam_vreg_gpio, 0);
+				    }
+				}
+				else if (cam_vreg_gpio == 863)
+				{
+				    gpio_863_index --;
+				    if (gpio_863_index == 0)
+				    {
+				        gpio_direction_output(cam_vreg_gpio, 0);
+				    }
+				}
+				else
+				
+				gpio_direction_output(cam_vreg_gpio, 0);
+			} else if (power_setting->seq_val < ctrl->num_vreg) {
+				msm_camera_config_single_vreg(ctrl->dev,
+				    cam_vreg,
+				    (struct regulator **)&power_setting->data[0],
+				    0);
+			} else {
+				pr_err("%s:%d:seq_val: %d > num_vreg: %d\n",
+				    __func__, __LINE__,
+				    power_setting->seq_val, ctrl->num_vreg);
+			}
+			
+#else
 			if (power_setting->seq_val < ctrl->num_vreg)
 				msm_camera_config_single_vreg(ctrl->dev,
 					&ctrl->cam_vreg
@@ -1436,6 +1494,7 @@ power_up_failed:
 				pr_err("%s:%d:seq_val: %d > num_vreg: %d\n",
 					__func__, __LINE__,
 					power_setting->seq_val, ctrl->num_vreg);
+#endif 
 			break;
 		case SENSOR_I2C_MUX:
 			if (ctrl->i2c_conf && ctrl->i2c_conf->use_i2c_mux)
@@ -1495,6 +1554,9 @@ int msm_camera_power_down(struct msm_camera_power_ctrl_t *ctrl,
 	int index = 0, ret = 0;
 	struct msm_sensor_power_setting *pd = NULL;
 	struct msm_sensor_power_setting *ps;
+	
+	struct camera_vreg_t *cam_vreg;
+	
 
 	CDBG("%s:%d\n", __func__, __LINE__);
 	if (!ctrl || !sensor_i2c_client) {
@@ -1538,10 +1600,16 @@ int msm_camera_power_down(struct msm_camera_power_ctrl_t *ctrl,
 			if (!ctrl->gpio_conf->gpio_num_info->valid
 				[pd->seq_val])
 				continue;
-			gpio_set_value_cansleep(
-				ctrl->gpio_conf->gpio_num_info->gpio_num
-				[pd->seq_val],
-				(int) pd->config_val);
+			
+				if(pd->config_val == GPIO_OUT_HIGH)
+					gpio_set_value_cansleep(
+						ctrl->gpio_conf->gpio_num_info->gpio_num
+						[pd->seq_val], GPIOF_OUT_INIT_LOW);
+				else
+					gpio_set_value_cansleep(
+						ctrl->gpio_conf->gpio_num_info->gpio_num
+						[pd->seq_val], GPIOF_OUT_INIT_HIGH);
+			
 			break;
 		case SENSOR_VREG:
 			if (pd->seq_val >= CAM_VREG_MAX) {
@@ -1554,6 +1622,53 @@ int msm_camera_power_down(struct msm_camera_power_ctrl_t *ctrl,
 			ps = msm_camera_get_power_settings(ctrl,
 						pd->seq_type,
 						pd->seq_val);
+#if 1 
+
+			if (ps)
+			{
+				
+				cam_vreg = &ctrl->cam_vreg[pd->seq_val];
+				if (cam_vreg->type == VREG_TYPE_GPIO) {
+					unsigned cam_vreg_gpio;
+					cam_vreg_gpio = ctrl->gpio_conf->cam_gpio_req_tbl[cam_vreg->gpios_index].gpio;
+					
+					if (cam_vreg_gpio == 859)
+					{
+						gpio_859_index --;
+						if (gpio_859_index ==0)
+						{
+							gpio_direction_output(cam_vreg_gpio, 0);
+						}
+						else
+							pr_info("%s skip power down gpio_859_index: %d\n", __func__, gpio_859_index);
+					}
+					else if (cam_vreg_gpio == 863)
+					{
+						gpio_863_index --;
+						if (gpio_863_index ==0)
+						{
+							gpio_direction_output(cam_vreg_gpio, 0);
+						}
+						else
+							pr_info("%s skip power down gpio_863_index: %d\n", __func__, gpio_863_index);
+					}
+					else
+					
+					gpio_direction_output(cam_vreg_gpio, 0);
+				} else if (pd->seq_val < ctrl->num_vreg){
+					msm_camera_config_single_vreg(ctrl->dev,
+					    cam_vreg,
+					    (struct regulator **)&ps->data[0],
+					    0);
+				} else {
+					pr_err("%s:%d:seq_val:%d > num_vreg: %d\n",
+					    __func__, __LINE__, pd->seq_val,
+					    ctrl->num_vreg);
+				}
+				
+			}
+			else
+#else
 			if (ps) {
 				if (pd->seq_val < ctrl->num_vreg)
 					msm_camera_config_single_vreg(ctrl->dev,
@@ -1567,6 +1682,7 @@ int msm_camera_power_down(struct msm_camera_power_ctrl_t *ctrl,
 						__func__, __LINE__, pd->seq_val,
 						ctrl->num_vreg);
 			} else
+#endif 
 				pr_err("%s error in power up/down seq data\n",
 								__func__);
 			break;

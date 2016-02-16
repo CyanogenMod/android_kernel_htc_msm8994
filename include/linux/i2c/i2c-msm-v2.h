@@ -588,6 +588,8 @@ struct i2c_msm_ctrl {
 	struct i2c_msm_dbgfs       dbgfs;
 	struct i2c_msm_resources   rsrcs;
 	u32                        mstr_clk_ctl;
+	int                        scl_gpio;
+	int                        sda_gpio;
 	enum i2c_msm_power_state   pwr_state;
 };
 

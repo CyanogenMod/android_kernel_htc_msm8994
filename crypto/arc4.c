@@ -96,7 +96,7 @@ static int ecb_arc4_crypt(struct blkcipher_desc *desc, struct scatterlist *dst,
 			  struct scatterlist *src, unsigned int nbytes)
 {
 	struct arc4_ctx *ctx = crypto_blkcipher_ctx(desc->tfm);
-	struct blkcipher_walk walk;
+	struct blkcipher_walk walk={};
 	int err;
 
 	blkcipher_walk_init(&walk, dst, src, nbytes);

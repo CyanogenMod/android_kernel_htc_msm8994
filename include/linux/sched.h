@@ -317,6 +317,7 @@ static inline void set_cpu_sd_state_idle(void) { }
  * Only dump TASK_* tasks. (0 for all tasks)
  */
 extern void show_state_filter(unsigned long state_filter);
+extern void show_thread_group_state_filter(const char *tg_comm, unsigned long state_filter);
 
 static inline void show_state(void)
 {
@@ -1375,6 +1376,8 @@ struct task_struct {
 #ifdef CONFIG_DEBUG_MUTEXES
 	/* mutex deadlock detection */
 	struct mutex_waiter *blocked_on;
+	struct task_struct  *blocked_by;
+	unsigned long        blocked_since;
 #endif
 #ifdef CONFIG_TRACE_IRQFLAGS
 	unsigned int irq_events;
@@ -1953,6 +1956,8 @@ extern int sched_set_cpu_mostly_idle_load(int cpu, int mostly_idle_pct);
 extern int sched_get_cpu_mostly_idle_load(int cpu);
 extern int sched_set_cpu_mostly_idle_nr_run(int cpu, int nr_run);
 extern int sched_get_cpu_mostly_idle_nr_run(int cpu);
+extern int sched_set_cpu_budget(int cpu, int budget);
+extern int sched_get_cpu_budget(int cpu);
 extern int
 sched_set_cpu_mostly_idle_freq(int cpu, unsigned int mostly_idle_freq);
 extern unsigned int sched_get_cpu_mostly_idle_freq(int cpu);

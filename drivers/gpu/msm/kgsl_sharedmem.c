@@ -17,6 +17,7 @@
 #include <linux/slab.h>
 #include <linux/kmemleak.h>
 #include <linux/highmem.h>
+#include <linux/msm_kgsl.h>
 #include <soc/qcom/scm.h>
 
 #include "kgsl.h"
@@ -282,6 +283,14 @@ static ssize_t kgsl_drv_full_cache_threshold_show(struct device *dev,
 			kgsl_driver.full_cache_threshold);
 }
 
+static ssize_t kgsl_alloc_show(struct device *dev,
+					struct device_attribute *attr,
+					char *buf)
+{
+	return snprintf(buf, PAGE_SIZE, "%d\n",
+			kgsl_get_alloc_size(true));
+}
+
 static DEVICE_ATTR(vmalloc, 0444, kgsl_drv_memstat_show, NULL);
 static DEVICE_ATTR(vmalloc_max, 0444, kgsl_drv_memstat_show, NULL);
 static DEVICE_ATTR(page_alloc, 0444, kgsl_drv_memstat_show, NULL);
@@ -295,6 +304,7 @@ static DEVICE_ATTR(mapped_max, 0444, kgsl_drv_memstat_show, NULL);
 static DEVICE_ATTR(full_cache_threshold, 0644,
 		kgsl_drv_full_cache_threshold_show,
 		kgsl_drv_full_cache_threshold_store);
+static DEVICE_ATTR(kgsl_alloc, 0444, kgsl_alloc_show, NULL);
 
 static const struct device_attribute *drv_attr_list[] = {
 	&dev_attr_vmalloc,
@@ -308,6 +318,7 @@ static const struct device_attribute *drv_attr_list[] = {
 	&dev_attr_mapped,
 	&dev_attr_mapped_max,
 	&dev_attr_full_cache_threshold,
+	&dev_attr_kgsl_alloc,
 	NULL
 };
 
@@ -395,6 +406,7 @@ static void kgsl_page_alloc_free(struct kgsl_memdesc *memdesc)
 	int i = 0;
 	struct scatterlist *sg;
 	int sglen = memdesc->sglen;
+	struct kgsl_process_private *priv = memdesc->private;
 
 	kgsl_driver.stats.page_alloc -= memdesc->size;
 
@@ -402,9 +414,15 @@ static void kgsl_page_alloc_free(struct kgsl_memdesc *memdesc)
 	/* we certainly do not expect the hostptr to still be mapped */
 	BUG_ON(memdesc->hostptr);
 
-	if (sglen && memdesc->sg)
+	if (sglen <= 0)
+		pr_warn("kgsl: Prabably pages are already freed: sglen=%d\n", sglen);
+
+	if ((sglen > 0) && memdesc->sg)
 		for_each_sg(memdesc->sg, sg, sglen, i)
 			__free_pages(sg_page(sg), get_order(sg->length));
+
+	if (priv)
+		kgsl_process_sub_stats(priv, KGSL_MEM_ENTRY_PAGE_ALLOC, memdesc->size);
 }
 
 /*
@@ -694,6 +712,8 @@ _kgsl_sharedmem_page_alloc(struct kgsl_memdesc *memdesc,
 
 			if (sglen > 0)
 				sg_mark_end(&memdesc->sg[sglen - 1]);
+			else if (sglen <= 0)
+				pr_warn("kgsl: Do not update sglen and memdesc size: sglen=%d\n", sglen);
 
 			KGSL_CORE_ERR(
 				"Out of memory: only allocated %zuKB of %zuKB requested\n",
@@ -773,11 +793,18 @@ kgsl_sharedmem_page_alloc_user(struct kgsl_memdesc *memdesc,
 			    struct kgsl_pagetable *pagetable,
 			    size_t size)
 {
+	int ret = 0;
+	struct kgsl_process_private *priv = memdesc->private;
+
 	size = PAGE_ALIGN(size);
 	if (size == 0)
 		return -EINVAL;
 
-	return _kgsl_sharedmem_page_alloc(memdesc, pagetable, size);
+	ret = _kgsl_sharedmem_page_alloc(memdesc, pagetable, size);
+
+	if (!ret && priv)
+		kgsl_process_add_stats(priv, KGSL_MEM_ENTRY_PAGE_ALLOC, size);
+	return ret;
 }
 EXPORT_SYMBOL(kgsl_sharedmem_page_alloc_user);
 

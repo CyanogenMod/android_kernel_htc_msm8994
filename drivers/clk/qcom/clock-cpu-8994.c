@@ -1265,6 +1265,29 @@ static struct clk_lookup cpu_clocks_8994_v2[] = {
 	CLK_LIST(cpu_debug_mux),
 };
 
+#if defined(CONFIG_HTC_DEBUG_FOOTPRINT)
+int clk_get_cpu_idx(struct clk *c)
+{
+	
+	if (c == &a53_hf_mux.c || c == &a53_hf_mux_v2.c || c == &a53_clk.c)
+		return 0;
+
+	
+	if (c == &a57_hf_mux.c || c == &a57_hf_mux_v2.c || c == &a57_clk.c)
+		return 4;
+
+	return -1;
+}
+
+int clk_get_l2_idx(struct clk *c)
+{
+	if (c == &cci_hf_mux.c)
+		return 0;
+
+	return -1;
+}
+#endif
+
 static int of_get_fmax_vdd_class(struct platform_device *pdev, struct clk *c,
 								char *prop_name)
 {
@@ -2007,7 +2030,7 @@ static int cpu_clock_8994_driver_probe(struct platform_device *pdev)
 			 a57speedbin, pvs_ver);
 	}
 
-	snprintf(a57speedbinstr, ARRAY_SIZE(a57speedbinstr),
+	snprintf(a57speedbinstr, ARRAY_SIZE(a57speedbinstr) - 1,
 			"qcom,a57-speedbin%d-v%d", a57speedbin, pvs_ver);
 
 	ret = of_get_fmax_vdd_class(pdev, &a57_clk.c, a57speedbinstr);

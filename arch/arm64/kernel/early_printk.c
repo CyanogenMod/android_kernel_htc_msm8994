@@ -25,6 +25,7 @@
 
 #include <linux/amba/serial.h>
 #include <linux/serial_reg.h>
+#include <linux/htc_flags.h>
 
 #include <asm/fixmap.h>
 
@@ -127,6 +128,16 @@ static struct console early_console_dev = {
 	.index =	-1,
 };
 
+static int __initdata should_deferred_early_console = 0;
+void __init deferred_early_console_init(void)
+{
+	/* Switch Early_printk Debug by Kernel Flag  */
+	if (should_deferred_early_console &&
+			(get_kernel_flag() & KERNEL_FLAG_SERIAL_HSL_ENABLE)) {
+		early_console = &early_console_dev;
+		register_console(&early_console_dev);
+	}
+}
 /*
  * Parse earlyprintk=... parameter in the format:
  *
@@ -170,8 +181,7 @@ static int __init setup_early_printk(char *buf)
 		early_base = (void __iomem *)set_fixmap_offset_io(FIX_EARLYCON_MEM_BASE, paddr);
 
 	printch = match->printch;
-	early_console = &early_console_dev;
-	register_console(&early_console_dev);
+	should_deferred_early_console = 1;
 
 	return 0;
 }

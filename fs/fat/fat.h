@@ -26,6 +26,8 @@
 #define FAT_NFS_STALE_RW	1      /* NFS RW support, can cause ESTALE */
 #define FAT_NFS_NOSTALE_RO	2      /* NFS RO support, no ESTALE issue */
 
+#define FAT_CHARSET_ERROR	9999
+
 struct fat_mount_options {
 	kuid_t fs_uid;
 	kgid_t fs_gid;

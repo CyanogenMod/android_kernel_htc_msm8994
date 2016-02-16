@@ -2387,9 +2387,8 @@ static int dsi_event_thread(void *data)
 					&& (ctrl->hw_rev != MDSS_DSI_HW_REV_103)
 					&& (ln_status
 						& DSI_DATA_LANES_STOP_STATE)
-					&& !(ln_status
-						& DSI_CLK_LANE_STOP_STATE)) {
-				pr_debug("%s: Handling overflow event.\n",
+					&& !(ln_status & DSI_CLK_LANE_STOP_STATE)) {
+				pr_info("%s: Handling overflow event.\n",
 								__func__);
 				mdss_dsi_clk_ctrl(ctrl, DSI_ALL_CLKS, 1);
 				mdss_dsi_ctl_phy_reset(ctrl,

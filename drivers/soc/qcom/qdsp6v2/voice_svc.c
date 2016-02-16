@@ -246,7 +246,7 @@ static int voice_svc_reg(char *svc, uint32_t src_port,
 {
 	int ret = 0;
 
-	pr_debug("%s\n", __func__);
+	pr_info("%s\n", __func__); 
 
 	if (handle == NULL) {
 		pr_err("%s: handle is NULL\n", __func__);
@@ -279,7 +279,7 @@ static int voice_svc_reg(char *svc, uint32_t src_port,
 		ret = -EFAULT;
 		goto done;
 	}
-	pr_debug("%s: Register %s successful\n",
+	pr_info("%s: Register %s successful\n", 
 		__func__, svc);
 done:
 	return ret;
@@ -289,7 +289,7 @@ static int voice_svc_dereg(char *svc, void **handle)
 {
 	int ret = 0;
 
-	pr_debug("%s\n", __func__);
+	pr_info("%s\n", __func__); 
 
 	if (handle == NULL) {
 		pr_err("%s: handle is NULL\n", __func__);
@@ -311,7 +311,7 @@ static int voice_svc_dereg(char *svc, void **handle)
 		goto done;
 	}
 	*handle = NULL;
-	pr_debug("%s: deregister %s successful\n", __func__, svc);
+	pr_info("%s: deregister %s successful\n", __func__, svc); 
 
 done:
 	return ret;
@@ -493,6 +493,11 @@ static ssize_t voice_svc_read(struct file *file, char __user *arg,
 
 	spin_lock_irqsave(&prtd->response_lock, spin_flags);
 
+	
+	if (list_empty(&prtd->response_queue)) {
+		pr_err("%s: response queue is empty before del!!!", __func__);
+	}
+	
 	list_del(&resp->list);
 	prtd->response_count--;
 	kfree(resp);
@@ -541,7 +546,7 @@ static int voice_svc_open(struct inode *inode, struct file *file)
 {
 	struct voice_svc_prvt *prtd = NULL;
 
-	pr_debug("%s\n", __func__);
+	pr_info("%s\n", __func__); 
 
 	prtd = kmalloc(sizeof(struct voice_svc_prvt), GFP_KERNEL);
 
@@ -581,7 +586,7 @@ static int voice_svc_release(struct inode *inode, struct file *file)
 	char *svc_name = NULL;
 	void **handle = NULL;
 
-	pr_debug("%s\n", __func__);
+	pr_info("%s ++\n", __func__); 
 
 	prtd = (struct voice_svc_prvt *)file->private_data;
 	if (prtd == NULL) {
@@ -592,7 +597,8 @@ static int voice_svc_release(struct inode *inode, struct file *file)
 	}
 
 	if (prtd->apr_q6_cvs != NULL) {
-		svc_name = VOICE_SVC_MVM_STR;
+		pr_info("%s: voice_svc_dereg VOICE_SVC_CVS_STR\n", __func__); 
+		svc_name = VOICE_SVC_CVS_STR; 
 		handle = &prtd->apr_q6_cvs;
 		ret = voice_svc_dereg(svc_name, handle);
 		if (ret)
@@ -600,6 +606,7 @@ static int voice_svc_release(struct inode *inode, struct file *file)
 	}
 
 	if (prtd->apr_q6_mvm != NULL) {
+		pr_info("%s: voice_svc_dereg VOICE_SVC_MVM_STR\n", __func__); 
 		svc_name = VOICE_SVC_MVM_STR;
 		handle = &prtd->apr_q6_mvm;
 		ret = voice_svc_dereg(svc_name, handle);
@@ -610,7 +617,7 @@ static int voice_svc_release(struct inode *inode, struct file *file)
 	spin_lock_irqsave(&prtd->response_lock, spin_flags);
 
 	while (!list_empty(&prtd->response_queue)) {
-		pr_debug("%s: Remove item from response queue\n", __func__);
+		pr_info("%s: Remove item from response queue\n", __func__); 
 
 		resp = list_first_entry(&prtd->response_queue,
 					struct apr_response_list, list);
@@ -624,6 +631,7 @@ static int voice_svc_release(struct inode *inode, struct file *file)
 	kfree(file->private_data);
 	file->private_data = NULL;
 
+	pr_info("%s --\n", __func__); 
 done:
 	return ret;
 }

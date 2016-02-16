@@ -1402,7 +1402,7 @@ loop_end:
 }
 
 static void hdmi_edid_get_display_mode(struct hdmi_edid_ctrl *edid_ctrl,
-	const u8 *data_buf, u32 num_of_cea_blocks)
+	const u8 *data_buf, u32 num_of_cea_blocks, u8 write_burst_vic)
 {
 	u8 i = 0, offset = 0, std_blk = 0;
 	u32 video_format = HDMI_VFRMT_640x480p60_4_3;
@@ -1446,7 +1446,18 @@ static void hdmi_edid_get_display_mode(struct hdmi_edid_ctrl *edid_ctrl,
 			 * while the Video identification code is 1 based in the
 			 * CEA_861D spec
 			 */
-			video_format = (*svd & 0x7F);
+			if (((*svd >= 65) && (*svd <= 127)) || ((*svd >= 193) && (*svd <= 255)))
+			{
+				switch(*svd) {
+					case 93: video_format = HDMI_VFRMT_3840x2160p24_16_9; break;
+					case 94: video_format = HDMI_VFRMT_3840x2160p25_16_9; break;
+					case 95: video_format = HDMI_VFRMT_3840x2160p30_16_9; break;
+					default: break;
+				}
+			}
+			else
+				video_format = (*svd & 0x7F);
+
 			hdmi_edid_add_sink_video_format(edid_ctrl,
 				video_format);
 			/* Make a note of the preferred video format */
@@ -1658,9 +1669,23 @@ static void hdmi_edid_get_display_mode(struct hdmi_edid_ctrl *edid_ctrl,
 	if (!has480p)
 		hdmi_edid_add_sink_video_format(edid_ctrl,
 			HDMI_VFRMT_640x480p60_4_3);
+
+	pr_err("write_burst_vic: %d\n", write_burst_vic);
+	switch (write_burst_vic)
+	{
+		case 0x5d:
+			hdmi_edid_add_sink_video_format(edid_ctrl, HDMI_VFRMT_3840x2160p24_16_9);
+			break;
+		case 0x5e:
+			hdmi_edid_add_sink_video_format(edid_ctrl, HDMI_VFRMT_3840x2160p25_16_9);
+			break;
+		case 0x5f:
+			hdmi_edid_add_sink_video_format(edid_ctrl, HDMI_VFRMT_3840x2160p30_16_9);
+			break;
+	}
 } /* hdmi_edid_get_display_mode */
 
-int hdmi_edid_read(void *input)
+int hdmi_edid_read(void *input, u8 write_burst_vic)
 {
 	/* EDID_BLOCK_SIZE[0x80] Each page size in the EDID ROM */
 	u8 *edid_buf = NULL;
@@ -1783,7 +1808,7 @@ int hdmi_edid_read(void *input)
 		num_of_cea_blocks, cea_extension_ver, vendor_id, ieee_reg_id,
 		edid_buf[0x80]);
 
-	hdmi_edid_get_display_mode(edid_ctrl, edid_buf, num_of_cea_blocks);
+	hdmi_edid_get_display_mode(edid_ctrl, edid_buf, num_of_cea_blocks, write_burst_vic);
 
 	return 0;
 

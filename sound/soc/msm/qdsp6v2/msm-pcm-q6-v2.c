@@ -38,6 +38,13 @@
 #include "msm-pcm-q6-v2.h"
 #include "msm-pcm-routing-v2.h"
 
+//htc audio ++
+#undef pr_info
+#undef pr_err
+#define pr_info(fmt, ...) pr_aud_info(fmt, ##__VA_ARGS__)
+#define pr_err(fmt, ...) pr_aud_err(fmt, ##__VA_ARGS__)
+//htc audio --
+
 enum stream_state {
 	IDLE = 0,
 	STOPPED,
@@ -1164,7 +1171,7 @@ static int msm_pcm_add_app_type_controls(struct snd_soc_pcm_runtime *rtd)
 		return ret;
 	}
 	kctl = app_type_info->kctl;
-	snprintf(kctl->id.name, ctl_len, "%s %d %s", mixer_ctl_name,
+	snprintf(kctl->id.name, sizeof(kctl->id.name), "%s %d %s", mixer_ctl_name, //HTC_AUD_MOD
 		 rtd->pcm->device, suffix);
 	kctl = app_type_info->kctl;
 	kctl->put = msm_pcm_app_type_cfg_ctl_put;

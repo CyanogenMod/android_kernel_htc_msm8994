@@ -60,7 +60,9 @@
  * is managed in userspace ... OBEX, PTP, and MTP have been mentioned.
  */
 
-#define PREFIX	"ttyGS"
+/*++ 2014/09/23 USB Team, PCN00010 ++*/
+#define PREFIX	"ttyHSUSB"
+/*-- 2014/09/23 USB Team, PCN00010 --*/
 
 /*
  * gserial is the lifecycle interface, used by USB functions
@@ -1631,6 +1633,12 @@ static int userial_init(void)
 			B9600 | CS8 | CREAD | HUPCL | CLOCAL;
 	gs_tty_driver->init_termios.c_ispeed = 9600;
 	gs_tty_driver->init_termios.c_ospeed = 9600;
+
+/*++ 2014/09/23 USB Team, PCN00010 ++*/
+	gs_tty_driver->init_termios.c_lflag = 0;
+	gs_tty_driver->init_termios.c_iflag = 0;
+	gs_tty_driver->init_termios.c_oflag = 0;
+/*-- 2014/09/23 USB Team, PCN00010 --*/
 
 	tty_set_operations(gs_tty_driver, &gs_tty_ops);
 	for (i = 0; i < MAX_U_SERIAL_PORTS; i++)

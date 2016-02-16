@@ -25,6 +25,12 @@
 #include "core.h"
 #include "pinconf.h"
 #include "pinctrl-msm.h"
+#if defined(CONFIG_HTC_POWER_DEBUG) && defined(CONFIG_PINCTRL_MSM_TLMM)
+#include <linux/debugfs.h>
+#include <linux/seq_file.h>
+#include <linux/qpnp/pin.h>
+#include <soc/qcom/pm.h>
+#endif
 
 /**
  * struct msm_pinctrl_dd: represents the pinctrol driver data.
@@ -652,6 +658,146 @@ fail:
 	return -ENOMEM;
 }
 
+#if defined(CONFIG_HTC_POWER_DEBUG) && defined(CONFIG_PINCTRL_MSM_TLMM)
+static struct dentry *debugfs_base;
+struct gpio_chip *g_chip;
+
+int msm_dump_gpios(struct seq_file *m, int curr_len, char *gpio_buffer)
+{
+        unsigned int i, len;
+        struct msm_gpio_dump_info data;
+        char list_gpio[100];
+        char *title_msg = "------------ MSM GPIO -------------";
+
+        if (m) {
+                seq_printf(m, "%s\n", title_msg);
+        } else {
+                pr_info("%s\n", title_msg);
+                curr_len += sprintf(gpio_buffer + curr_len,
+                "%s\n", title_msg);
+        }
+
+        for (i = 0; i < g_chip->ngpio; i++) {
+                memset(list_gpio, 0 , sizeof(list_gpio));
+                len = 0;
+                __msm_gpio_get_dump_info(g_chip, i, &data);
+                len += sprintf(list_gpio + len, "GPIO[%3d]: ", i);
+
+                len += sprintf(list_gpio + len, "[FS]0x%x, ", data.func_sel);
+
+                if (data.dir)
+                        len += sprintf(list_gpio + len, "[DIR]OUT, [VAL]%s ", data.value ? "HIGH" : " LOW");
+                else
+                        len += sprintf(list_gpio + len, "[DIR] IN, [VAL]%s ", data.value ? "HIGH" : " LOW");
+
+                switch (data.pull) {
+                case 0x0:
+                        len += sprintf(list_gpio + len, "[PULL]NO, ");
+                        break;
+                case 0x1:
+                        len += sprintf(list_gpio + len, "[PULL]PD, ");
+                        break;
+                case 0x2:
+                        len += sprintf(list_gpio + len, "[PULL]KP, ");
+                        break;
+                case 0x3:
+                        len += sprintf(list_gpio + len, "[PULL]PU, ");
+                        break;
+                default:
+                        break;
+                }
+
+                len += sprintf(list_gpio + len, "[DRV]%2dmA, ", 2*(data.drv+1));
+
+                if (!data.dir) {
+                        len += sprintf(list_gpio + len, "[INT]%s, ", data.int_en ? "YES" : " NO");
+                        if (data.int_en) {
+                                switch (data.int_owner) {
+                                case 0x0:
+                                        len += sprintf(list_gpio + len, " WC_PROC, ");
+                                        break;
+                                case 0x1:
+                                        len += sprintf(list_gpio + len, "SPS_PROC, ");
+                                        break;
+                                case 0x2:
+                                        len += sprintf(list_gpio + len, " LPA_DSP, ");
+                                        break;
+                                case 0x3:
+                                        len += sprintf(list_gpio + len, "RPM_PROC, ");
+                                        break;
+                                case 0x4:
+                                        len += sprintf(list_gpio + len, " KP_PROC, ");
+                                        break;
+                                case 0x5:
+                                        len += sprintf(list_gpio + len, "MSS_PROC, ");
+                                        break;
+                                case 0x6:
+                                        len += sprintf(list_gpio + len, " TZ_PROC, ");
+                                        break;
+                                case 0x7:
+                                        len += sprintf(list_gpio + len, "    NONE, ");
+                                        break;
+                                default:
+                                        break;
+                                }
+                        }
+                }
+
+                list_gpio[99] = '\0';
+                if (m) {
+                        seq_printf(m, "%s\n", list_gpio);
+                } else {
+                        pr_info("%s\n", list_gpio);
+                        curr_len += sprintf(gpio_buffer +
+                        curr_len, "%s\n", list_gpio);
+                }
+        }
+        return curr_len;
+}
+
+static int list_gpios_show(struct seq_file *m, void *unused)
+{
+        msm_dump_gpios(m, 0, NULL);
+        qpnp_pin_dump(m, 0, NULL);
+        return 0;
+}
+
+static int list_sleep_gpios_show(struct seq_file *m, void *unused)
+{
+        print_gpio_buffer(m);
+        return 0;
+}
+
+static int list_sleep_gpios_open(struct inode *inode, struct file *file)
+{
+        return single_open(file, list_sleep_gpios_show, inode->i_private);
+}
+
+static int list_sleep_gpios_release(struct inode *inode, struct file *file)
+{
+        free_gpio_buffer();
+        return single_release(inode, file);
+}
+
+static int list_gpios_open(struct inode *inode, struct file *file)
+{
+        return single_open(file, list_gpios_show, inode->i_private);
+}
+
+static const struct file_operations list_gpios_fops = {
+        .open           = list_gpios_open,
+        .read           = seq_read,
+        .llseek         = seq_lseek,
+        .release        = single_release,
+};
+
+static const struct file_operations list_sleep_gpios_fops = {
+        .open           = list_sleep_gpios_open,
+        .read           = seq_read,
+        .llseek         = seq_lseek,
+        .release        = list_sleep_gpios_release,
+};
+#endif
 
 static void msm_pinctrl_cleanup_dd(struct msm_pinctrl_dd *dd)
 {
@@ -754,6 +900,10 @@ static void msm_register_gpiochip(struct msm_pinctrl_dd *dd)
 			pinfo->supports_gpio = false;
 		}
 	}
+#if defined(CONFIG_HTC_POWER_DEBUG) && defined(CONFIG_PINCTRL_MSM_TLMM)
+        g_chip = gc;
+#endif
+
 }
 
 static int msm_register_irqchip(struct msm_pinctrl_dd *dd)
@@ -802,6 +952,19 @@ int msm_pinctrl_probe(struct platform_device *pdev,
 	}
 	msm_register_irqchip(dd);
 	platform_set_drvdata(pdev, dd);
+#if defined(CONFIG_HTC_POWER_DEBUG) && defined(CONFIG_PINCTRL_MSM_TLMM)
+       debugfs_base = debugfs_create_dir("htc_gpio", NULL);
+       if (!debugfs_base)
+               return -ENOMEM;
+
+       if (!debugfs_create_file("list_gpios", S_IRUGO, debugfs_base,
+                       &g_chip, &list_gpios_fops))
+               return -ENOMEM;
+
+        if (!debugfs_create_file("list_sleep_gpios", S_IRUGO, debugfs_base,
+                       &g_chip, &list_sleep_gpios_fops))
+                return -ENOMEM;
+#endif
 	return 0;
 }
 EXPORT_SYMBOL(msm_pinctrl_probe);
