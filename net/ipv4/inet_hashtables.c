@@ -25,8 +25,6 @@
 #include <net/ip.h>
 #include <net/htc_net_debug.h>
 
-extern void net_dumplog(void);
-
 /*
  * Allocate and initialize a new local port bind bucket.
  * The bindhash mutex for snum's hash chain must be held here.
