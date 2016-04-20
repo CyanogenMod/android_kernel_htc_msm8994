@@ -7,7 +7,7 @@ obj-$(CONFIG_USB_GADGET)	+= udc-core.o
 obj-$(CONFIG_USB_LIBCOMPOSITE)	+= libcomposite.o
 libcomposite-y			:= usbstring.o config.o epautoconf.o
 #++ 2014.10.29 USB Team, PCN00025 ++
-libcomposite-y			+= functions.o configfs.o
+libcomposite-y			+= functions.o
 #-- 2014.10.29 USB Team, PCN00025 --
 obj-$(CONFIG_USB_DUMMY_HCD)	+= dummy_hcd.o
 obj-$(CONFIG_USB_NET2272)	+= net2272.o
