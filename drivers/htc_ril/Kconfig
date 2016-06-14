@@ -21,3 +21,7 @@ config HTC_DEBUG_RIL_PCN0009_SSR_DUMP_TASK
 	default Y
 	---help---
 	Dump busy task and disk sleep task if modem ssr over 5 seconds. If device enable radio flag 8 8, It will trigger panic if SSR timeout over 20 seconds.
+
+config HTC_SPRINT_MODEM
+	bool "Build with support for HTC Sprint modem"
+	default N

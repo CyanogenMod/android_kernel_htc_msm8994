@@ -67,7 +67,9 @@ static int notify_modem_app_reboot_call(struct notifier_block *this,
 
 	switch (code) {
 		case SYS_RESTART:
+#ifndef CONFIG_HTC_SPRINT_MODEM
 		case SYS_POWER_OFF:
+#endif
 			if(_cmd && !strncmp(_cmd, "oem-", 4)) {
 				oem_code = simple_strtoul(_cmd + 4, 0, 16) & 0xff;
 				set_oem_reboot_reason(oem_code);

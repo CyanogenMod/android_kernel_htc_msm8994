@@ -603,7 +603,11 @@ void _ipa_sram_settings_read_v2_0(void)
 	ipa_ctx->hdr_tbl_lcl = 0;
 	ipa_ctx->ip4_rt_tbl_lcl = 0;
 	ipa_ctx->ip6_rt_tbl_lcl = 0;
+#ifndef CONFIG_HTC_SPRINT_MODEM
 	ipa_ctx->ip4_flt_tbl_lcl = 1;
+#else
+	ipa_ctx->ip4_flt_tbl_lcl = 0;
+#endif
 	ipa_ctx->ip6_flt_tbl_lcl = 0;
 }
 
