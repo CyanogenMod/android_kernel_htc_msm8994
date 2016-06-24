@@ -112,9 +112,7 @@ static int adm_get_parameters[MAX_COPPS_PER_PORT * ADM_GET_PARAMETER_LENGTH];
 static int adm_module_topo_list[
 	MAX_COPPS_PER_PORT * ADM_GET_TOPO_MODULE_LIST_LENGTH];
 
-#ifdef CONFIG_DOLBY_DAP
 extern void msm_dolby_ssr_reset(void);
-#endif
 
 int adm_validate_and_get_port_index(int port_id)
 {
@@ -1329,9 +1327,7 @@ static int32_t adm_callback(struct apr_client_data *data, void *priv)
 			data->reset_event, data->reset_proc, this_adm.apr);
 		if (this_adm.apr) {
 			apr_reset(this_adm.apr);
-#ifdef CONFIG_DOLBY_DAP
 			msm_dolby_ssr_reset();
-#endif
 			for (i = 0; i < AFE_MAX_PORTS; i++) {
 				for (j = 0; j < MAX_COPPS_PER_PORT; j++) {
 					atomic_set(&this_adm.copp.id[i][j],
