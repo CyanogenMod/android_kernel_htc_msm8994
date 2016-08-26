@@ -179,8 +179,10 @@ struct flash_regulator_data {
 struct flash_node_data {
 	struct spmi_device		*spmi_dev;
 	struct led_classdev		cdev;
+	struct regulator		*boost_regulator;
 	struct work_struct		work;
 	struct flash_regulator_data	*reg_data;
+	u32				boost_voltage_max;
 	u16				max_current;
 	u16				prgm_current;
 	u16				prgm_current2;

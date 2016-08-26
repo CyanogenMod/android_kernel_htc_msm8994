@@ -190,6 +190,7 @@ static int msm_watchdog_suspend(struct device *dev)
 		mb();
 		wdog_dd->last_pet = sched_clock();
 		return 0;
+	}
 
 #if defined(CONFIG_HTC_DEBUG_WATCHDOG)
 	if (suspend_watchdog_deferred) {
