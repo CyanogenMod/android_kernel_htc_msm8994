@@ -927,7 +927,7 @@ struct kgsl_gpumem_sync_cache_bulk {
 #ifdef CONFIG_MSM_KGSL
 unsigned int kgsl_get_alloc_size(int detailed);
 #else
-static inline unsigned int kgsl_get_alloc_size(int detailed)
+static inline unsigned int kgsl_get_alloc_size(__attribute__((unused)) int detailed)
 {
 	return 0;
 }
