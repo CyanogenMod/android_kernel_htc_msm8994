@@ -929,6 +929,7 @@ unsigned int kgsl_get_alloc_size(int detailed);
 #else
 static inline unsigned int kgsl_get_alloc_size(int detailed)
 {
+	UNUSED(detailed);
 	return 0;
 }
 #endif
