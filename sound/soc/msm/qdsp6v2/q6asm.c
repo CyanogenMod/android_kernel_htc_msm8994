@@ -2989,7 +2989,7 @@ int q6asm_open_shared_io(struct audio_client *ac,
 
 	memset(channel_mapping, 0, PCM_FORMAT_MAX_NUM_CHANNEL);
 
-	rc = q6asm_map_channels(channel_mapping, config->channels);
+	rc = q6asm_map_channels(channel_mapping, config->channels, false);
 	if (rc) {
 		pr_err("%s: Map channels failed, ret: %d\n", __func__, rc);
 		goto done;
@@ -3395,7 +3395,7 @@ int q6asm_enc_cfg_blk_pcm_v3(struct audio_client *ac,
 	if (use_default_chmap) {
 		pr_debug("%s: setting default channel map for %d channels",
 			 __func__, channels);
-		if (q6asm_map_channels(channel_mapping, channels)) {
+		if (q6asm_map_channels(channel_mapping, channels, false)) {
 			pr_err("%s: map channels failed %d\n",
 			       __func__, channels);
 			rc = -EINVAL;
@@ -3503,12 +3503,14 @@ static int __q6asm_enc_cfg_blk_pcm_v3(struct audio_client *ac,
 					sample_word_size);
 }
 
+#if 0
 static int __q6asm_enc_cfg_blk_pcm(struct audio_client *ac,
 		uint32_t rate, uint32_t channels, uint16_t bits_per_sample)
 {
 	return q6asm_enc_cfg_blk_pcm_v2(ac, rate, channels,
 					bits_per_sample, true, false, NULL);
 }
+#endif
 
 int q6asm_enc_cfg_blk_pcm(struct audio_client *ac,
 			uint32_t rate, uint32_t channels, bool use_back_flavor)
@@ -4093,7 +4095,7 @@ static int __q6asm_media_format_block_pcm_v3(struct audio_client *ac,
 	memset(channel_mapping, 0, PCM_FORMAT_MAX_NUM_CHANNEL);
 
 	if (use_default_chmap) {
-		if (q6asm_map_channels(channel_mapping, channels)) {
+		if (q6asm_map_channels(channel_mapping, channels, false)) {
 			pr_err("%s: map channels failed %d\n",
 			       __func__, channels);
 			rc = -EINVAL;
@@ -4289,7 +4291,7 @@ static int __q6asm_media_format_block_multi_ch_pcm_v3(struct audio_client *ac,
 	memset(channel_mapping, 0, PCM_FORMAT_MAX_NUM_CHANNEL);
 
 	if (use_default_chmap) {
-		if (q6asm_map_channels(channel_mapping, channels)) {
+		if (q6asm_map_channels(channel_mapping, channels, false)) {
 			pr_err("%s: map channels failed %d\n",
 			       __func__, channels);
 			rc = -EINVAL;
